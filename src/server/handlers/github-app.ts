@@ -58,6 +58,8 @@ import {
 	renderRegistrationPage,
 } from "../../forge/github-app/registration.ts";
 import type { GitHubAppActivation } from "../../forge/hot-forge.ts";
+import { notFound } from "../errors.ts";
+import { jsonResponse } from "../response.ts";
 import type { RouteContext, RouteHandler, ServerDeps } from "../types.ts";
 
 /** Homepage the created App points at — the warren repo itself. */
@@ -325,4 +327,19 @@ function renderArmedInstalledPage(input: {
 			uiUrl: `${input.origin}/`,
 		}),
 	);
+}
+
+/**
+ * warren-e320: every route under the `/github-app` prefix rides the
+ * boot-resolved registration gate (`resolveGitHubAppRegistrationGate`).
+ * Prefix matching is deliberate: the `/github-app/installed` return route
+ * (warren-54c7) inherits the gate with nobody having to remember to wire it.
+ * A gated-off route answers 404 — never 401/403 — so the public-mode
+ * invariant scenario 39 guards holds.
+ */
+export const GITHUB_APP_ROUTE_PREFIX = "/github-app";
+
+export function gitHubAppRegistrationGatedHandler(pathname: string): Response {
+	const rendered = notFound(pathname);
+	return jsonResponse(rendered.status, rendered.envelope);
 }

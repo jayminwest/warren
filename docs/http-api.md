@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **52**.
+Total routes: **53**.
 
 ## /agents
 
@@ -37,6 +37,12 @@ Total routes: **52**.
 | --- | --- | --- | --- |
 | `GET` | `/events` | `listEventsHandler` | pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, same per-row `projectEvent` reduction. |
 | `GET` | `/events/stream` | `streamLifecycleEventsHandler` | warren-f566: the global lifecycle notification stream (NDJSON, one `{runId, hook, state, ts}` line per lifecycle transition). The list pages hold ONE connection per tab and debounce-invalidate their list queries instead of polling /runs every 5s. `?follow=0` is a probe shorthand (immediate clean close, empty body). Operator-gated — a public spectator never gets a held-open feed of every run id on the instance (scenario 39); it stays on the fallback poll. |
+
+## /extensions
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/extensions/judge/verdicts.jsonl` | `judgeVerdictsProxyHandler` | warren-1b40: operator-gated reverse proxy to the judge extension's /verdicts.jsonl export. Server-held base URL + export token from env (see ./judge-proxy.ts); never the SPA fallback. |
 
 ## /forge
 

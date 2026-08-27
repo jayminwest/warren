@@ -8,8 +8,6 @@
  * `ROUTE_TABLE` out of THIS file textually.
  */
 
-import { notFound } from "../errors.ts";
-import { jsonResponse } from "../response.ts";
 import type { Route, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
 import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
@@ -18,12 +16,15 @@ import { listEventsHandler } from "./events-query.ts";
 import { streamLifecycleEventsHandler } from "./events-stream.ts";
 import { forgeReposHandler } from "./forge-repos.ts";
 import {
+	GITHUB_APP_ROUTE_PREFIX,
 	gitHubAppCallbackHandler,
 	gitHubAppInstalledHandler,
+	gitHubAppRegistrationGatedHandler,
 	gitHubAppRouteOptions,
 	registerGitHubAppHandler,
 } from "./github-app.ts";
 import { instanceFactsHandler } from "./instance.ts";
+import { judgeVerdictsProxyHandler } from "./judge-proxy.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
 import { opsOverviewHandler } from "./ops-overview.ts";
@@ -96,24 +97,22 @@ interface RouteEntry {
  *   list can't drift from the policy table.
  * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
  *   run / project / agent / plan-run listings and details, the run event stream,
- *   `/whoami` (the caller's own identity), `/instance` (a reduced static facts
- *   projection, warren-2eec), `/analytics/runs`, and the reduced
- *   `GET /ops/overview` snapshot (run counts only, warren-d850), and the
- *   cross-run `GET /events` query (per-row `projectEvent` reduction,
- *   warren-5eec). Each is served
- *   through a public projection (pl-b82d steps 14-16) before an instance is
- *   actually exposed; the policy is what makes the projection reachable, not
- *   what makes it safe.
+ *   `/whoami`, `/instance` (a reduced static facts projection, warren-2eec),
+ *   `/analytics/runs`, the reduced `GET /ops/overview` snapshot (run counts
+ *   only, warren-d850), and the cross-run `GET /events` query (per-row
+ *   `projectEvent` reduction, warren-5eec). Each is served through a public
+ *   projection (pl-b82d steps 14-16) before an instance is actually exposed;
+ *   the policy is what makes the projection reachable, not what makes it safe.
  * - `readOperator` — reads that are NOT for spectators. `/readyz` and
  *   `/metrics` are operator diagnostics (the latter deliberately not
  *   auth-exempt, warren-682a). `/analytics/cost` is the instance-wide USD
  *   rollup (per-run cost on a run detail is a deliberate exception).
  *   `/analytics/behavior`, `/analytics/dispatch` (dispatch-context log),
- *   and the per-project seeds / ready-plans reads
- *   surface project internals. `/projects/:id/triggers` and
- *   `/projects/:id/warren-config` carry trigger prompt text, `qualityGate`
- *   command strings, and admission caps. `/preview/config` discloses
- *   `WARREN_PREVIEW_HOST`. `GET /runs/:id/inbox` is here for a stronger
+ *   the per-project seeds / ready-plans reads, `/projects/:id/triggers`,
+ *   `/projects/:id/warren-config` (trigger prompt text, `qualityGate`
+ *   command strings, admission caps), `/preview/config` (discloses
+ *   `WARREN_PREVIEW_HOST`), and the judge export proxy (warren-1b40) all
+ *   surface operator internals. `GET /runs/:id/inbox` is here for a stronger
  *   reason than disclosure: it MUTATES on read (`src/runs/inbox.ts` claims
  *   unread rows and flips them to delivered), so an anonymous poll would
  *   silently drain the operator's steering queue.
@@ -157,6 +156,15 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/setup",
 		policy: "anonymous",
 		build: (deps) => setupHandoffHandler(deps.setupHandoff),
+	},
+	// warren-1b40: operator-gated reverse proxy to the judge extension's
+	// /verdicts.jsonl export. Server-held base URL + export token from env
+	// (see ./judge-proxy.ts); never the SPA fallback.
+	{
+		method: "GET",
+		pattern: "/extensions/judge/verdicts.jsonl",
+		policy: "readOperator",
+		build: () => judgeVerdictsProxyHandler(),
 	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
 	// pl-7e38 step 12 (warren-d850): one-poll Operations snapshot, readPublic with a reduced projection.
@@ -367,20 +375,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	},
 ];
 
-/**
- * warren-e320: every route under the `/github-app` prefix rides the
- * boot-resolved registration gate (`resolveGitHubAppRegistrationGate`).
- * Prefix matching is deliberate: the `/github-app/installed` return route
- * (warren-54c7) inherits the gate with nobody having to remember to wire it. A gated-off route answers 404 — never
- * 401/403 — so the public-mode invariant scenario 39 guards holds.
- */
-const GITHUB_APP_ROUTE_PREFIX = "/github-app";
-
-function gitHubAppRegistrationGatedHandler(pathname: string): Response {
-	const rendered = notFound(pathname);
-	return jsonResponse(rendered.status, rendered.envelope);
-}
-
 export function buildApiRoutes(deps: ServerDeps): Route[] {
 	// Absent gate ⇒ legacy/test wiring keeps the historical always-on
 	// behavior; production boot (`bootServer`) always resolves the gate.
@@ -425,6 +419,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/github-app",
 	"/setup", // warren-48f8: the setup-handoff redemption page (an API path, not SPA).
 	"/events",
+	"/extensions", // warren-1b40: the judge export proxy surface.
 	"/forge", // warren-2601: installation repo listing for the Add Project picker.
 ];
 

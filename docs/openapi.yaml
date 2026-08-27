@@ -19,6 +19,8 @@ tags:
     description: '`/analytics` routes.'
   - name: events
     description: '`/events` routes.'
+  - name: extensions
+    description: '`/extensions` routes.'
   - name: forge
     description: '`/forge` routes.'
   - name: github-app
@@ -209,6 +211,24 @@ paths:
         probe shorthand (immediate clean close, empty body). Operator-gated — a public spectator
         never gets a held-open feed of every run id on the instance (scenario 39); it stays on the
         fallback poll.
+  /extensions/judge/verdicts.jsonl:
+    get:
+      operationId: judgeVerdictsProxyHandler
+      tags:
+        - extensions
+      summary: GET /extensions/judge/verdicts.jsonl
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-1b40: operator-gated reverse proxy to the judge extension's /verdicts.jsonl export.
+        Server-held base URL + export token from env (see ./judge-proxy.ts); never the SPA fallback.
   /forge/repos:
     get:
       operationId: forgeReposHandler
