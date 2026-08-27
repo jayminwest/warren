@@ -207,6 +207,31 @@ async function runLeasedTick(
 	// Restart reconciliation: resume any run the loop could not reach and
 	// fail closed every unconfirmed dispatch — never a re-POST.
 	const restart = await dispatcher.reconcileAfterRestart();
+	// A run the restart sweep just settled to terminal (warren-968d) reached
+	// success AFTER the loop above processed its work item. Render its PR
+	// intent NOW, before settleCampaign can complete the campaign — the
+	// deterministic action key makes this pass idempotent, and it doubles as
+	// the backfill for a campaign that already completed un-rendered.
+	const intentRenderedFor = new Set(
+		stages
+			.filter((outcome) => outcome.stage === "pr_intent" && outcome.workItemId !== null)
+			.map((outcome) => outcome.workItemId as string),
+	);
+	for (const item of store.campaigns.listWorkItems(campaign.id)) {
+		if (item.status === "terminal" && !intentRenderedFor.has(item.id)) {
+			stages.push(
+				await intentOutcome({
+				deps,
+				dispatcher,
+				campaign,
+				manifest,
+				item,
+				nowMs: deps.clock.nowMs(),
+				alreadyDispatched: true,
+			}),
+			);
+		}
+	}
 	stages.push(...(await reconcileUpstreamPrs(deps, campaign)));
 	const campaignStatus = settleCampaign(store, campaign.id);
 	return {
@@ -385,7 +410,14 @@ async function reconcileOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 /** Stage 4: render (never post) the dry-run cross-fork PR intent. */
 async function intentOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 	const issueNumber = parseIssueRef(ctx.item);
-	if (ctx.campaign.status !== "approved" && ctx.campaign.status !== "running") {
+	// "completed" is admitted on purpose (warren-968d): a terminal-success
+	// work item whose campaign settled completed before its intent rendered
+	// backfills here idempotently on the next tick.
+	if (
+		ctx.campaign.status !== "approved" &&
+		ctx.campaign.status !== "running" &&
+		ctx.campaign.status !== "completed"
+	) {
 		return {
 			stage: "pr_intent",
 			workItemId: ctx.item.id,

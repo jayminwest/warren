@@ -274,11 +274,13 @@ function requireCampaign(store: CampaignStateStore, campaignId: string): Campaig
 	}
 	if (
 		campaign.approvedAtMs === null ||
-		(campaign.status !== "approved" && campaign.status !== "running")
+		(campaign.status !== "approved" &&
+			campaign.status !== "running" &&
+			campaign.status !== "completed")
 	) {
 		throw new PrIntentRefusal(
 			"campaign_not_approved",
-			`campaign ${campaign.id} is ${campaign.status} with no approval stamp; a PR intent may only be rendered for an approved campaign`,
+			`campaign ${campaign.id} is ${campaign.status} with no approval stamp; a PR intent may only be rendered for an approved campaign (a completed one backfills idempotently, warren-968d)`,
 		);
 	}
 	return campaign;
