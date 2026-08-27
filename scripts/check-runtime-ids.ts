@@ -73,6 +73,8 @@ const DELIBERATE: Readonly<Record<string, string>> = {
 	"src/registry/builtins/pi.ts": "built-in agent declaring the runtime it dispatches onto",
 	"src/registry/builtins/planner.ts": "built-in agent declaring the runtime it dispatches onto",
 	"src/registry/builtins/pr-fixer.ts": "built-in agent declaring the runtime it dispatches onto",
+	"src/ui/src/pages/setup.helpers.ts":
+		"onboarding starter prefill names the default shipped agent (warren-ed11)",
 };
 
 /**

@@ -95,7 +95,13 @@ function SetupStepRow({ step, index }: { step: SetupStep; index: number }) {
 		return <div className={rowClass}>{body}</div>;
 	}
 	return (
-		<Link to={step.href} className={cn(rowClass, "hover:bg-(--color-surface-raised)")}>
+		// The starter prefill rides in as router state (warren-ed11):
+		// the dispatch form renders it for review — nothing auto-submits.
+		<Link
+			to={step.href}
+			state={step.routeState}
+			className={cn(rowClass, "hover:bg-(--color-surface-raised)")}
+		>
 			{body}
 		</Link>
 	);
@@ -114,10 +120,14 @@ function useSetupFacts() {
 		queryFn: ({ signal }) => runsApi.list({ limit: 1 }, signal),
 		staleTime: 15_000,
 	});
+	const projectRows = projects.data?.projects ?? [];
+	const runRows = runs.data?.runs ?? [];
 	return {
-		projectCount: projects.data ? projects.data.projects.length : null,
+		projectCount: projects.data ? projectRows.length : null,
 		runCount: runs.data ? runs.data.total : null,
 		projectsReady: projects.data !== undefined,
+		firstProjectId: projectRows.length > 0 ? (projectRows[0]?.id ?? null) : null,
+		firstRunId: runRows.length > 0 ? (runRows[0]?.id ?? null) : null,
 	};
 }
 
@@ -125,14 +135,14 @@ function useSetupFacts() {
 export function SetupPage() {
 	const navigate = useNavigate();
 	const caps = useCapabilities();
-	const { projectCount, runCount } = useSetupFacts();
+	const { projectCount, runCount, firstProjectId, firstRunId } = useSetupFacts();
 
 	const handleDismiss = (): void => {
 		writeSetupDismissed();
 		navigate("/operations", { replace: true });
 	};
 
-	const steps = buildSetupSteps({ projectCount, runCount });
+	const steps = buildSetupSteps({ projectCount, runCount, firstProjectId, firstRunId });
 	const doneCount = steps.filter((s) => s.state === "done").length;
 
 	return (
@@ -186,9 +196,18 @@ export function SetupLandingRoute() {
 		queryKey: ["projects"],
 		queryFn: ({ signal }) => projectsApi.list(signal),
 	});
+	// Same limit-1 probe (and key) the checklist page uses: warren-ed11
+	// keeps the checklist the landing until the first run dispatches,
+	// so the gate needs the run total, not just the project rows.
+	const runs = useQuery({
+		queryKey: ["setup", "runs-count"],
+		queryFn: ({ signal }) => runsApi.list({ limit: 1 }, signal),
+		staleTime: 15_000,
+	});
 
 	const decision = setupLandingDecision({
 		projects: projects.data?.projects,
+		runCount: runs.data ? runs.data.total : null,
 		canOperate: caps.status === "ready" ? caps.can("admin") : null,
 		dismissed,
 	});

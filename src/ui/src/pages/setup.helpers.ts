@@ -1,5 +1,6 @@
 /**
- * First-run onboarding helpers (warren-a911 / pl-26f3 step 9).
+ * First-run onboarding helpers (warren-a911 / pl-26f3 step 9,
+ * extended by warren-ed11 / step 11).
  *
  * Kept pure so the gate the landing route walks and the checklist's
  * live item states are testable without a DOM (same pattern as
@@ -7,9 +8,44 @@
  * rows or localStorage — the page never fabricates a state.
  */
 
+import type { DispatchRouteState } from "./dispatch/dispatch-draft.ts";
+
+/**
+ * The agent the starter task prefills (warren-ed11 / pl-26f3 step 11).
+ * Fresh installs ship `claude-code` in the builtin registry; if an
+ * operator removed it, the dispatch form simply shows the prefill as
+ * an empty match they correct before submitting.
+ */
+export const STARTER_TASK_AGENT = "claude-code";
+
+/**
+ * The prefilled starter-task prompt (warren-ed11). One exported
+ * constant so the UI card, the tests, and any docs quote the same
+ * string. Deliberately low-risk: read-only exploration plus one
+ * documentation file, no assumption about the repo's language or
+ * toolchain, and no main-branch writes — runs push their own branch
+ * and open a PR by design.
+ */
+export const STARTER_TASK_PROMPT =
+	"Explore this repository and write what you learn into an AGENTS.md at the repo root: what the project is, how the source is laid out, and the commands a coding agent should use to build and test it. Read the README and enough of the tree to be accurate — do not assume a particular language or toolchain, report what is actually there. Then open a pull request containing only that one documentation file. Keep the file under 60 lines and change nothing else.";
+
+/**
+ * Build the `/dispatch` route state for the starter offer: the
+ * registered project, the `claude-code` agent, and the starter
+ * prompt. The user reviews and presses the existing dispatch button —
+ * there is no auto-dispatch.
+ */
+export function starterDispatchState(projectId: string): DispatchRouteState {
+	return {
+		project: projectId,
+		agent: STARTER_TASK_AGENT,
+		prompt: STARTER_TASK_PROMPT,
+	};
+}
+
 /**
  * localStorage key holding the operator's manual dismissal of the
- * first-run checklist. The checklist retires on its own once a project
+ * first-run checklist. The checklist retires on its own once a run
  * exists; this key only covers "dismissed before finishing setup".
  */
 export const SETUP_DISMISSAL_KEY = "warren.setupDismissed";
@@ -26,6 +62,8 @@ export type SetupDecision = "loading" | "setup" | "console";
 export interface SetupLandingInput {
 	/** Live project rows from `GET /projects`; undefined while in flight. */
 	readonly projects: readonly unknown[] | undefined;
+	/** Live run total from `GET /runs?limit=1`; null while in flight. */
+	readonly runCount: RunCount;
 	/**
 	 * Can this browser mutate the instance (operator)? `null` while
 	 * /whoami is in flight — the decision must not fire on an unknown
@@ -38,23 +76,26 @@ export interface SetupLandingInput {
 }
 
 /**
- * The landing gate: a zero-project instance shows the setup checklist
- * to an operator who has not dismissed it; every other caller sees the
- * operator console exactly as before. Ordering matters:
+ * The landing gate: a no-run instance shows the setup checklist to an
+ * operator who has not dismissed it — zero projects, or one registered
+ * but never dispatched from (warren-ed11 keeps the checklist up until
+ * the first run exists, so the starter offer is reachable right after
+ * a project registers). Ordering matters:
  *
  *   1. loading — any unknown input stays on the fence;
- *   2. projects exist — the console, always, regardless of dismissal
- *      state (the checklist never renders again once a project exists);
- *   3. spectator — the console, never onboarding actions
+ *   2. spectator — the console, never onboarding actions
  *      (WARREN_AUTH=public read-only viewers);
- *   4. dismissed — the console, the operator opted out;
+ *   3. dismissed — the console, the operator opted out;
+ *   4. a run exists — the console, the happy path is complete;
  *   5. otherwise — the checklist.
  */
 export function setupLandingDecision(input: SetupLandingInput): SetupDecision {
-	if (input.projects === undefined || input.canOperate === null) return "loading";
-	if (input.projects.length > 0) return "console";
+	if (input.projects === undefined || input.runCount === null || input.canOperate === null) {
+		return "loading";
+	}
 	if (!input.canOperate) return "console";
 	if (input.dismissed) return "console";
+	if (input.runCount > 0) return "console";
 	return "setup";
 }
 
@@ -71,11 +112,17 @@ export interface SetupStep {
 	readonly href: string;
 	/** True when the destination is a server-rendered page, not an SPA route. */
 	readonly external: boolean;
+	/** Router state carried by an SPA-route step (the dispatch prefill). */
+	readonly routeState?: DispatchRouteState;
 }
 
 export interface SetupStepInput {
 	readonly projectCount: ProjectCount;
 	readonly runCount: RunCount;
+	/** Id of the first registered project; null while /projects is in flight. */
+	readonly firstProjectId: string | null;
+	/** Id of the most recent run; null while /runs is in flight. */
+	readonly firstRunId: string | null;
 }
 
 /**
@@ -112,12 +159,27 @@ export function buildSetupSteps(input: SetupStepInput): readonly SetupStep[] {
 			id: "dispatch-run",
 			title: "Dispatch your first run",
 			blurb:
-				"Describe a small task and let an agent do it — you will see the work land as a pull request.",
+				"Start from the ready-made task — the agent reads this repo and opens a PR refreshing AGENTS.md. Runs work on their own branch, so nothing ever touches main.",
 			state: dispatchStepState(input.projectCount, input.runCount),
-			href: "/dispatch",
+			href: dispatchStepHref(input),
 			external: false,
+			// The starter prefill rides along as router state — the
+			// dispatch form renders it for review, never auto-submits.
+			routeState:
+				input.projectCount !== null && input.projectCount > 0 && input.firstProjectId !== null
+					? starterDispatchState(input.firstProjectId)
+					: undefined,
 		},
 	];
+}
+
+function dispatchStepHref(input: SetupStepInput): string {
+	// Once the first run exists the step becomes "watch your run" —
+	// a link to the live run detail using existing run-list data.
+	if (input.runCount !== null && input.runCount > 0 && input.firstRunId !== null) {
+		return `/runs/${encodeURIComponent(input.firstRunId)}`;
+	}
+	return "/dispatch";
 }
 
 function addRepoStepState(projectCount: ProjectCount): SetupStepState {

@@ -48,8 +48,8 @@ export const INSTANCE_NAV_ITEM: ConsoleNavItem = {
 
 /**
  * First-run setup entry point (warren-a911): rendered in the sidebar
- * only while the instance has zero projects AND this caller can act on
- * the checklist. Index "00" — it sits before everything else.
+ * only while the instance has no runs AND this caller can act on the
+ * checklist (warren-ed11). Index "00" — it sits before everything else.
  */
 export const SETUP_NAV_ITEM: ConsoleNavItem = {
 	index: "00",
