@@ -137,7 +137,7 @@ export function EventTail({
 	const live = !terminal && (status === "open" || status === "connecting");
 
 	return (
-		<section className="flex min-h-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+		<section className="flex min-h-0 flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
 			<header className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-2.5">
 				<h2 className="text-[11px] leading-[14px] font-semibold text-(--color-text)">
 					Event stream
@@ -200,7 +200,7 @@ export function EventTail({
 				onScroll={onScroll}
 				onWheel={onWheel}
 				onTouchMove={onTouchMove}
-				className="h-[520px] overflow-auto bg-(--color-sidebar)"
+				className="min-h-[320px] flex-1 overflow-auto bg-(--color-sidebar)"
 			>
 				{visible.length === 0 ? (
 					<p className="p-4 text-[11px] text-(--color-text-3)">
