@@ -116,7 +116,7 @@ function RuntimeStat() {
 
 export function ConsoleTopbar({ stats }: { stats: ConsoleStats }) {
 	return (
-		<header className="flex h-[42px] shrink-0 items-center gap-4 border-b border-(--color-border) px-4 sm:gap-[18px] sm:px-[22px]">
+		<header className="flex h-[42px] w-full min-w-0 flex-1 shrink-0 items-center gap-4 border-b border-(--color-border) px-3.5 sm:gap-[18px] md:px-6">
 			<HealthStat health={stats.health} />
 			<Stat
 				label="RUNNING"

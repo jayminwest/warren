@@ -15,17 +15,21 @@
  *    reads instead. At most ONE new dispatch happens per tick, and the
  *    post-loop restart sweep resumes unreachable runs and fails closed
  *    every unconfirmed dispatch — never a re-POST.
- * 4. **render dry-run PR intent** — terminal work items with an
- *    operator-supplied summary render (never post) the exact cross-fork
- *    pull-request request and journal it as evidence.
+ * 4. **render PR intent (+ optionally execute it)** — terminal work items
+ *    with an operator-supplied summary render the exact cross-fork
+ *    pull-request request and journal it as evidence. With no creator
+ *    wired that is the whole stage (dry run, never posts). When the
+ *    policy-gated creator exists (Phase 2, warren-84da) the journaled
+ *    intent is then executed exactly once, with the dispatcher's
+ *    response-loss discipline: uncertain settles, never re-POSTs.
  * 5. **read-only GitHub reconcile** — every PR identity with a known
  *    upstream PR number is reconciled read-only and deduplicated.
  * 6. **settle/report** — campaign status settles, and the tick returns the
  *    stage trace plus a budget/work-item/attention report.
  *
- * The tick is dry-run by construction: it composes the already-approved
- * lower-level modules and adds no new mutation path. Every outcome is a
- * JSON-safe stage record so the CLI can emit NDJSON evidence.
+ * With no `prCreator` the tick is dry-run by construction: it composes the
+ * already-approved lower-level modules and adds no mutation path. Every
+ * outcome is a JSON-safe stage record so the CLI can emit NDJSON evidence.
  */
 import { admitWorkItem } from "../admission.ts";
 import { AdmissionRefusal } from "../admission-errors.ts";
@@ -33,19 +37,23 @@ import type { Clock, IdGenerator } from "../clock.ts";
 import { WARREN_DISPATCH_ACTION_TYPE, WarrenDispatcher } from "../dispatch/dispatcher.ts";
 import { CampaignControllerError, StateError } from "../errors.ts";
 import type { ReadOnlyGithubClient } from "../github/client.ts";
+import type { GithubPrCreateTransport } from "../github/pr-create.ts";
 import type { GithubIssueSnapshot } from "../github/types.ts";
 import type { CampaignManifest } from "../manifest.ts";
+import { executeJournaledPrIntent } from "../pr-execute/executor.ts";
 import {
 	PrIntentRefusal,
+	type PrIntentResult,
 	type PrIntentSummaryFacts,
 	type PrIntentUpstreamFacts,
+	prIntentActionKey,
 	prIntentMachineJson,
 	renderAndJournalPrIntent,
 } from "../pr-intent/intender.ts";
 import { UpstreamPrReconciler } from "../reconcile/reconciler.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
 import type { CampaignRow, CampaignStatus, WorkItemRow } from "../store/types.ts";
-import type { WarrenClient } from "../warren-client.ts";
+import { runPushedBranch, type WarrenClient } from "../warren-client.ts";
 
 /** A concurrent tick holds the campaign lease. */
 export class TickConcurrentError extends CampaignControllerError {
@@ -82,6 +90,7 @@ export type TickStage =
 	| "dispatch"
 	| "reconcile_run"
 	| "pr_intent"
+	| "pr_execute"
 	| "github_reconcile"
 	| "settle";
 
@@ -111,8 +120,12 @@ export interface TickReport {
 
 export interface TickResult {
 	readonly campaignId: string;
-	/** Always true: V0 has no live mode. */
-	readonly dryRun: true;
+	/**
+	 * False only when a policy-gated PR creator is wired (Phase 2,
+	 * warren-84da): the one mutation the tick may then perform is executing
+	 * a journaled cross-fork PR intent. Everything else stays read-only.
+	 */
+	readonly dryRun: boolean;
 	readonly stages: readonly TickOutcome[];
 	readonly restart: {
 		readonly expiredLeases: number;
@@ -133,6 +146,13 @@ export interface TickDeps {
 	readonly policy: unknown;
 	/** Operator-supplied change summaries, keyed by issue number. */
 	readonly summaries: ReadonlyMap<number, PrIntentSummaryFacts>;
+	/**
+	 * The single policy-gated mutation (Phase 2, warren-84da). Wired only
+	 * when the validated repository policy enables
+	 * `mutations.createPullRequest` AND a GitHub credential exists; absent
+	 * means the tick is dry-run by construction, exactly as V0 shipped.
+	 */
+	readonly prCreator?: GithubPrCreateTransport;
 	/** Tick lease TTL. Default 60 000 ms. */
 	readonly leaseTtlMs?: number;
 }
@@ -220,15 +240,15 @@ async function runLeasedTick(
 	for (const item of store.campaigns.listWorkItems(campaign.id)) {
 		if (item.status === "terminal" && !intentRenderedFor.has(item.id)) {
 			stages.push(
-				await intentOutcome({
-				deps,
-				dispatcher,
-				campaign,
-				manifest,
-				item,
-				nowMs: deps.clock.nowMs(),
-				alreadyDispatched: true,
-			}),
+				...(await intentThenMaybeExecute({
+					deps,
+					dispatcher,
+					campaign,
+					manifest,
+					item,
+					nowMs: deps.clock.nowMs(),
+					alreadyDispatched: true,
+				})),
 			);
 		}
 	}
@@ -236,7 +256,7 @@ async function runLeasedTick(
 	const campaignStatus = settleCampaign(store, campaign.id);
 	return {
 		campaignId: campaign.id,
-		dryRun: true,
+		dryRun: deps.prCreator === undefined,
 		stages,
 		restart: {
 			expiredLeases: restart.expiredLeases,
@@ -263,7 +283,7 @@ async function processWorkItem(ctx: WorkItemContext): Promise<TickOutcome[]> {
 			// if one survives mid-tick it is never re-POSTed here.
 			return [{ stage: "dispatch", workItemId: ctx.item.id, status: "awaiting_restart_reconcile" }];
 		case "terminal":
-			return [await intentOutcome(ctx)];
+			return intentThenMaybeExecute(ctx);
 		default:
 			return [
 				{
@@ -375,7 +395,7 @@ async function reconcileThenMaybeIntent(ctx: WorkItemContext): Promise<TickOutco
 	if (refreshed?.status !== "terminal") {
 		return [outcome];
 	}
-	return [outcome, await intentOutcome({ ...ctx, item: refreshed })];
+	return [outcome, ...(await intentThenMaybeExecute({ ...ctx, item: refreshed }))];
 }
 
 /** Reconcile one known run through authoritative reads. */
@@ -407,8 +427,92 @@ async function reconcileOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 	};
 }
 
+/**
+ * Stage 4 (+4b): render the cross-fork PR intent, then — ONLY when a
+ * policy-gated creator is wired (Phase 2, warren-84da) — execute the
+ * journaled intent through it. With no creator this is exactly the V0
+ * dry-run stage: render, journal, never post.
+ */
+async function intentThenMaybeExecute(ctx: WorkItemContext): Promise<TickOutcome[]> {
+	// A SETTLED intent action cannot re-render (the journal freezes terminal
+	// rows), and with an executor wired it can settle: report its standing
+	// instead. `planned` still re-renders below — that replay is the digest
+	// stability check the dry run relies on.
+	const settled = settledIntentOutcomes(ctx);
+	if (settled !== null) {
+		return settled;
+	}
+	const { outcome, result } = await intentOutcome(ctx);
+	if (
+		ctx.deps.prCreator === undefined ||
+		result === null ||
+		(outcome.status !== "rendered" && outcome.status !== "already_journaled")
+	) {
+		return [outcome];
+	}
+	const executed = await executeJournaledPrIntent(
+		{ store: ctx.deps.store, github: ctx.deps.github, prCreator: ctx.deps.prCreator },
+		{ campaign: ctx.campaign, manifest: ctx.manifest, intentResult: result },
+	);
+	return [
+		outcome,
+		{
+			stage: "pr_execute",
+			workItemId: ctx.item.id,
+			status: executed.status,
+			detail: { prNumber: executed.prNumber, prUrl: executed.prUrl },
+		},
+	];
+}
+
+/**
+ * The standing of a pr_intent action that already settled (Phase 2 —
+ * execution is what settles it). Null while the action is absent or still
+ * `planned`, letting the render path run.
+ */
+function settledIntentOutcomes(ctx: WorkItemContext): TickOutcome[] | null {
+	const action = ctx.deps.store.actions.getActionByKey(
+		prIntentActionKey(ctx.campaign.id, ctx.item.id),
+	);
+	if (action === null || action.state === "planned" || action.state === "executing") {
+		return null;
+	}
+	const intentOut: TickOutcome = {
+		stage: "pr_intent",
+		workItemId: ctx.item.id,
+		status: "already_journaled",
+		detail: { actionId: action.id, state: action.state },
+	};
+	if (ctx.deps.prCreator === undefined) {
+		return [intentOut];
+	}
+	const status =
+		action.state === "succeeded"
+			? "already_executed"
+			: action.state === "uncertain"
+				? "uncertain_blocked"
+				: "failed_blocked";
+	const identity = ctx.deps.store.events
+		.listPrIdentities(ctx.campaign.id)
+		.find((row) => row.workItemId === ctx.item.id);
+	return [
+		intentOut,
+		{
+			stage: "pr_execute",
+			workItemId: ctx.item.id,
+			status,
+			detail: {
+				prNumber: action.resultPrNumber ?? identity?.prNumber ?? null,
+				prUrl: identity?.prUrl ?? null,
+			},
+		},
+	];
+}
+
 /** Stage 4: render (never post) the dry-run cross-fork PR intent. */
-async function intentOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
+async function intentOutcome(
+	ctx: WorkItemContext,
+): Promise<{ outcome: TickOutcome; result: PrIntentResult | null }> {
 	const issueNumber = parseIssueRef(ctx.item);
 	// "completed" is admitted on purpose (warren-968d): a terminal-success
 	// work item whose campaign settled completed before its intent rendered
@@ -419,21 +523,32 @@ async function intentOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 		ctx.campaign.status !== "completed"
 	) {
 		return {
-			stage: "pr_intent",
-			workItemId: ctx.item.id,
-			status: "campaign_not_active",
-			detail: { issue: issueNumber, campaignStatus: ctx.campaign.status },
+			outcome: {
+				stage: "pr_intent",
+				workItemId: ctx.item.id,
+				status: "campaign_not_active",
+				detail: { issue: issueNumber, campaignStatus: ctx.campaign.status },
+			},
+			result: null,
 		};
 	}
 	const summary = ctx.deps.summaries.get(issueNumber);
 	if (summary === undefined) {
 		return {
-			stage: "pr_intent",
-			workItemId: ctx.item.id,
-			status: "skipped_no_summary",
-			detail: { issue: issueNumber },
+			outcome: {
+				stage: "pr_intent",
+				workItemId: ctx.item.id,
+				status: "skipped_no_summary",
+				detail: { issue: issueNumber },
+			},
+			result: null,
 		};
 	}
+	// warren-5255: a dispatch that settled against a warren predating the
+	// run-wire `branch` field journaled result_branch null. Re-read the run
+	// (a safe, retryable GET — the same class reconciliation uses) and
+	// backfill so the intent can derive its cross-fork head ref.
+	await backfillDispatchBranch(ctx);
 	const issue = await readIssueSnapshot(ctx.deps.github, ctx.manifest, issueNumber);
 	const upstream = await readUpstreamFacts(ctx.deps, ctx.manifest);
 	try {
@@ -447,21 +562,51 @@ async function intentOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 			nowMs: ctx.nowMs,
 		});
 		return {
-			stage: "pr_intent",
-			workItemId: ctx.item.id,
-			status: result.created ? "rendered" : "already_journaled",
-			detail: prIntentMachineJson(result),
+			outcome: {
+				stage: "pr_intent",
+				workItemId: ctx.item.id,
+				status: result.created ? "rendered" : "already_journaled",
+				detail: prIntentMachineJson(result),
+			},
+			result,
 		};
 	} catch (error) {
 		if (error instanceof PrIntentRefusal) {
 			return {
-				stage: "pr_intent",
-				workItemId: ctx.item.id,
-				status: "refused",
-				detail: { issue: issueNumber, invariant: error.invariant, message: error.message },
+				outcome: {
+					stage: "pr_intent",
+					workItemId: ctx.item.id,
+					status: "refused",
+					detail: { issue: issueNumber, invariant: error.invariant, message: error.message },
+				},
+				result: null,
 			};
 		}
 		throw error;
+	}
+}
+
+/**
+ * Backfill a succeeded dispatch's missing result_branch from the run wire
+ * (warren-5255). Fill-only: a journaled branch is frozen, and a warren that
+ * still serves no branch leaves the row untouched (the intent then refuses
+ * `run_branch_missing` fail-closed, exactly as before).
+ */
+async function backfillDispatchBranch(ctx: WorkItemContext): Promise<void> {
+	const settled = ctx.deps.store.actions
+		.listActionsForWorkItem(ctx.item.id)
+		.find(
+			(action) =>
+				action.actionType === WARREN_DISPATCH_ACTION_TYPE &&
+				action.state === "succeeded" &&
+				action.resultRunId !== null &&
+				action.resultBranch === null,
+		);
+	if (settled === undefined || settled.resultRunId === null) return;
+	const run = await ctx.deps.warrenClient.getRun(settled.resultRunId);
+	const branch = runPushedBranch(run);
+	if (branch !== null) {
+		ctx.deps.store.actions.backfillResultBranch(settled.id, branch);
 	}
 }
 

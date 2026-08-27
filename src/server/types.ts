@@ -186,6 +186,8 @@ export interface ServerDeps {
 	 * default) keeps the historical render-once registration flow.
 	 */
 	readonly gitHubAppActivation?: import("../forge/hot-forge.ts").GitHubAppActivation;
+	/** warren-48f8: armed setup-handoff store; absent ⇒ GET /setup answers 404. */
+	readonly setupHandoff?: import("./setup-handoff.ts").SetupHandoffStore;
 	/** K8s-topology `/readyz` sync seam (warren-39e1), boot-wired from the started
 	 * pod-watcher under `WARREN_RUNTIME=k8s`; absent under `local`. */
 	readonly k8sPodSync?: import("../runtime/k8s/pod-watcher.ts").PodSyncSource;

@@ -57,6 +57,8 @@ export interface BuildServerDepsInput {
 	 * composition-point posture as `forge` above.
 	 */
 	readonly gitHubAppRegistration: import("../github-app-gate.ts").GitHubAppRegistrationGate;
+	/** warren-48f8: the armed setup-handoff store, when the boot opted in. */
+	readonly setupHandoff?: import("../setup-handoff.ts").SetupHandoffStore;
 	/** warren-b504: opt-in App credential store + hot forge seam; absent when not armed. */
 	readonly gitHubAppActivation?: import("../../forge/hot-forge.ts").GitHubAppActivation;
 	/**
@@ -135,6 +137,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
+		setupHandoff,
 		gitHubAppActivation,
 		broker,
 		lifecycleStream,
@@ -187,6 +190,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		forge,
 		gitHubAppRegistration,
 		gitHubAppActivation,
+		setupHandoff,
 		salvageDir,
 		broker,
 		lifecycleStream,

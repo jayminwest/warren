@@ -37,6 +37,8 @@ tags:
     description: '`/projects` routes.'
   - name: runs
     description: '`/runs` routes.'
+  - name: setup
+    description: '`/setup` routes.'
   - name: whoami
     description: '`/whoami` routes.'
 paths:
@@ -1133,6 +1135,24 @@ paths:
           required: true
           schema:
             type: string
+  /setup:
+    get:
+      operationId: setupHandoffHandler
+      tags:
+        - setup
+      summary: GET /setup
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-48f8: setup-code redemption; anonymous by necessity — the code IS the auth. 404
+        unless the boot armed the handoff (src/server/setup-handoff.ts).
   /version:
     get:
       operationId: versionHandler

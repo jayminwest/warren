@@ -64,6 +64,7 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		prState: null,
 		prMergedAt: null,
 		targetBranch: null,
+		branch: null,
 		ref: null,
 		baseCommit: null,
 		provider: null,

@@ -85,11 +85,12 @@ function captureContext(env: Record<string, string> = {}): {
 	};
 }
 
-function bootedHandle(token?: string): WarrenServerHandle {
+function bootedHandle(token?: string, setupUrl?: string): WarrenServerHandle {
 	return {
 		transport: { kind: "tcp", hostname: "127.0.0.1", port: 8080 },
 		url: "http://127.0.0.1:8080",
 		...(token !== undefined ? { operatorToken: token } : {}),
+		...(setupUrl !== undefined ? { setupUrl } : {}),
 		stop: async () => undefined,
 	};
 }
@@ -236,10 +237,93 @@ describe("runUp", () => {
 		expect(err.join("")).toContain("EACCES");
 	});
 
-	test("suppresses the UI URL line under --no-open (warren-48f8 seam)", async () => {
+	test("still prints the plain UI URL under --no-open when no handoff armed (no credential rides it)", async () => {
 		const { context, out } = captureContext();
 		await runUp(context, happyDeps(), { open: false });
-		expect(out.join("")).not.toContain("UI:");
+		expect(out.join("")).toContain("UI: http://127.0.0.1:8080");
+	});
+
+	test("opens the browser at the one-time setup URL on a TTY (warren-48f8)", async () => {
+		const { context, out } = captureContext();
+		const opened: string[] = [];
+		let bootedWithHandoff = false;
+		await runUp(
+			context,
+			happyDeps({
+				serveDeps: {
+					boot: async (opts) => {
+						bootedWithHandoff = opts?.setupHandoff === true;
+						return bootedHandle("tok123", "http://127.0.0.1:8080/setup?code=c1");
+					},
+					waitForShutdown: async () => undefined,
+				},
+				isTty: () => true,
+				openBrowser: (url) => opened.push(url),
+			}),
+			{},
+		);
+		expect(bootedWithHandoff).toBe(true);
+		expect(opened).toEqual(["http://127.0.0.1:8080/setup?code=c1"]);
+		expect(out.join("")).toContain("UI: http://127.0.0.1:8080/setup?code=c1");
+	});
+
+	test("prints the setup URL without opening a browser when stdout is not a TTY", async () => {
+		const { context, out } = captureContext();
+		const opened: string[] = [];
+		await runUp(
+			context,
+			happyDeps({
+				serveDeps: {
+					boot: async () => bootedHandle("tok123", "http://127.0.0.1:8080/setup?code=c1"),
+					waitForShutdown: async () => undefined,
+				},
+				isTty: () => false,
+				openBrowser: (url) => opened.push(url),
+			}),
+			{},
+		);
+		expect(opened).toEqual([]);
+		expect(out.join("")).toContain("UI: http://127.0.0.1:8080/setup?code=c1");
+	});
+
+	test("--no-open keeps the redemption URL visible as the fallback", async () => {
+		const { context, out } = captureContext();
+		const opened: string[] = [];
+		await runUp(
+			context,
+			happyDeps({
+				serveDeps: {
+					boot: async () => bootedHandle("tok123", "http://127.0.0.1:8080/setup?code=c1"),
+					waitForShutdown: async () => undefined,
+				},
+				isTty: () => true,
+				openBrowser: (url) => opened.push(url),
+			}),
+			{ open: false },
+		);
+		expect(opened).toEqual([]);
+		expect(out.join("")).toContain("http://127.0.0.1:8080/setup?code=c1");
+	});
+
+	test("falls back to the plain UI URL when the boot armed no handoff", async () => {
+		const { context, out } = captureContext();
+		let bootedWithHandoff = true;
+		await runUp(
+			context,
+			happyDeps({
+				serveDeps: {
+					boot: async (opts) => {
+						bootedWithHandoff = opts?.setupHandoff === true;
+						return bootedHandle("tok123");
+					},
+					waitForShutdown: async () => undefined,
+				},
+				isTty: () => true,
+			}),
+			{},
+		);
+		expect(bootedWithHandoff).toBe(true);
+		expect(out.join("")).toContain("UI: http://127.0.0.1:8080\n");
 	});
 });
 

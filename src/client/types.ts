@@ -131,6 +131,12 @@ export interface RunRow {
 	prState: PullRequestLifecycle | null;
 	prMergedAt: string | null;
 	targetBranch: string | null;
+	/**
+	 * The composed workspace branch the run's push lands on (warren-5255):
+	 * `${runBranchPrefix}/${runId}`, or `targetBranch` when that override
+	 * pinned it. Frozen at dispatch. Null on rows predating the column.
+	 */
+	branch: string | null;
 	/** Dispatch-supplied git ref the workspace was cloned from (warren-afeb). Null when unset. */
 	ref: string | null;
 	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace was cut at. Null when unset. */

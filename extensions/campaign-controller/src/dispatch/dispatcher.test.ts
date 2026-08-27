@@ -290,6 +290,30 @@ describe("WarrenDispatcher", () => {
 		expect(h.store.budget.listReservations(h.campaign.id)[0]?.state).toBe("active");
 	});
 
+	test("settles resultBranch from the composed run branch when no targetBranch override exists (warren-5255)", async () => {
+		const h = harness();
+		const outcome = await h.dispatcher.dispatch({
+			campaignId: h.campaign.id,
+			workItemId: h.workItem.id,
+			request: REQUEST,
+			reservationId: h.reservationId,
+		});
+		const runId = outcome.runId as string;
+		// The live-bug shape: a default dispatch has no targetBranch override;
+		// warren serves only the composed `branch` (warren-5255).
+		h.warren.setRunState(runId, {
+			state: "succeeded",
+			costUsd: 0.55,
+			branch: "burrow/run_seq-1",
+		});
+		const reconciled = await h.dispatcher.reconcileRun(runId);
+		expect(reconciled.terminal).toBe(true);
+		expect(reconciled.branch).toBe("burrow/run_seq-1");
+		const action = h.store.actions.listActionsForWorkItem(h.workItem.id)[0] as ActionAssert;
+		expect(action.state).toBe("succeeded");
+		expect(action.resultBranch).toBe("burrow/run_seq-1");
+	});
+
 	test("restart with a known run resumes reads and settles terminal cost", async () => {
 		const h = harness();
 		const outcome = await h.dispatcher.dispatch({

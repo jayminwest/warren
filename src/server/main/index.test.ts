@@ -155,3 +155,69 @@ describe("bootServer token bootstrap (warren-ef6e)", () => {
 		}
 	});
 });
+
+describe("bootServer setup handoff (warren-48f8)", () => {
+	const bootEnv = (dataDir: string): Record<string, string> => ({
+		WARREN_DATA_DIR: dataDir,
+		WARREN_BIND_HOST: "127.0.0.1",
+		WARREN_BIND_PORT: "0",
+		WARREN_SCHEDULER_DISABLED: "1",
+		WARREN_DISABLE_UI: "1",
+	});
+
+	test("arms a one-time /setup code that redeems over HTTP exactly once", async () => {
+		const previous = process.env.WARREN_API_TOKEN;
+		delete process.env.WARREN_API_TOKEN;
+		const dataDir = mkdtempSync(join(tmpdir(), "warren-boot-handoff-"));
+		try {
+			const handle = await bootServer({ env: bootEnv(dataDir), setupHandoff: true });
+			try {
+				expect(handle.setupUrl).toBeDefined();
+				const url = handle.setupUrl;
+				if (url === undefined) throw new Error("expected an armed setup URL");
+				const first = await fetch(url);
+				expect(first.status).toBe(200);
+				const html = await first.text();
+				expect(html).toContain('"warren.apiToken"');
+				// The redemption page carries the minted operator token.
+				const token = process.env.WARREN_API_TOKEN ?? "";
+				expect(html).toContain(JSON.stringify(token));
+				// Single-use: the same URL never answers 200 twice.
+				const second = await fetch(url);
+				expect(second.status).toBe(400);
+				expect((await second.text()).toLowerCase()).not.toContain(token.toLowerCase());
+			} finally {
+				await handle.stop();
+			}
+		} finally {
+			rmSync(dataDir, { recursive: true, force: true });
+			if (previous === undefined) {
+				delete process.env.WARREN_API_TOKEN;
+			} else {
+				process.env.WARREN_API_TOKEN = previous;
+			}
+		}
+	});
+
+	test("mints no code and 404s /setup on an ordinary boot", async () => {
+		const previous = process.env.WARREN_API_TOKEN;
+		delete process.env.WARREN_API_TOKEN;
+		const dataDir = mkdtempSync(join(tmpdir(), "warren-boot-nohandoff-"));
+		try {
+			const handle = await bootServer({ env: bootEnv(dataDir) });
+			try {
+				expect(handle.setupUrl).toBeUndefined();
+				expect((await fetch(`${handle.url}/setup?code=anything`)).status).toBe(404);
+			} finally {
+				await handle.stop();
+			}
+		} finally {
+			rmSync(dataDir, { recursive: true, force: true });
+			if (previous === undefined) {
+				delete process.env.WARREN_API_TOKEN;
+			} else {
+				process.env.WARREN_API_TOKEN = previous;
+			}
+		}
+	});
+});

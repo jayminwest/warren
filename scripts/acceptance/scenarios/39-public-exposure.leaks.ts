@@ -44,6 +44,11 @@ const FORBIDDEN_FORGE_FRAGMENTS: readonly string[] = ["fake-credential", "fake:/
  */
 export const FLOW_ROUTE_EXPECTED_STATUS: Readonly<Record<string, number>> = {
 	"/github-app/callback": 400,
+	// warren-48f8: the one-time setup-code redemption NEVER arms under
+	// WARREN_AUTH=public, so the route 404s for a spectator — that 404 IS
+	// the leak guard's guarantee (no code, no token, no page). The sweep
+	// probes it expecting exactly that.
+	"/setup": 404,
 };
 
 /**
@@ -64,6 +69,10 @@ export const FLOW_PAGE_PATTERNS: ReadonlySet<string> = new Set([
 	"/github-app/register",
 	"/github-app/callback",
 	"/github-app/installed",
+	// warren-48f8: /setup is anonymous by necessity (a browser navigation
+	// carries no bearer) and its responses — 404 unarmed, 400 spent, 200
+	// redemption — build their own no-store header set like the flow pages.
+	"/setup",
 ]);
 
 /**

@@ -163,14 +163,14 @@ export interface RunRow {
 	 */
 	prUrl: string | null;
 	/**
-	 * Merge-watcher PR facts (warren-3bc6 / pl-103e step 6). `prState` is
-	 * the forge-reported PR lifecycle; `prMergedAt` its merge instant. Null reads
-	 * as "unknown" (historical rows, no PR), never "not merged".
+	 * Merge-watcher PR facts (warren-3bc6): forge-reported lifecycle + merge
+	 * instant. Null reads as "unknown" (historical rows, no PR), never "not merged".
 	 */
 	prState: PullRequestLifecycle | null;
 	prMergedAt: string | null;
 	/** Existing branch reap pushes the workspace back to (#419). Null when unset. */
 	targetBranch: string | null;
+	branch: string | null; // composed workspace branch frozen at dispatch (warren-5255)
 	/** Dispatch-supplied clone ref (warren-afeb) / base-commit pin (warren-aaf7). Null when unset. */
 	ref: string | null;
 	baseCommit: string | null;
