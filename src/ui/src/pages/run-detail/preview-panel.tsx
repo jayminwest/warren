@@ -23,10 +23,10 @@ import { formatPreviewStateLabel } from "@/pages/run-detail/preview-labels.ts";
 function FactRow({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="flex gap-2.5">
-			<span className="w-[104px] shrink-0 text-[10px] leading-3 text-(--color-text-3)">
+			<span className="w-[82px] shrink-0 text-[10px] leading-3 text-(--color-text-3) md:w-[104px]">
 				{label}
 			</span>
-			<span className="min-w-0 flex-1 font-mono text-[9px] leading-3 break-words text-(--color-text-2)">
+			<span className="min-w-0 flex-1 font-mono text-[10px] leading-3 break-words text-(--color-text-2) md:text-[9px]">
 				{children}
 			</span>
 		</div>
@@ -46,10 +46,10 @@ function PreviewFacts({
 		<>
 			{canonicalUrl !== null ? (
 				<div className="flex gap-2.5">
-					<span className="w-[104px] shrink-0 text-[10px] leading-3 text-(--color-text-3)">
+					<span className="w-[82px] shrink-0 text-[10px] leading-3 text-(--color-text-3) md:w-[104px]">
 						url
 					</span>
-					<span className="min-w-0 flex-1 font-mono text-[9px] leading-3 break-all text-(--color-primary)">
+					<span className="min-w-0 flex-1 font-mono text-[10px] leading-3 break-all text-(--color-primary) md:text-[9px]">
 						{canonicalUrl}
 					</span>
 				</div>
