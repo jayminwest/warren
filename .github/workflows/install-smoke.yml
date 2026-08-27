@@ -45,7 +45,7 @@ jobs:
             sh -c '
               set -eu
               apt-get update -qq
-              apt-get install -y -qq --no-install-recommends ca-certificates curl git >/dev/null
+              apt-get install -y -qq --no-install-recommends ca-certificates curl git unzip >/dev/null
               export WARREN_INSTALL_TARBALL=/tmp/warren-cli.tgz
               sh /install/install.sh
               export PATH="$HOME/.bun/bin:$PATH"
@@ -53,6 +53,23 @@ jobs:
               # idempotent re-run upgrades in place
               sh /install/install.sh
               warren --version
+            '
+
+      - name: "Smoke: missing unzip produces a clear preflight error"
+        run: |
+          # Cheap negative assertion: without unzip (and not root, so the
+          # script's apt-get convenience path cannot kick in), the installer
+          # must die with the actionable message, not an opaque failure.
+          docker run --rm \
+            -v "$PWD/scripts:/install:ro" \
+            ubuntu:24.04 \
+            sh -c '
+              set -eu
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends ca-certificates curl git >/dev/null
+              useradd -m tester
+              su tester -c 'sh /install/install.sh 2>&1' > /tmp/out.txt 2>&1 || true
+              grep -q "unzip is required to install bun (Debian/Ubuntu: apt-get install -y unzip)" /tmp/out.txt
             '
 
       - name: "Smoke: node:20-slim (npm present, no bun)"

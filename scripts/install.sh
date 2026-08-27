@@ -59,6 +59,40 @@ ensure_bun() {
     log "found existing bun at $BUN_INSTALL/bin/bun"
     return
   fi
+  # Dependency preflight: bun's installer needs unzip (and we need curl to
+  # fetch it). A clean Debian/Ubuntu container lacks unzip, which used to
+  # surface as an opaque "unzip is required" halfway through the install.
+  # When we are root and apt-get exists, install the missing tools for the
+  # user; otherwise die with the exact fix for their platform.
+  missing=""
+  for tool in curl unzip; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  if [ -n "$missing" ]; then
+    if [ "$(id -u 2>/dev/null || echo nonroot)" = "0" ] && command -v apt-get >/dev/null 2>&1; then
+      log "installing missing prerequisites:$missing"
+      # shellcheck disable=SC2086
+      apt-get install -y $missing >/dev/null || die "apt-get install failed for:$missing"
+      for tool in curl unzip; do
+        command -v "$tool" >/dev/null 2>&1 || die "$tool is still missing after apt-get install"
+      done
+    else
+      for tool in $missing; do
+        case "$tool" in
+          curl)
+            case "$(uname -s)" in
+              Darwin) die "curl is required to install bun (curl ships with macOS — check your PATH)" ;;
+              *) die "curl is required to install bun (Debian/Ubuntu: apt-get install -y curl)" ;;
+            esac ;;
+          unzip)
+            case "$(uname -s)" in
+              Darwin) die "unzip is required to install bun (unzip ships with macOS)" ;;
+              *) die "unzip is required to install bun (Debian/Ubuntu: apt-get install -y unzip)" ;;
+            esac ;;
+        esac
+      done
+    fi
+  fi
   log "installing bun (user-local, $BUN_INSTALL)"
   # bun's official installer is a bash script (its shebang says so), and it
   # uses `set -o pipefail`, which dash rejects. Never pipe it into `sh` —
