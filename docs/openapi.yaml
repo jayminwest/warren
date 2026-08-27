@@ -21,6 +21,8 @@ tags:
     description: '`/events` routes.'
   - name: extensions
     description: '`/extensions` routes.'
+  - name: forge
+    description: '`/forge` routes.'
   - name: github-app
     description: '`/github-app` routes.'
   - name: instance
@@ -185,8 +187,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
-        pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, readPublic with the same
-        per-row `projectEvent` reduction as `/runs/:id/events`.
+        pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, same per-row `projectEvent`
+        reduction.
   /events/stream:
     get:
       operationId: streamLifecycleEventsHandler
@@ -227,6 +229,24 @@ paths:
       description: >-
         warren-1b40: operator-gated reverse proxy to the judge extension's /verdicts.jsonl export.
         Server-held base URL + export token from env (see ./judge-proxy.ts); never the SPA fallback.
+  /forge/repos:
+    get:
+      operationId: forgeReposHandler
+      tags:
+        - forge
+      summary: GET /forge/repos
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-2601: installation repo listing for the Add Project picker (readOperator — private
+        repo names).
   /github-app/callback:
     get:
       operationId: gitHubAppCallbackHandler
@@ -305,9 +325,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
-        warren-2eec: read-only instance facts for the operator console. The body is a boot facts
-        allowlist; spectators get the reduced projection (src/instance/facts.ts). Never secrets or
-        connection strings.
+        warren-2eec: read-only instance facts; spectators get the reduced projection
+        (src/instance/facts.ts).
   /metrics:
     get:
       operationId: metricsHandler
@@ -339,9 +358,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
-        pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the Operations dashboard.
-        `readPublic` with a reduced projection — a spectator sees run counts only (see
-        ./ops-overview.ts).
+        pl-7e38 step 12 (warren-d850): one-poll Operations snapshot, readPublic with a reduced
+        projection.
   /plan-runs:
     get:
       operationId: listPlanRunsHandler

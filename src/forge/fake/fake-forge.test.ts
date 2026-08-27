@@ -54,6 +54,7 @@ describe("FakeForge capabilities", () => {
 			pullRequestBodyEdit: true,
 			branchDelete: true,
 			botIdentity: true,
+			installationRepos: false,
 			credentialLifetime: "static",
 		});
 	});

@@ -131,4 +131,8 @@ export class HotForge implements Forge {
 	botIdentity(): ReturnType<Forge["botIdentity"]> {
 		return this.delegate.botIdentity();
 	}
+
+	listInstallationRepos(): ReturnType<Forge["listInstallationRepos"]> {
+		return this.delegate.listInstallationRepos();
+	}
 }

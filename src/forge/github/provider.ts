@@ -41,6 +41,7 @@ import type {
 	Forge,
 	ForgeCapabilities,
 	ForgeError,
+	ForgeRepoListing,
 	ForgeResult,
 	GitCredential,
 	GitIdentity,
@@ -150,6 +151,8 @@ export class GitHubForge implements Forge {
 			// The token authorizes; it does not name the author (§6.8). Warren
 			// names commits via WARREN_GIT_AUTHOR_* until App mode ships.
 			botIdentity: false,
+			// A PAT has no installation scope (§5): no repo listing.
+			installationRepos: false,
 			credentialLifetime: "static",
 		};
 	}
@@ -360,6 +363,17 @@ export class GitHubForge implements Forge {
 				kind: "unsupported",
 				detail:
 					"GitHubForge (PAT/static mode) holds no bot identity — warren names the author via WARREN_GIT_AUTHOR_* (§6.8)",
+			}),
+		);
+	}
+
+	/** PAT mode has no installation scope (§5): the repo picker falls back to URL paste. */
+	listInstallationRepos(): Promise<ForgeResult<readonly ForgeRepoListing[]>> {
+		return Promise.resolve(
+			err({
+				kind: "unsupported",
+				detail:
+					"GitHubForge (PAT/static mode) has no installation scope — no repository listing (§5)",
 			}),
 		);
 	}

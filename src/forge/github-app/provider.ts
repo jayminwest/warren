@@ -38,6 +38,7 @@ import type {
 	Forge,
 	ForgeCapabilities,
 	ForgeError,
+	ForgeRepoListing,
 	ForgeResult,
 	GitIdentity,
 	RepoRef,
@@ -106,6 +107,8 @@ export class GitHubAppForge implements Forge {
 		pullRequestBodyEdit: true,
 		branchDelete: true,
 		botIdentity: true,
+		// warren-2601: the installation token scopes GET /installation/repositories.
+		installationRepos: true,
 		credentialLifetime: "short-lived",
 	};
 
@@ -217,6 +220,37 @@ export class GitHubAppForge implements Forge {
 		return { ok: true, value: { expiresAt: result.value.expiresAt } };
 	}
 
+	/**
+	 * warren-2601 — the repo picker's data source. Walks
+	 * `GET /installation/repositories` (installation-token auth) page by
+	 * page (`per_page=100`) until a short page or the hard page cap.
+	 */
+	async listInstallationRepos(): Promise<ForgeResult<readonly ForgeRepoListing[]>> {
+		const listings: ForgeRepoListing[] = [];
+		const MAX_PAGES = 20; // 2000 repos — an installation picker's ceiling.
+		for (let page = 1; page <= MAX_PAGES; page++) {
+			const minted = await this.tokenSource.mint();
+			if (!minted.ok) return minted;
+			const result = await requestGitHub({
+				url: `${GITHUB_API_BASE}/installation/repositories?per_page=100&page=${page}`,
+				method: "GET",
+				token: minted.value.secret,
+				userAgent: USER_AGENT,
+				context: `GET /installation/repositories (page ${page})`,
+				fetch: this.fetch,
+			});
+			if (!result.ok) return { ok: false, error: toForgeError(result.error) };
+			const body = (await readJson(result.response)) as { repositories?: unknown } | null;
+			const raw = Array.isArray(body?.repositories) ? body?.repositories : [];
+			for (const item of raw) {
+				const listing = parseRepoListing(item);
+				if (listing !== null) listings.push(listing);
+			}
+			if (raw.length < 100) break;
+		}
+		return { ok: true, value: listings };
+	}
+
 	private async appSlug(): Promise<ForgeResult<string>> {
 		if (this.cachedSlug !== null) return { ok: true, value: this.cachedSlug };
 		let jwt: string;
@@ -259,3 +293,23 @@ export class GitHubAppForge implements Forge {
 
 /** Re-export so the conformance suite pins the ref key this forge packs. */
 export { GITHUB_FORGE_KIND };
+
+/** Narrow one `GET /installation/repositories` row into a listing; skip malformed. */
+function parseRepoListing(raw: unknown): ForgeRepoListing | null {
+	if (typeof raw !== "object" || raw === null) return null;
+	const obj = raw as Record<string, unknown>;
+	const owner = obj.owner as { login?: unknown } | undefined;
+	if (typeof owner?.login !== "string") return null;
+	if (typeof obj.name !== "string") return null;
+	const cloneUrl =
+		typeof obj.clone_url === "string" && obj.clone_url !== ""
+			? obj.clone_url
+			: `https://github.com/${owner.login}/${obj.name}.git`;
+	return {
+		owner: owner.login,
+		name: obj.name,
+		cloneUrl,
+		defaultBranch: typeof obj.default_branch === "string" ? obj.default_branch : "",
+		private: obj.private === true,
+	};
+}

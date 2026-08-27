@@ -120,6 +120,19 @@ export interface CheckRun {
 	detailsUrl: string | null;
 }
 
+/**
+ * One repository the forge credential can see — the repo picker's row
+ * (warren-2601). `cloneUrl` exists for the same reason `PullRequestRef.webUrl`
+ * does: display and the POST /projects paste, never parsed by domain code.
+ */
+export interface ForgeRepoListing {
+	readonly owner: string;
+	readonly name: string;
+	readonly cloneUrl: string;
+	readonly defaultBranch: string;
+	readonly private: boolean;
+}
+
 export interface GitIdentity {
 	name: string;
 	email: string;
@@ -163,6 +176,8 @@ export interface ForgeCapabilities {
 	branchDelete: boolean;
 	/** the forge names its own bot */
 	botIdentity: boolean;
+	/** installation repository listing (GitHubApp: TRUE; PAT/fake: FALSE) */
+	installationRepos: boolean;
 	/** drives the §4 re-mint: "static" skips it, "short-lived" requires it */
 	credentialLifetime: "static" | "short-lived";
 }
@@ -249,4 +264,12 @@ export interface Forge {
 	 * authorship are separate concerns on every forge (§6.8).
 	 */
 	botIdentity(): Promise<ForgeResult<GitIdentity>>;
+
+	/**
+	 * List the repositories the credential can see (warren-2601 — the Add
+	 * Project repo picker). Gated by `capabilities.installationRepos`: an
+	 * installation-scoped credential (GitHub App) lists its installation's
+	 * repositories; a PAT has no installation scope and returns `unsupported`.
+	 */
+	listInstallationRepos(): Promise<ForgeResult<readonly ForgeRepoListing[]>>;
 }

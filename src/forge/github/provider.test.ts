@@ -42,6 +42,7 @@ describe("GitHubForge capabilities", () => {
 			pullRequestBodyEdit: true,
 			branchDelete: true,
 			botIdentity: false,
+			installationRepos: false,
 			credentialLifetime: "static",
 		});
 	});
