@@ -68,7 +68,7 @@ jobs:
               apt-get update -qq
               apt-get install -y -qq --no-install-recommends ca-certificates curl git >/dev/null
               useradd -m tester
-              su tester -c 'sh /install/install.sh 2>&1' > /tmp/out.txt 2>&1 || true
+              su tester -c "sh /install/install.sh" > /tmp/out.txt 2>&1 || true
               grep -q "unzip is required to install bun (Debian/Ubuntu: apt-get install -y unzip)" /tmp/out.txt
             '
 
