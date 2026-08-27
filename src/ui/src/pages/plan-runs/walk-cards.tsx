@@ -35,7 +35,15 @@ function walkTone(state: PlanRunRow["state"]): InventoryCardTone {
 	}
 }
 
-function WalkCard({ planRun, projectLabel }: { planRun: PlanRunRow; projectLabel: string }) {
+function WalkCard({
+	planRun,
+	projectLabel,
+	now,
+}: {
+	planRun: PlanRunRow;
+	projectLabel: string;
+	now: number;
+}) {
 	// Same bounded N+1 detail fetch as the desktop WalkRow (warren-23b2).
 	const detail = useQuery({
 		queryKey: ["plan-runs", planRun.id],
@@ -58,7 +66,7 @@ function WalkCard({ planRun, projectLabel }: { planRun: PlanRunRow; projectLabel
 			subline={`${planRun.agentName} · ${projectLabel} · ${planLabel}`}
 			figures={
 				<>
-					<CardFigure value={planRunElapsed(planRun)} />
+					<CardFigure value={planRunElapsed(planRun, now)} />
 					<CardFigureNote
 						value={planRun.maxCostUsd === null ? "—" : `${formatCostUsd(planRun.maxCostUsd)} cap`}
 					/>
@@ -91,14 +99,16 @@ function WalkCard({ planRun, projectLabel }: { planRun: PlanRunRow; projectLabel
 export function WalkCardList({
 	planRuns,
 	projectLabel,
+	now,
 }: {
 	planRuns: readonly PlanRunRow[];
 	projectLabel: (pr: PlanRunRow) => string;
+	now: number;
 }) {
 	return (
 		<InventoryCardList>
 			{planRuns.map((pr) => (
-				<WalkCard key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} />
+				<WalkCard key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} now={now} />
 			))}
 		</InventoryCardList>
 	);

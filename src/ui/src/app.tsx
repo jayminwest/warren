@@ -19,6 +19,7 @@ import { ProjectDetailPage } from "@/pages/project-detail.tsx";
 import { ProjectsPage } from "@/pages/projects.tsx";
 import { RunDetailPage } from "@/pages/run-detail/index.tsx";
 import { RunsPage } from "@/pages/runs.tsx";
+import { SetupLandingRoute, SetupPage } from "@/pages/setup.tsx";
 import {
 	TelemetryBehaviorTab,
 	TelemetryEconomicsTab,
@@ -78,8 +79,22 @@ export function App() {
 									</AuthGate>
 								}
 							>
-								{/* Operations is the index route (c-operations). */}
-								<Route index element={<Navigate to="/operations" replace />} />
+								{/* Operations is the index route (c-operations), except
+								    on a zero-project instance where an undismissed
+								    operator lands on the first-run setup checklist
+								    instead (warren-a911 / pl-26f3 step 9). Spectators
+								    always get the console. */}
+								<Route index element={<SetupLandingRoute />} />
+								{/* Manual entry point back to the checklist.
+								    Operator-gated like every mutating surface. */}
+								<Route
+									path="/setup"
+									element={
+										<OperatorRoute capability="admin">
+											<SetupPage />
+										</OperatorRoute>
+									}
+								/>
 								<Route path="/operations" element={<OperationsPage />} />
 
 								{/* WORKLOADS */}
