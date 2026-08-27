@@ -135,7 +135,15 @@ function DeliveryCell({ row }: { row: RunRow }) {
 	return <span className="font-mono text-[10px] leading-3 text-(--color-text-3)">—</span>;
 }
 
-function RunsTableRow({ row, projectName }: { row: RunRow; projectName: string }) {
+function RunsTableRow({
+	row,
+	projectName,
+	now,
+}: {
+	row: RunRow;
+	projectName: string;
+	now: number;
+}) {
 	const navigate = useNavigate();
 	const runPath = `/runs/${encodeURIComponent(row.id)}`;
 	return (
@@ -194,7 +202,7 @@ function RunsTableRow({ row, projectName }: { row: RunRow; projectName: string }
 				{relativeTime(startedAtOf(row))}
 			</td>
 			<td className="w-[54px] px-2.5 py-1.5 text-right align-middle font-mono text-[10px] leading-3 text-(--color-text-2)">
-				{formatDuration(row)}
+				{formatDuration(row, now)}
 			</td>
 			<td className="w-[54px] px-2.5 py-1.5 text-right align-middle font-mono text-[10px] leading-3 text-(--color-text-2)">
 				{runCostLabel(row)}
@@ -233,9 +241,11 @@ function Th({
 export function RunsTable({
 	rows,
 	projectIndex,
+	now,
 }: {
 	rows: readonly RunRow[];
 	projectIndex: Map<string, string>;
+	now: number;
 }) {
 	return (
 		<div className="overflow-x-auto">
@@ -262,6 +272,7 @@ export function RunsTable({
 					{rows.map((row) => (
 						<RunsTableRow
 							key={row.id}
+							now={now}
 							row={row}
 							projectName={
 								row.projectId === null

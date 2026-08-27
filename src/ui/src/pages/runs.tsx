@@ -3,12 +3,13 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
-import type { RunRow } from "@/api/types.ts";
+import { isTerminalRunState, type RunRow } from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
@@ -208,6 +209,12 @@ export function RunsPage() {
 		filters.trigger !== "all" ||
 		filters.search.trim().length > 0;
 	const emptyHint = useOperatorHint("Dispatch one above.");
+	// Live durations (warren-b610): a 1s tick keeps the Duration cell of a
+	// running run moving between the 45s refetches. The tick runs only
+	// while a visible row is non-terminal — a terminal-only list must not
+	// re-render on a timer.
+	const hasLiveRows = rows.some((r) => !isTerminalRunState(r.state));
+	const now = useNow(1000, hasLiveRows);
 	const visibleCount = rows.length;
 	const rangeStart = visibleCount === 0 ? 0 : offset + 1;
 	const rangeEnd = offset + visibleCount;
@@ -301,7 +308,7 @@ export function RunsPage() {
 				{/* Mobile arm: the inventory degrades to compact row cards
 				    (warren-dea8, docs/ui-revamp/screens/mobile/runs.jsx). */}
 				{!runs.isLoading && !runs.isError && visibleCount > 0 ? (
-					<RunsCardList rows={rows} projectIndex={projectIndex} />
+					<RunsCardList rows={rows} projectIndex={projectIndex} now={now} />
 				) : null}
 				<div className="hidden md:block">
 					{runs.isLoading ? (
@@ -319,7 +326,7 @@ export function RunsPage() {
 							<EmptyState title="No runs match this filter" description={emptyHint} />
 						</div>
 					) : (
-						<RunsTable rows={rows} projectIndex={projectIndex} />
+						<RunsTable rows={rows} projectIndex={projectIndex} now={now} />
 					)}
 				</div>
 				{totalRuns > 0 ? (
