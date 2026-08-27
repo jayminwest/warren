@@ -29,7 +29,7 @@ export function EventsPanel() {
 	const rows = events.data?.events ?? [];
 
 	return (
-		<div className="flex min-w-0 flex-1 flex-col md:min-w-[320px]">
+		<div className="flex min-w-0 flex-col md:min-w-[320px] md:flex-1">
 			<header className="flex h-7 shrink-0 items-center pb-1.25">
 				<h2 className="text-[11px] leading-3.5 font-semibold text-(--color-text-2)">
 					Control-plane events
