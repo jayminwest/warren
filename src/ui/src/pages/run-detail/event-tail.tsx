@@ -37,6 +37,17 @@ function kindColor(event: RunEvent): string {
 	return "text-(--color-info)";
 }
 
+// Column geometry for the event row. The expanded-payload offset is derived
+// from these widths: it aligns with the start of the kind column
+// (seq + gap + clock), so it cannot drift from the row above it.
+const SEQ_W = 42;
+const CLOCK_W = 68;
+// Wide enough for common reap.* kinds (~30 chars at ~5.4px/char at 9px mono);
+// longer kinds (reap.workspace_destroy_record_failed, 36 chars) truncate.
+const KIND_W = 168;
+const ROW_GAP = 7;
+const PAYLOAD_OFFSET = SEQ_W + ROW_GAP + CLOCK_W;
+
 function EventRow({ event }: { event: RunEvent }) {
 	const expanded =
 		typeof event.payload === "string" ? event.payload : JSON.stringify(event.payload, null, 2);
@@ -50,7 +61,11 @@ function EventRow({ event }: { event: RunEvent }) {
 				<span className="w-[68px] shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
 					{formatWallClock(event.ts)}
 				</span>
-				<span className={cn("w-[108px] shrink-0 font-mono text-[9px] leading-3", kindColor(event))}>
+				<span
+					className={cn("shrink-0 truncate font-mono text-[9px] leading-3", kindColor(event))}
+					style={{ width: KIND_W }}
+					title={eventKindLabel(event)}
+				>
 					{eventKindLabel(event)}
 				</span>
 				<span className="min-w-0 flex-1 font-mono text-[9px] leading-[13px] break-words text-(--color-text-2)">
@@ -59,7 +74,10 @@ function EventRow({ event }: { event: RunEvent }) {
 			</summary>
 			{event.payload !== null ? (
 				<div className="px-2.5 pb-2">
-					<pre className="ml-[117px] max-h-[420px] overflow-auto rounded-(--radius-sm) border-l border-(--color-border-strong) px-2.5 py-1.5 font-mono text-[9px] leading-[13px] break-words whitespace-pre-wrap text-(--color-text-3)">
+					<pre
+						style={{ marginLeft: PAYLOAD_OFFSET }}
+						className="max-h-[420px] overflow-auto rounded-(--radius-sm) border-l border-(--color-border-strong) px-2.5 py-1.5 font-mono text-[9px] leading-[13px] break-words whitespace-pre-wrap text-(--color-text-3)"
+					>
 						{expanded}
 					</pre>
 				</div>
@@ -119,7 +137,7 @@ export function EventTail({
 	const live = !terminal && (status === "open" || status === "connecting");
 
 	return (
-		<section className="flex min-h-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+		<section className="flex min-h-0 flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
 			<header className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-2.5">
 				<h2 className="text-[11px] leading-[14px] font-semibold text-(--color-text)">
 					Event stream
@@ -182,7 +200,7 @@ export function EventTail({
 				onScroll={onScroll}
 				onWheel={onWheel}
 				onTouchMove={onTouchMove}
-				className="h-[520px] overflow-auto bg-(--color-sidebar)"
+				className="min-h-[320px] flex-1 overflow-auto bg-(--color-sidebar)"
 			>
 				{visible.length === 0 ? (
 					<p className="p-4 text-[11px] text-(--color-text-3)">

@@ -1,5 +1,6 @@
 import type { RunAnalyticsTotals, RunDayBucket } from "@/api/client.ts";
 import { cn } from "@/lib/utils.ts";
+import { formatDuration } from "@/pages/telemetry/format.ts";
 import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
@@ -11,16 +12,6 @@ import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
  * beyond queue wait and run duration has no API surface yet, so those
  * stages render as quiet "—" rows rather than invented figures.
  */
-
-/** Milliseconds → compact human duration ("54s", "11m 24s", "16.8h"). */
-function formatDuration(ms: number | null): string {
-	if (ms === null) return "—";
-	const s = Math.round(ms / 1000);
-	if (s < 90) return `${s}s`;
-	const m = Math.floor(s / 60);
-	if (m < 90) return s % 60 === 0 ? `${m}m` : `${m}m ${String(s % 60).padStart(2, "0")}s`;
-	return `${(m / 60).toFixed(1)}h`;
-}
 
 /** One stacked column: succeeded (green) / cancelled (neutral) / failed (red). */
 function OutcomeColumn({ bucket, maxRuns }: { bucket: RunDayBucket; maxRuns: number }) {
