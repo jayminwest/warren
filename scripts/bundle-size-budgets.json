@@ -12,18 +12,18 @@
 	"$comment_push_rejected_policy_2026_08_16": "BOUNDED AUTO-RAISE, JS ONLY (warren-b68d / #809): the UI gains the `push_rejected_policy` entry in the run-failure-reason label map (labels.ts is `satisfies Record<RunFailureReason, string>`, so a new wire reason cannot ship without it) and the `reap.push_rejected` summary case in run-detail-events.tsx, which puts the unblock URL on the event's one-line summary instead of only in the expanded payload. Net +1116 B raw js / +298 B gzip js, well inside AUTO_RAISE_CAP, re-baselined via `bun run check:bundle-size --build --update` on a clean --frozen-lockfile build in oven/bun:1.3.14 so the numbers match CI. No new dependency. Both css budgets and largest.raw.js were never exceeded and keep their existing, lower ceilings. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 644800,
-			"css": 46258
+			"js": 645137,
+			"css": 46897
 		},
 		"gzip": {
-			"js": 190411,
-			"css": 9357
+			"js": 188890,
+			"css": 9294
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 190411,
-			"css": 9357
+			"js": 188890,
+			"css": 9294
 		}
 	}
 }
