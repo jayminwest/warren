@@ -57,6 +57,7 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	sandbox_failed: "Sandbox failed",
 	spawn_failed: "Spawn failed",
 	crashed: "Crashed",
+	agent_died: "Agent died",
 	timed_out: "Timed out",
 	sandbox_run_lost: "Sandbox run lost",
 	sandbox_unreachable: "Sandbox unreachable",

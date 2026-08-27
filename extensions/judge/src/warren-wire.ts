@@ -46,7 +46,8 @@ export function isTerminalRunState(state: RunState): boolean {
  * arm the judge reads to separate "the platform failed" from "the agent
  * failed". Hand-maintained on purpose — extensions never import `src/` — so
  * keep it in core's order and append when core grows (warren-4e2a /
- * warren-ba08 added `spawn_failed`, `no_changes`, `push_rejected_policy`).
+ * warren-ba08 added `spawn_failed`, `no_changes`, `push_rejected_policy`;
+ * warren-7f0b added `agent_died`).
  */
 export const RUN_FAILURE_REASONS = [
 	"never_started",
@@ -54,6 +55,7 @@ export const RUN_FAILURE_REASONS = [
 	"sandbox_failed",
 	"spawn_failed",
 	"crashed",
+	"agent_died",
 	"timed_out",
 	"sandbox_run_lost",
 	"sandbox_unreachable",

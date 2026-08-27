@@ -147,47 +147,46 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *   - `push_rejected_policy` (warren-b68d) narrows `finalize_failed` to a push
  *     the REMOTE refused on policy grounds; see `../runtime/push-rejection.ts`.
  *   - `finalize_unposted` (warren-5ea1) means the K8s in-pod finalize
- *     never POSTed a result at all — the pod reached a terminal phase
- *     (or vanished, or the round-trip timed out) while warren was still
- *     waiting, so reap's `FinalizeResult` is the provider's synthesized
- *     degradation, not a pod-computed collection. The canonical trigger:
- *     the agent process exited WITHOUT its terminal envelope reaching
- *     warren (a severed/lost event stream), so no reap intent was ever
- *     parked while the pod was alive to serve it. Distinct from
- *     `finalize_failed` (the pod DID post a result whose branch-push
- *     stage failed, e.g. a rejected/non-fast-forward push — warren-b94b's
- *     class): the two look identical at the stage level but
- *     `finalize_unposted` means the workspace died with the pod, so the
- *     only recovery path is the salvage bundle/rescue ref the pod POSTed
- *     before exiting (surfaced on `reap.completed`'s `salvage` payload).
- *   - `provider_error` (warren-edc3) means the agent's terminal model
- *     turn ended with `stopReason === "error"` and a non-empty provider
- *     `errorMessage` (e.g. Anthropic `400` "Your credit balance is too
- *     low to access the Anthropic API"). Burrow sees the agent process
- *     exit 0 and marks the run `succeeded`, so the in-stream terminal
- *     detect (warren-e281 / pl-5516, which keys off the `agent_end`
- *     envelope) misses it when the error signal rides the per-turn
- *     `turn_end` envelope instead. Reap's safety net scans the persisted
- *     event log for the terminal error turn and flips an otherwise-
- *     `succeeded` run to `failed`, blocking the bookkeeping-only PR /
- *     seed close / plan-run advance. The provider message is surfaced on
- *     the `reap.provider_error` event; `failure_reason` carries only the
+ *     never POSTed a result at all — the pod reached a terminal phase (or
+ *     vanished, or the round-trip timed out) while warren was still waiting,
+ *     so reap's `FinalizeResult` is the provider's synthesized degradation,
+ *     not a pod-computed collection. The canonical trigger: the agent exited
+ *     WITHOUT its terminal envelope reaching warren, so no reap intent was
+ *     ever parked while the pod was alive to serve it. Distinct from
+ *     `finalize_failed` (the pod DID post a result whose branch-push stage
+ *     failed): here the workspace died with the pod, so the only recovery path
+ *     is the salvage bundle/rescue ref the pod POSTed before exiting.
+ *   - `provider_error` (warren-edc3) means the agent's terminal model turn
+ *     ended with `stopReason === "error"` and a non-empty provider
+ *     `errorMessage` (e.g. Anthropic `400` "Your credit balance is too low to
+ *     access the Anthropic API"). Burrow sees the agent process exit 0 and
+ *     marks the run `succeeded`, so the in-stream terminal detect (warren-e281
+ *     / pl-5516, which keys off the `agent_end` envelope) misses it when the
+ *     error signal rides the per-turn `turn_end` envelope instead. Reap's
+ *     safety net scans the event log for the terminal error turn and flips an
+ *     otherwise-`succeeded` run to `failed`, blocking the bookkeeping-only PR /
+ *     seed close / plan-run advance. The message surfaces on the
+ *     `reap.provider_error` event; `failure_reason` carries only the
  *     discriminator (the column is enum-narrowed, not free text).
  *   - `oom_killed` (warren-9cce) means the agent container was cgroup
  *     OOM-killed — burrow's `oomKilled()` probe or the K8s
  *     `terminated.reason=="OOMKilled"` signal, carried through the run-state
  *     probe's `terminalReason` onto the finalized row.
+ *   - `agent_died` (warren-7f0b) means the in-pod agent-entrypoint's idle
+ *     watchdog killed the harness — the `stdin_hold_timeout` system witness —
+ *     while the pod (and its finalize poller) may still be live, the zombie
+ *     shape the watchdog-reconcile net reaps so the in-pod salvage fires
+ *     before the emptyDir disappears. Distinct from `crashed`/`timed_out`.
  *   - `sandbox_failed` (warren-daef) means the sandbox PRIMITIVE itself
  *     broke before the agent ever ran — bwrap could not create the
  *     namespace (user namespaces disabled, missing setuid bit, AppArmor
  *     policy) or sandbox-exec refused the profile, so the run died with
  *     the sandbox's own error on stderr and zero model turns. Reap
  *     infers it from a bwrap/sandbox-exec error line on `stream=stderr`
- *     when no model-turn output exists, so a broken host stops
- *     masquerading as `no_model_response` (which reads as a
- *     credential/provider fault and sends the operator down the wrong
- *     debugging path). Distinct from `no_model_response` (the agent
- *     started but produced nothing) and `never_started` (the bridge
+ *     when no model-turn output exists, so a broken host stops masquerading as
+ *     `no_model_response` (which reads as a credential/provider fault and sends
+ *     the operator down the wrong debugging path). Distinct from
+ *     `no_model_response` (the agent started but produced nothing) and `never_started` (the bridge
  *     never claimed the row).
  *   - `spawn_failed` (warren-4e2a, warren-950d): the agent PROCESS was never exec'd — a missing
  *     docker CLI, or the K8s uid-drop preflight refusal; reap skips the seeds commit + push.
@@ -196,7 +195,7 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     ephemeral-storage exhaustion (the emptyDir workspace outgrowing its
  *     budget). K8s-only; distinct from `oom_killed` (a container cgroup kill)
  *     and `crashed` (an agent fault) because an eviction is an infra-capacity
- *     signal. Surfaced via the run-state probe's `terminalReason`.
+ *     signal, surfaced via the run-state probe's `terminalReason`.
  *
  * Null on succeeded/cancelled rows.
  */
@@ -206,6 +205,7 @@ export const RUN_FAILURE_REASONS = [
 	"sandbox_failed",
 	"spawn_failed",
 	"crashed",
+	"agent_died",
 	"timed_out",
 	"sandbox_run_lost",
 	"sandbox_unreachable",

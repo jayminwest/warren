@@ -269,6 +269,77 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		expect((reconciled?.payloadJson as { providerDetail?: string }).providerDetail).toBe(detail);
 	});
 
+	test("warren-7f0b: a LIVE pod with the stdin_hold_timeout kill witness reaps as failed(agent_died)", async () => {
+		// The zombie shape: the in-pod entrypoint's idle watchdog killed the
+		// harness (witness persisted on the system stream) but the pod still reads
+		// Running — the entrypoint lives on, polling finalize-intent for up to its
+		// 40-min ceiling, and nothing else terminalizes the row. The net reaps it
+		// with the dedicated reason so the intent parks (and the pod's finalize
+		// loop salvages the workspace) while the emptyDir still exists.
+		const runId = await seedRunningWithBurrow("2026-06-05T00:00:00Z");
+		await repos.events.append({
+			runId,
+			sandboxEventSeq: 1,
+			ts: "2026-06-05T00:02:00Z",
+			kind: "stdin_hold_timeout",
+			stream: "system",
+			payload: { idleMs: 1_800_000 },
+		});
+		const { provider, statusCalls } = makeStatusProvider(statusOf({ phase: "running" }));
+		const reapCalls: ReapRunInput[] = [];
+		const result = await tickWatchdog({
+			repos,
+			runtimeProvider: provider,
+			heartbeatTimeoutMs: 45 * 60_000,
+			terminalReconcileGraceMs: 60_000,
+			now: () => new Date("2026-06-05T00:05:00Z"),
+			reap: async (input) => {
+				reapCalls.push(input);
+				return fakeReapResult("failed");
+			},
+		});
+		expect(result.reconciled).toEqual([{ runId, idleMs: 3 * 60_000, outcome: "failed" }]);
+		expect(statusCalls()).toBe(1);
+		expect(reapCalls).toHaveLength(1);
+		expect(reapCalls[0]?.outcome).toBe("failed");
+		expect(reapCalls[0]?.failureReason).toBe("agent_died");
+
+		const events = await repos.events.listByRun(runId);
+		const reconciled = events.find((e) => e.kind === WATCHDOG_TERMINAL_RECONCILED_KIND);
+		expect(reconciled).toBeDefined();
+		expect((reconciled?.payloadJson as { providerPhase?: string }).providerPhase).toBe("running");
+	});
+
+	test("warren-7f0b: a live pod with the witness only on a NON-system stream is left alone (provenance)", async () => {
+		// The kill witness is only authoritative on `stream=system`, which the
+		// provenance gate reserves for warren-owned writers — an agent printing
+		// the kind on stdout must not get its run reaped as agent_died.
+		const runId = await seedRunningWithBurrow("2026-06-05T00:00:00Z");
+		await repos.events.append({
+			runId,
+			sandboxEventSeq: 1,
+			ts: "2026-06-05T00:02:00Z",
+			kind: "stdin_hold_timeout",
+			stream: "stdout",
+			payload: { idleMs: 1_800_000 },
+		});
+		const { provider } = makeStatusProvider(statusOf({ phase: "running" }));
+		const reapCalls: ReapRunInput[] = [];
+		const result = await tickWatchdog({
+			repos,
+			runtimeProvider: provider,
+			heartbeatTimeoutMs: 45 * 60_000,
+			terminalReconcileGraceMs: 60_000,
+			now: () => new Date("2026-06-05T00:05:00Z"),
+			reap: async (input) => {
+				reapCalls.push(input);
+				return fakeReapResult("failed");
+			},
+		});
+		expect(result.reconciled).toEqual([]);
+		expect(reapCalls).toEqual([]);
+	});
+
 	test("leaves a still-live pod alone (no reap)", async () => {
 		await seedRunningWithBurrow("2026-06-05T00:00:00Z");
 		const { provider, statusCalls } = makeStatusProvider(statusOf({ phase: "running" }));

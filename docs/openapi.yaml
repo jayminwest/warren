@@ -1184,6 +1184,7 @@ components:
         - sandbox_failed
         - spawn_failed
         - crashed
+        - agent_died
         - timed_out
         - sandbox_run_lost
         - sandbox_unreachable
@@ -1384,6 +1385,7 @@ components:
             - sandbox_failed
             - spawn_failed
             - crashed
+            - agent_died
             - timed_out
             - sandbox_run_lost
             - sandbox_unreachable

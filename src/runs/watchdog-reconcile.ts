@@ -33,6 +33,7 @@ import type { RunFailureReason, RunRow, RunTerminalState } from "../db/schema.ts
 import type { RunHandle, RunStatus, RuntimeProvider, TerminalReason } from "../runtime/contract.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
+import { hasStdinHoldTimeoutWitness } from "./reap/state.ts";
 import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
 import type { WatchdogReap } from "./watchdog.ts";
 
@@ -79,6 +80,14 @@ export interface ReconcileDeps {
  * `failed` pod carries its coarse `terminalReason` through to a domain
  * `failure_reason`; `succeeded`/`cancelled` reconcile to that terminal state so a
  * cleanly-completed pod still finalizes (and its reap re-drives finalize).
+ *
+ * warren-7f0b: a still-LIVE pod is no longer an automatic pass. When the run's
+ * event log carries the entrypoint's `stdin_hold_timeout` kill witness, the
+ * harness is dead but the pod (entrypoint finalize poller) stays Running — the
+ * zombie shape where nothing terminalizes the row and the finalize intent is
+ * never parked. `maybeReconcileTerminal` reaps that run as
+ * `failed(agent_died)` so the in-pod finalize loop picks up the intent and
+ * salvages the workspace before the pod (and its emptyDir) goes away.
  */
 export function reconcileTargetFromStatus(
 	status: RunStatus,
@@ -148,7 +157,23 @@ export async function maybeReconcileTerminal(
 	// only on the exists:false branch so a live pod never pays for the query.
 	const cancelRequested = !status.exists && (await hasCancelIntent(deps.repos, run.id));
 	const target = reconcileTargetFromStatus(status, cancelRequested);
-	if (target === null) return null;
+	if (target === null) {
+		// warren-7f0b: the zombie-watchdog shape — the pod still reads Running
+		// (the entrypoint lives on, polling finalize-intent for up to its 40-min
+		// ceiling) but the event log already carries the entrypoint's
+		// `stdin_hold_timeout` kill witness: the harness is dead, the run's
+		// liveness is false, and nothing else will reap it. Reap now so the
+		// finalize intent parks while the pod (and its emptyDir) is still alive —
+		// the in-pod finalize step then collects + salvages the workspace before
+		// the pod terminates. Scope: only the watchdog-kill shape; the general
+		// infra-death salvage case stays warren-6c94.
+		if (await hasStdinHoldTimeoutWitness(deps.repos, run.id)) {
+			const died = { outcome: "failed" as const, failureReason: "agent_died" as const };
+			await forceReconcile(deps, run, status, died, idleMs, now);
+			return died.outcome;
+		}
+		return null;
+	}
 	await forceReconcile(deps, run, status, target, idleMs, now, cancelRequested);
 	return target.outcome;
 }

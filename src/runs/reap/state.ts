@@ -12,6 +12,7 @@ export function isTerminal(state: string): boolean {
  * and the caller didn't override.
  *
  *   queued on entry  → never_started (bridge never claimed the row)
+ *   running, stdin_hold_timeout witness on system → agent_died (warren-7f0b)
  *   running, no model-turn output, spawn-exec error on system → spawn_failed
  *   running, no model-turn output, uid-drop preflight refusal on system
  *     → spawn_failed (warren-950d)
@@ -47,6 +48,32 @@ export function isTerminal(state: string): boolean {
  * must not reclassify its own crash.
  */
 const SANDBOX_ERROR_LINE = /^(?:bwrap|sandbox-exec): /m;
+
+/**
+ * The K8s agent-entrypoint idle-watchdog witness (warren-7f0b): the kind the
+ * in-pod stdin-hold controller emits on `stream=system` just before it closes
+ * stdin and hard-kills a stdin-held runtime that produced no output past the
+ * idle budget (`src/runtime/k8s/agent-stdin-hold.ts`). Its presence on the
+ * persisted event log is the durable record that the harness was killed by
+ * warren's own liveness guard — the discriminator `inferFailureReason` and the
+ * watchdog terminal-reconcile net both key off (general infra-death salvage
+ * stays warren-6c94's scope; this arm is only the watchdog-kill shape).
+ */
+export const STDIN_HOLD_TIMEOUT_WITNESS_KIND = "stdin_hold_timeout";
+
+/** True for the idle-watchdog kill witness (system stream only). */
+function isStdinHoldTimeoutEvent(ev: EventRowLike): boolean {
+	return ev.stream === "system" && ev.kind === STDIN_HOLD_TIMEOUT_WITNESS_KIND;
+}
+
+/**
+ * Has the run's event log recorded the K8s entrypoint's watchdog-kill witness?
+ * Cheap indexed probe (`hasKind`) so the watchdog reconcile net can call it on
+ * every tick for a live pod without a full `listByRun`. (warren-7f0b)
+ */
+export async function hasStdinHoldTimeoutWitness(repos: Repos, runId: string): Promise<boolean> {
+	return repos.events.hasKind(runId, STDIN_HOLD_TIMEOUT_WITNESS_KIND, "system");
+}
 
 /**
  * The spawn-exec failure signature (warren-4e2a). When the runtime's
@@ -148,6 +175,12 @@ export async function inferFailureReason(
 ): Promise<RunFailureReason> {
 	if (stateOnEntry === "queued") return "never_started";
 	const events = await repos.events.listByRun(runId);
+	// warren-7f0b: the K8s entrypoint's idle watchdog killed the harness — a
+	// distinct death from a self-inflicted crash, and the operator-facing signal
+	// that the run hung past its liveness budget. Checked first: the witness
+	// implies the agent was spawned and ran (stdin-held runtimes only arm the
+	// watchdog after a successful spawn), so spawn/sandbox arms can never apply.
+	if (events.some(isStdinHoldTimeoutEvent)) return "agent_died";
 	if (sawModelTurnEvent(events)) return "crashed";
 	// warren-4e2a: the spawn-exec arm wins over the sandbox arm — a
 	// spawn that never exec'd is an infra fault one level below a sandbox

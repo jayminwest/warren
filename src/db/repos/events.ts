@@ -110,14 +110,26 @@ export class EventsRepo {
 	 * Does the run carry at least one event of `kind`? Powers the cancel-intent
 	 * probe (warren-fe9b): the watchdog terminal-reconcile net checks for a
 	 * `cancel.requested` row so a pod warren deleted itself reconciles to
-	 * `cancelled` rather than `failed/sandbox_run_lost`.
+	 * `cancelled` rather than `failed(sandbox_run_lost)`.
+	 *
+	 * `stream` (optional, warren-7f0b) narrows the match — used by the
+	 * watchdog-kill witness probe so an agent-origin line that merely CARRIES
+	 * the `stdin_hold_timeout` kind on the stdout stream (the provenance gate
+	 * downgrades agent-claimed system lines) cannot trigger an `agent_died`
+	 * reap. System-stream events only ever originate from warren-owned writers.
 	 */
-	async hasKind(runId: string, kind: string): Promise<boolean> {
+	async hasKind(runId: string, kind: string, stream?: EventStream): Promise<boolean> {
 		const row = await this.adapter.pickOne<{ id: number }>(
 			this.db
 				.select({ id: this.events.id })
 				.from(this.events)
-				.where(and(eq(this.events.runId, runId), eq(this.events.kind, kind)))
+				.where(
+					and(
+						eq(this.events.runId, runId),
+						eq(this.events.kind, kind),
+						...(stream !== undefined ? [eq(this.events.stream, stream)] : []),
+					),
+				)
 				.limit(1),
 		);
 		return row !== undefined;
