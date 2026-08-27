@@ -22,6 +22,7 @@ import { Command, CommanderError } from "commander";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
+import { sandboxGitPreflightCached } from "../sandbox/git-preflight.ts";
 import { addClientFlags, clientFlags, type RemoteOpts, resolveCommandClient } from "./client.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { registerBootstrapCommands } from "./commands/bootstrap.ts";
@@ -256,7 +257,13 @@ export function buildProgram(baseContext: CliContext): Command {
 				}));
 				const result = await runDoctor(
 					context,
-					{ projects, db },
+					{
+						projects,
+						db,
+						// warren-1219: the real (boot-cached) sandbox git preflight —
+						// `warren doctor --local` is the operator's named surface for it.
+						probeSandboxGit: () => sandboxGitPreflightCached(),
+					},
 					{ noAuth: opts.auth === false, verbose: opts.verbose === true },
 				);
 				return result.exitCode;

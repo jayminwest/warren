@@ -16,7 +16,6 @@ import { isTerminalRunState } from "../../core/wire.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
-import { resolveForge } from "../../forge/registry.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
@@ -52,6 +51,7 @@ import { seedAgentsAtBoot } from "./agent-seeding.ts";
 import { bindReapWithBootDeps, bootBridgesAndProviderRetry } from "./bridges-wiring.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
+import { bootGitHubAppActivation } from "./github-app-activation-wiring.ts";
 import { makePodWarningRunEventSink } from "./k8s-pod-warning-sink.ts";
 import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
 import {
@@ -147,8 +147,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 	const repos = createRepos(db);
 
-	// warren-ce9b: hold every ALREADY-registered project to the allowlist too —
-	// a violation refuses the boot (naming every offender).
+	// warren-ce9b: registered projects must satisfy the allowlist or boot refuses.
 	assertRegisteredProjectsAllowlisted(publicAllowlist, await listProjects(repos.projects));
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
@@ -178,10 +177,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
-	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
-	const forge = resolveForge({}, env);
+	// warren-6c4c: resolve the forge ONCE; warren-b504: opt-in store wraps it in a HotForge.
+	const appCredBoot = { env, dataDir: serverConfig.dataDir, logger };
+	const { forge, activation: gitHubAppActivation } = bootGitHubAppActivation(appCredBoot);
 	const gitHubAppRegistration = bootGitHubAppRegistrationGate(env, logger);
-
 	const warrenConfigs = createWarrenConfigCache();
 	const runBranchPrefixDefault = loadRunBranchPrefixFromEnv(env);
 	const previewPortRange = loadPreviewPortRangeFromEnv(env);
@@ -245,8 +244,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// warren-cd3b: the salvage bundle capture lands beside the salvage intake dir.
 	// warren-45e6: the boot-resolved forge drives reap's PR sub-steps.
 	const salvageDir = join(serverConfig.dataDir, "salvage");
-	// warren-4af7: infra-lost auto-retry (src/runs/retry/infra-lost-retry.ts) —
-	// see retry-wiring.ts.
+	// warren-4af7: infra-lost auto-retry — see retry-wiring.ts.
 	const { onInfraLostRun, onRegistryCreated } = wireInfraLostRetry({
 		repos,
 		runtimeProvider,
@@ -394,6 +392,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
+		...(gitHubAppActivation !== undefined ? { gitHubAppActivation } : {}),
 		broker,
 		// warren-f566: the global lifecycle stream broker the bus wiring owns.
 		lifecycleStream: lifecycleBusHandle.lifecycleStream,

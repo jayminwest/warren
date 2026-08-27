@@ -195,6 +195,68 @@ describe("runDoctor", () => {
 		expect(result.exitCode).toBe(0);
 	});
 
+	// warren-1219: the sandbox git preflight check runs only on the local
+	// topology, only when a probe is wired (main.ts wires the real one).
+	test("sandbox_git check reports ok for a passing probe", async () => {
+		const { context } = captureContext({ WARREN_API_TOKEN: "tok" });
+		const result = await runDoctor(
+			context,
+			{
+				existsSync: () => true,
+				probeLocalRuntime: async () => undefined,
+				probeSandboxGit: async () => ({
+					ok: true,
+					gitPath: "/usr/bin/git",
+					effectiveGit: "/usr/bin/git",
+					substituted: false,
+					message: "/usr/bin/git executes inside the sandbox profile (git --version ok)",
+				}),
+			},
+			{},
+		);
+		const check = result.checks.find((c: DoctorCheck) => c.name === "sandbox_git");
+		expect(check?.ok).toBe(true);
+		expect(check?.message).toContain("git --version");
+		expect(result.exitCode).toBe(0);
+	});
+
+	test("sandbox_git check fails (and fails doctor) naming the binary for a broken sandbox git", async () => {
+		const { context } = captureContext({ WARREN_API_TOKEN: "tok" });
+		const result = await runDoctor(
+			context,
+			{
+				existsSync: () => true,
+				probeLocalRuntime: async () => undefined,
+				probeSandboxGit: async () => ({
+					ok: false,
+					gitPath: "/nix/store/abc-git-2.44/bin/git",
+					effectiveGit: "/nix/store/abc-git-2.44/bin/git",
+					substituted: false,
+					message:
+						"/nix/store/abc-git-2.44/bin/git does not execute inside the sandbox: dyld: Library not loaded",
+					hint: "this git cannot run inside the sandbox; install a system git",
+				}),
+			},
+			{},
+		);
+		const check = result.checks.find((c: DoctorCheck) => c.name === "sandbox_git");
+		expect(check?.ok).toBe(false);
+		expect(check?.message).toContain("/nix/store/abc-git-2.44/bin/git");
+		expect(check?.message).toContain("dyld");
+		expect(check?.hint).toContain("sandbox");
+		expect(result.exitCode).toBe(1);
+	});
+
+	test("sandbox_git check is absent without a wired probe (hermetic default)", async () => {
+		const { context } = captureContext({ WARREN_API_TOKEN: "tok" });
+		const result = await runDoctor(
+			context,
+			{ existsSync: () => true, probeLocalRuntime: async () => undefined },
+			{},
+		);
+		expect(result.checks.map((c) => c.name)).not.toContain("sandbox_git");
+	});
+
 	test("warren_db reports the resolved dialect for WARREN_DB_URL", async () => {
 		const { context } = captureContext({
 			WARREN_API_TOKEN: "tok",

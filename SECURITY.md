@@ -56,6 +56,16 @@ GitHub access sits behind the `Forge` seam.
 
 The control plane supplies Git credentials for clone, fetch, push, and pull-request operations. Configure the narrowest repository access that the deployment needs. Agent commit attribution is separate: set `WARREN_GIT_AUTHOR_NAME` and `WARREN_GIT_AUTHOR_EMAIL` to a dedicated machine-account identity.
 
+### Opt-in App credential store (warren-b504)
+
+By default the GitHub App manifest flow (`/github-app/register`) persists nothing — the credential set renders once and the operator pastes it into their secret store.
+
+Setting `WARREN_APP_CRED_STORE=data-dir` opts a deployment in. Warren stores the App credential triple (App id, installation id, private key) at `<WARREN_DATA_DIR>/github-app-credentials.json`. The file mode is `0600` and the parent directory is `0700`. Once the installation completes, warren activates the App forge in-process with no restart. Boot prefers the stored triple whenever the `WARREN_GITHUB_APP_*` env vars are absent. Restarts keep App mode.
+
+- **Opt-in only.** The default posture keeps no copy. The pages stay as they were. `WARREN_AUTH=public` instances refuse the store outright. Boot fails loud in that case.
+- **The private key is never logged** and never re-rendered on any page.
+- **To revoke:** delete the credential file and uninstall the App under your GitHub account's `Settings → Applications`. Then restart warren, or unset the env var to fall back to the manual flow.
+
 ## Browser and preview boundaries
 
 The UI stores the operator bearer in the warren origin and does not provide separate CSRF protection. Strict CORS and the single-deployment-token model are part of this posture. Do not serve untrusted content on the UI origin.

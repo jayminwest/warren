@@ -20,6 +20,7 @@ import {
 	startGitHubAppHeartbeat,
 } from "../../forge/github-app/heartbeat.ts";
 import { GitHubAppForge } from "../../forge/github-app/provider.ts";
+import { HotForge } from "../../forge/hot-forge.ts";
 import { resolveForgeKind } from "../../forge/registry.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
 import type { EnvLike } from "../config.ts";
@@ -42,7 +43,11 @@ export interface ForgeHeartbeatWiringInput {
 export function bootForgeHeartbeatFromEnv(
 	input: ForgeHeartbeatWiringInput,
 ): ForgeHeartbeatHandle | undefined {
-	const { env, forge, logger } = input;
+	const { env, logger } = input;
+	// warren-b504: when the opt-in credential store armed boot, the forge
+	// threaded through boot is the `HotForge` wrapper — unwrap to the
+	// concrete delegate so the probe targets the real provider.
+	const forge = input.forge instanceof HotForge ? input.forge.current : input.forge;
 	if (resolveForgeKind(env) !== "app") return undefined;
 	if (!(forge instanceof GitHubAppForge)) {
 		// Unreachable through resolveForge (the `app` arm only constructs
