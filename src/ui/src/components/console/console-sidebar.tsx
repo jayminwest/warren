@@ -7,6 +7,7 @@ import {
 	type ConsoleNavItem,
 	DOCUMENTATION_URL,
 	INSTANCE_NAV_ITEM,
+	SETUP_NAV_ITEM,
 } from "@/components/console/console-nav.ts";
 import type { ConsoleStats } from "@/components/console/use-console-stats.ts";
 import { ThemeToggle } from "@/components/theme-toggle.tsx";
@@ -254,6 +255,13 @@ export function ConsoleSidebarBody({
 						))}
 					</div>
 				))}
+				{/* First-run setup (warren-a911): the manual entry point
+				    back to the checklist, shown only to a caller who can
+				    act on it and only while no project exists — once one
+				    does, the checklist is done and the entry retires. */}
+				{caps.can("admin") && stats.projectsCount === 0 ? (
+					<NavRow item={SETUP_NAV_ITEM} onNavigate={onNavigate} />
+				) : null}
 			</nav>
 			<div className="flex-1" />
 			<SidebarFooter onNavigate={onNavigate} />
