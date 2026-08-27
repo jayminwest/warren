@@ -11,7 +11,7 @@
  * Facts only. NULL means unknown, never a bucket. No derived scores.
  */
 
-import { and, desc, eq, gte, lte, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
 import type { PullRequestLifecycle, RunFailureReason, RunState } from "../../core/wire.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { DispatchContextInsert, DispatchContextRow } from "../schema.ts";
@@ -81,6 +81,22 @@ export class DispatchContextRepo {
 		return await this.adapter.pickOne<DispatchContextRow>(
 			this.db.select().from(this.dispatchContext).where(eq(this.dispatchContext.runId, runId)),
 		);
+	}
+
+	async getMaxCostUsdByRunIds(runIds: readonly string[]): Promise<Map<string, number>> {
+		const caps = new Map<string, number>();
+		if (runIds.length === 0) return caps;
+		const dc = this.dispatchContext;
+		const rows = await this.adapter.pickAll<{ runId: string; maxCostUsd: number | null }>(
+			this.db
+				.select({ runId: dc.runId, maxCostUsd: dc.maxCostUsd })
+				.from(dc)
+				.where(inArray(dc.runId, [...runIds])),
+		);
+		for (const row of rows) {
+			if (row.maxCostUsd !== null) caps.set(row.runId, row.maxCostUsd);
+		}
+		return caps;
 	}
 
 	/**

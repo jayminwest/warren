@@ -122,6 +122,24 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("getMaxCostUsdByRunIds returns only known caps, empty input is a no-op (warren-f8a2)", async () => {
+			const { handle, dispatchContext, runId } = await open();
+			try {
+				expect(await dispatchContext.getMaxCostUsdByRunIds([])).toEqual(new Map());
+				await dispatchContext.insert({
+					runId,
+					createdAt: "2026-08-18T00:00:00.000Z",
+					maxCostUsd: 5,
+				});
+				// Unknown run id (no dispatch-context row) and a null cap are both absent.
+				expect(await dispatchContext.getMaxCostUsdByRunIds([runId, "run_missing"])).toEqual(
+					new Map([[runId, 5]]),
+				);
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("listForAnalytics windows on created_at and joins run outcome (warren-5423)", async () => {
 			const handle = await withDb({ dialect });
 			const adapter = DrizzleAdapter.for(handle.db);
