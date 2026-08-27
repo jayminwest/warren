@@ -44,7 +44,7 @@ export function ActiveWorkloads({
 	const projectIndex = new Map<string, string>();
 	for (const p of projects ?? []) projectIndex.set(p.id, shortRepo(p.gitUrl));
 	return (
-		<div className="flex min-w-0 flex-[1.8] flex-col">
+		<div className="flex min-w-0 flex-col md:flex-[1.8]">
 			<header className="flex h-7 shrink-0 items-center pb-1.25">
 				<h2 className="text-[11px] leading-3.5 font-semibold text-(--color-text-2)">
 					Active workloads

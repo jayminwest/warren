@@ -191,21 +191,40 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		}
 	});
 
-	test("the operator body is the full row plus the cost rollup", async () => {
+	test("the operator body is the full row plus the cost rollup and cap overlay (warren-f8a2)", async () => {
 		const stored = await repos.runs.require(runId);
 		const body = await get("/runs", TOKEN);
 		const list = body.runs as Record<string, unknown>[];
-		expect(Object.keys(list[0] ?? {}).sort()).toEqual(Object.keys(stored).sort());
+		// The list overlays the dispatch-context spend cap on each row — a
+		// field the stored row itself does not carry. No context row exists
+		// for this run, so it reads null, never absent.
+		expect(new Set(Object.keys(list[0] ?? {}))).toEqual(
+			new Set([...Object.keys(stored), "maxCostUsd"]),
+		);
+		expect(list[0]?.maxCostUsd).toBeNull();
 		expect(body.costTotalUsd).toBe(1.25);
 		expect(body.costPricedCount).toBe(1);
 		const detailBody = await get(`/runs/${runId}`, TOKEN);
 		expect(Object.keys(detailBody)).toEqual(["run"]);
 		const detail = detailBody.run as Record<string, unknown>;
+		// Detail GETs stay the bare row: the cap overlay is a list-only join.
 		expect(Object.keys(detail).sort()).toEqual(Object.keys(stored).sort());
 		expect(detail.sandboxId).toBe("bur_1");
 		expect(detail.renderedAgentJson).toEqual({
 			frontmatter: { provider: "anthropic", model: "opus" },
 		});
+	});
+
+	test("the operator list carries the dispatch-context cap; spectators never do (warren-f8a2)", async () => {
+		await repos.dispatchContext.insert({
+			runId,
+			createdAt: "2026-07-01T00:00:00.000Z",
+			maxCostUsd: 5,
+		});
+		const authed = await get("/runs", TOKEN);
+		expect((authed.runs as Record<string, unknown>[])[0]?.maxCostUsd).toBe(5);
+		const anon = await get("/runs");
+		expect((anon.runs as Record<string, unknown>[])[0]).not.toHaveProperty("maxCostUsd");
 	});
 
 	test("the operator envelope keeps its historical key order", async () => {

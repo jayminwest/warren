@@ -39,6 +39,11 @@ import { RunsTable } from "@/pages/runs/runs-table.tsx";
 const PAGE_SIZE_LS_KEY = "warren.runsList.pageSize";
 const PAGE_SIZE_OPTIONS: readonly number[] = [25, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 50;
+// Mobile "Load more" window (warren-ffaf / pl-4ab6 step 10): the phone
+// list grows a client-side visible-count window instead of the desktop
+// offset pager. 8 rows per step, mirroring the 375px artboard footer.
+const MOBILE_PAGE_STEP = 8;
+const DEFAULT_MOBILE_COUNT = 8;
 
 export function RunsPage() {
 	const [filters, setFilters] = useState<PageFilters>(NO_FILTERS);
@@ -50,6 +55,7 @@ export function RunsPage() {
 		return PAGE_SIZE_OPTIONS.includes(n) ? n : DEFAULT_PAGE_SIZE;
 	});
 	const [offset, setOffset] = useState<number>(0);
+	const [mobileCount, setMobileCount] = useState<number>(DEFAULT_MOBILE_COUNT);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -61,6 +67,7 @@ export function RunsPage() {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: offset reset is the intended side effect
 	useEffect(() => {
 		setOffset(0);
+		setMobileCount(DEFAULT_MOBILE_COUNT);
 	}, [filters, pageSize]);
 
 	const serverFilter = {
@@ -143,22 +150,58 @@ export function RunsPage() {
 	const hasPrev = offset > 0;
 	const hasNext = offset + loadedRows.length < totalRuns;
 
+	// Mobile window: the phone card list shows only the first
+	// `mobileCount` filtered rows; "Load more" grows the window
+	// (warren-ffaf). The desktop table keeps the full filtered page.
+	const mobileRows = rows.slice(0, mobileCount);
+	const mobileHasMore = mobileCount < rows.length;
+	const isFiltered =
+		filters.agent !== "all" ||
+		filters.project !== "all" ||
+		filters.state !== "all" ||
+		filters.trigger !== "all" ||
+		filters.search.trim().length > 0;
+
+	// Shared loading/error/empty body — rendered inside both the mobile
+	// card and the desktop table container (warren-8258 hoisted the
+	// states out of the desktop-only arm; both surfaces keep them).
+	const listState = runs.isLoading ? (
+		<div className="p-6">
+			<Spinner label="Loading runs" />
+		</div>
+	) : runs.isError ? (
+		<div className="p-6">
+			<Alert variant="danger" title="Failed to load runs">
+				{formatError(runs.error)}
+			</Alert>
+		</div>
+	) : visibleCount === 0 ? (
+		<div className="p-6">
+			<EmptyState title="No runs match this filter" description={emptyHint} />
+		</div>
+	) : null;
+
 	return (
 		<div className="flex min-h-full flex-col px-3.5 pt-[22px] pb-12 md:px-6">
 			{/* Page header: title + description + operator action (export layout). */}
 			<div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-[5px]">
-					<h1 className="text-[20px] leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+					<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.025em] text-(--color-text) md:text-[20px] md:leading-6">
 						Runs
 					</h1>
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-[11px] leading-[14px] text-(--color-text-2) md:text-[12px] md:leading-4">
 						Managed agent workloads across every project and runtime.
 					</p>
+				</div>
+				{/* Below md the trailing slot is the mono run count; dispatch
+				    lives in the bottom nav (warren-ffaf, mock :66-68). */}
+				<div className="shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+					{totalRuns} TOTAL
 				</div>
 				<OperatorOnly>
 					<Link
 						to="/dispatch"
-						className="inline-flex h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-primary-ink) hover:opacity-90"
+						className="hidden md:inline-flex h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-primary-ink) hover:opacity-90"
 					>
 						＋ Dispatch run
 					</Link>
@@ -173,31 +216,41 @@ export function RunsPage() {
 				projects={(projects.data?.projects ?? []).map((p) => ({ id: p.id, gitUrl: p.gitUrl }))}
 				triggerOptions={triggerOptions}
 			/>
-			{/* Inventory table. */}
-			<div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface)">
-				{runs.isLoading ? (
-					<div className="p-6">
-						<Spinner label="Loading runs" />
+			{/* Mobile list card (warren-ffaf / pl-4ab6 step 10): its own
+			    fully-rounded bordered surface with 14px side margins, capped
+			    by the --color-thead column strip (mock :92-103). */}
+			<div className="mx-[14px] flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:hidden">
+				<div className="flex shrink-0 items-center gap-2 bg-(--color-thead) px-3 py-2 font-mono text-[9px] leading-[11px] tracking-[0.06em] text-(--color-text-3)">
+					<span className="w-[70px] shrink-0">STATE</span>
+					<span className="grow">RUN</span>
+					<span className="shrink-0">ELAPSED · COST</span>
+				</div>
+				{listState ?? <RunsCardList rows={mobileRows} projectIndex={projectIndex} now={now} />}
+			</div>
+			{/* Mobile pagination footer (mock :297-305): outside the card,
+			    count on the left, Load-more on the right. */}
+			<div className="flex shrink-0 items-center px-[14px] pt-3 pb-4 md:hidden">
+				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+					{mobileRows.length} OF {totalRuns}
+					{isFiltered ? " · FILTERED" : null}
+				</span>
+				<span className="grow" />
+				{mobileHasMore ? (
+					<button
+						type="button"
+						onClick={() => setMobileCount((c) => c + MOBILE_PAGE_STEP)}
+						className="text-[11px] leading-[14px] font-medium text-(--color-primary)"
+					>
+						Load more →
+					</button>
+				) : null}
+			</div>
+			{/* Inventory table — desktop only below this point, unchanged. */}
+			<div className="hidden min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface) md:flex">
+				{listState ?? (
+					<div className="hidden md:block">
+						<RunsTable rows={rows} projectIndex={projectIndex} now={now} />
 					</div>
-				) : runs.isError ? (
-					<div className="p-6">
-						<Alert variant="danger" title="Failed to load runs">
-							{formatError(runs.error)}
-						</Alert>
-					</div>
-				) : visibleCount === 0 ? (
-					<div className="p-6">
-						<EmptyState title="No runs match this filter" description={emptyHint} />
-					</div>
-				) : (
-					<>
-						{/* Mobile arm: the inventory degrades to compact row cards
-						    (warren-dea8, docs/ui-revamp/screens/mobile/runs.jsx). */}
-						<RunsCardList rows={rows} projectIndex={projectIndex} now={now} />
-						<div className="hidden md:block">
-							<RunsTable rows={rows} projectIndex={projectIndex} now={now} />
-						</div>
-					</>
 				)}
 				{totalRuns > 0 ? (
 					<div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">

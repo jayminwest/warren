@@ -180,6 +180,29 @@ export function parseRunsPagination(ctx: { url: URL }): { limit: number; offset:
 	return { limit, offset };
 }
 
+/**
+ * Overlay the dispatch-context spend cap onto the projected list rows
+ * (warren-f8a2): `maxCostUsd` is the per-run USD cap the mobile runs card
+ * uses for its near-cap tint. A spectator gets no caps at all, so the cap
+ * never reaches the public projection — same posture as the list's
+ * `costTotalUsd`.
+ */
+async function projectRunsWithCaps(
+	deps: ServerDeps,
+	runs: readonly RunRow[],
+	actor: Actor | undefined,
+): Promise<unknown[]> {
+	const publicOnly = isPublicOnly(actor);
+	const caps = publicOnly
+		? new Map<string, number>()
+		: await deps.repos.dispatchContext.getMaxCostUsdByRunIds(runs.map((r) => r.id));
+	return runs.map((run) => {
+		const projected = projectRun(run, actor);
+		if (publicOnly) return projected;
+		return { ...projected, maxCostUsd: caps.get(run.id) ?? null };
+	});
+}
+
 export function listRunsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const project = ctx.url.searchParams.get("project");
@@ -211,8 +234,9 @@ export function listRunsHandler(deps: ServerDeps): RouteHandler {
 		// context, so it belongs in a deliberately framed ledger view
 		// rather than here; per-run `costUsd` survives the projection.
 		const publicOnly = isPublicOnly(ctx.actor);
+		const projectedRuns = await projectRunsWithCaps(deps, hydrated, ctx.actor);
 		return jsonResponse(200, {
-			runs: hydrated.map((run) => projectRun(run, ctx.actor)),
+			runs: projectedRuns,
 			total: agg.total,
 			...(publicOnly ? {} : { costTotalUsd: agg.costTotalUsd }),
 			costPricedCount: agg.costPricedCount,
