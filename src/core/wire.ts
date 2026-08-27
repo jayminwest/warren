@@ -48,10 +48,8 @@ export function isTerminalRunState(state: RunState): state is RunTerminalState {
 /**
  * Run mode discriminator (pl-0344 step 1 / warren-67b6). `batch` is the
  * historical single-shot run: warren spawns burrow, agent runs to completion,
- * reap pushes the branch. Mode is fixed at run-create time. TS-only narrowing
- * (mx-2ab984); defaults to `batch` so legacy rows match the historical shape.
- * (The retired `interactive` and `conversation` values are intentionally
- * dropped from the enum — warren-d622, warren-ee27.)
+ * reap pushes the branch. Mode is fixed at run-create time; defaults to
+ * `batch` so legacy rows match the historical shape (retired values dropped).
  */
 export const RUN_MODES = ["batch"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
@@ -59,6 +57,8 @@ export type RunMode = (typeof RUN_MODES)[number];
 // The actor vocabulary of GET /whoami (warren-3754) lives in
 // ./wire-actor.ts (file-size budget); re-exported for one canonical home.
 export * from "./wire-actor.ts";
+// Cost-basis vocabulary (warren-f3c3) lives in ./wire-cost.ts (file-size budget).
+export * from "./wire-cost.ts";
 // The steering-inbox vocabulary (warren-3d0b) lives in ./wire-inbox.ts;
 // re-exported so the canonical import path stays `src/core/wire.ts`.
 export * from "./wire-inbox.ts";

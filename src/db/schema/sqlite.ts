@@ -46,6 +46,7 @@ import {
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	PULL_REQUEST_LIFECYCLES,
+	RUN_COST_BASES,
 	RUN_FAILURE_REASONS,
 	RUN_MODES,
 	RUN_STATES,
@@ -179,12 +180,11 @@ export const runs = sqliteTable(
 		// local). Both null ⇒ no salvage was captured (or none was needed).
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),
-		// Per-run cost + token accounting (warren-a7dc). All nullable: only the
-		// pi runtime reports session-cumulative stats via get_session_stats today,
-		// and even there the value is best-effort (null when the bridge can't
-		// snapshot the RPC). Cost is the persisted delta between run-start and
-		// run-end snapshots so resumed pi sessions don't double-count prior turns.
+		// Per-run cost + token accounting (warren-a7dc). All nullable: the pi runtime's
+		// best-effort session stats; cost is the persisted start/end delta.
 		costUsd: real("cost_usd"),
+		// Cost basis (warren-f3c3): `subscription_estimate` = subscription auth — an estimate, not a bill.
+		costBasis: text("cost_basis", { enum: RUN_COST_BASES }).notNull().default("api"),
 		tokensInput: integer("tokens_input"),
 		tokensOutput: integer("tokens_output"),
 		tokensCacheRead: integer("tokens_cache_read"),

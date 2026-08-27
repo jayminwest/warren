@@ -73,6 +73,9 @@ export const PUBLIC_RUN_FIELDS = [
 	"insertions",
 	"deletions",
 	"costUsd",
+	// warren-f3c3: how costUsd was priced — the same spectator-safe class as
+	// costUsd itself (it qualifies the number, adds nothing new).
+	"costBasis",
 	"tokensInput",
 	"tokensOutput",
 	"tokensCacheRead",

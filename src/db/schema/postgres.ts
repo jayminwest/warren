@@ -47,6 +47,7 @@ import {
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	PULL_REQUEST_LIFECYCLES,
+	RUN_COST_BASES,
 	RUN_FAILURE_REASONS,
 	RUN_MODES,
 	RUN_STATES,
@@ -119,6 +120,8 @@ export const runs = pgTable(
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),
 		costUsd: doublePrecision("cost_usd"),
+		// Cost basis (warren-f3c3) — see the sqlite twin for the full rationale.
+		costBasis: text("cost_basis", { enum: RUN_COST_BASES }).notNull().default("api"),
 		tokensInput: integer("tokens_input"),
 		tokensOutput: integer("tokens_output"),
 		tokensCacheRead: integer("tokens_cache_read"),

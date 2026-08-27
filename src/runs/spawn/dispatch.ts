@@ -7,6 +7,7 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
+import { resolveRunCostBasis } from "../../core/providers.ts";
 import { withProjectCloneLock } from "../../projects/clone-lock.ts";
 import { refreshProject } from "../../projects/manage.ts";
 import {
@@ -181,6 +182,11 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		renderedAgentJson: agent,
 		...(declaredProvider !== undefined ? { provider: declaredProvider } : {}),
 		...(declaredModel !== undefined ? { model: declaredModel } : {}),
+		// warren-f3c3: freeze how the run's cost will be priced. A run whose
+		// anthropic credential is CLAUDE_CODE_OAUTH_TOKEN (subscription auth)
+		// gets `subscription_estimate` so costUsd reads as an estimate, not a
+		// bill. Resolved beside the provider env registry (core/providers.ts).
+		costBasis: resolveRunCostBasis(declaredProvider, input.serverEnv ?? process.env),
 		trigger: input.trigger ?? "manual",
 		...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 		...(input.mode !== undefined ? { mode: input.mode } : {}),

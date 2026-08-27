@@ -47,6 +47,7 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		retryOf: null,
 		cloneKind: null,
 		mode: "batch",
+		costBasis: "api",
 		renderedAgentJson: {},
 		state: "succeeded",
 		failureReason: null,

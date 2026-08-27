@@ -1,0 +1,89 @@
+# Install-script smoke coverage (warren-5765).
+#
+# Executes scripts/install.sh exactly as a `curl | sh` user would, in two
+# clean docker containers:
+#
+#   - ubuntu:24.04 (no bun, no node): exercises the full bun bootstrap path.
+#   - node:20-slim (npm, no bun): exercises the npm-preferred install path.
+#
+# Both smoke against the packed local tarball (WARREN_INSTALL_TARBALL) rather
+# than the published registry package, so the test covers the repo's own
+# build — the published version can lag main. Nothing is published; no
+# artifacts, no push.
+#
+# Not a gate workflow (no `bun run` steps), so it stays outside
+# check:ci-parity's reachability walk.
+
+name: install-smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Pack local CLI tarball
+        run: |
+          npm pack --pack-destination /tmp
+          tarball=$(ls /tmp/os-eco-warren-cli-*.tgz | head -n1)
+          mv "$tarball" /tmp/warren-cli.tgz
+
+      - name: "Smoke: clean ubuntu (no bun, no npm)"
+        run: |
+          docker run --rm \
+            -v "$PWD/scripts:/install:ro" \
+            -v /tmp/warren-cli.tgz:/tmp/warren-cli.tgz:ro \
+            ubuntu:24.04 \
+            sh -c '
+              set -eu
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends ca-certificates curl git unzip >/dev/null
+              export WARREN_INSTALL_TARBALL=/tmp/warren-cli.tgz
+              sh /install/install.sh
+              export PATH="$HOME/.bun/bin:$PATH"
+              warren --version
+              # idempotent re-run upgrades in place
+              sh /install/install.sh
+              warren --version
+            '
+
+      - name: "Smoke: missing unzip produces a clear preflight error"
+        run: |
+          # Cheap negative assertion: without unzip (and not root, so the
+          # script's apt-get convenience path cannot kick in), the installer
+          # must die with the actionable message, not an opaque failure.
+          docker run --rm \
+            -v "$PWD/scripts:/install:ro" \
+            ubuntu:24.04 \
+            sh -c '
+              set -eu
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends ca-certificates curl git >/dev/null
+              useradd -m tester
+              su tester -c "sh /install/install.sh" > /tmp/out.txt 2>&1 || true
+              grep -q "unzip is required to install bun (Debian/Ubuntu: apt-get install -y unzip)" /tmp/out.txt
+            '
+
+      - name: "Smoke: node:20-slim (npm present, no bun)"
+        run: |
+          docker run --rm \
+            -v "$PWD/scripts:/install:ro" \
+            -v /tmp/warren-cli.tgz:/tmp/warren-cli.tgz:ro \
+            node:20-slim \
+            sh -c '
+              set -eu
+              export WARREN_INSTALL_TARBALL=/tmp/warren-cli.tgz
+              sh /install/install.sh
+              export PATH="$HOME/.bun/bin:$PATH"
+              warren --version
+              sh /install/install.sh
+              warren --version
+            '
