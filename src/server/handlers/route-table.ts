@@ -16,6 +16,7 @@ import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { listEventsHandler } from "./events-query.ts";
 import { streamLifecycleEventsHandler } from "./events-stream.ts";
+import { forgeReposHandler } from "./forge-repos.ts";
 import {
 	gitHubAppCallbackHandler,
 	gitHubAppInstalledHandler,
@@ -158,19 +159,16 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: (deps) => setupHandoffHandler(deps.setupHandoff),
 	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
-	// pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the
-	// Operations dashboard. `readPublic` with a reduced projection — a
-	// spectator sees run counts only (see ./ops-overview.ts).
+	// pl-7e38 step 12 (warren-d850): one-poll Operations snapshot, readPublic with a reduced projection.
 	{ method: "GET", pattern: "/ops/overview", policy: "readPublic", build: opsOverviewHandler },
-	// pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, readPublic
-	// with the same per-row `projectEvent` reduction as `/runs/:id/events`.
+	// pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, same per-row `projectEvent` reduction.
 	{ method: "GET", pattern: "/events", policy: "readPublic", build: listEventsHandler },
 	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
 	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
-	// warren-2eec: read-only instance facts for the operator console. The
-	// body is a boot facts allowlist; spectators get the reduced projection
-	// (src/instance/facts.ts). Never secrets or connection strings.
+	// warren-2eec: read-only instance facts; spectators get the reduced projection (src/instance/facts.ts).
 	{ method: "GET", pattern: "/instance", policy: "readPublic", build: instanceFactsHandler },
+	// warren-2601: installation repo listing for the Add Project picker (readOperator — private repo names).
+	{ method: "GET", pattern: "/forge/repos", policy: "readOperator", build: forgeReposHandler },
 
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
 	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", build: getAgentHandler },
@@ -426,8 +424,8 @@ export const API_PREFIXES: readonly string[] = [
 	"/instance",
 	"/github-app",
 	"/setup", // warren-48f8: the setup-handoff redemption page (an API path, not SPA).
-	// warren-f566: the global lifecycle stream (`/events/stream`).
 	"/events",
+	"/forge", // warren-2601: installation repo listing for the Add Project picker.
 ];
 
 /**

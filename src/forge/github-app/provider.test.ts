@@ -85,6 +85,7 @@ describe("GitHubAppForge capabilities (forge-contract.md §5)", () => {
 			pullRequestBodyEdit: true,
 			branchDelete: true,
 			botIdentity: true,
+			installationRepos: true,
 			credentialLifetime: "short-lived",
 		});
 	});
@@ -228,5 +229,47 @@ describe("GitHubAppForge botIdentity", () => {
 		const result = await forge.botIdentity();
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe("http_error");
+	});
+});
+
+describe("GitHubAppForge listInstallationRepos (warren-2601)", () => {
+	test("returns the installation's repositories as picker rows", async () => {
+		const forge = makeForge({
+			fetch: stubGitHubAppServer({
+				installationRepos: [{ owner: "octo", name: "widget", defaultBranch: "trunk" }],
+			}).fetch,
+		});
+		const result = await forge.listInstallationRepos();
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value).toEqual([
+			{
+				owner: "octo",
+				name: "widget",
+				cloneUrl: "https://github.com/octo/widget.git",
+				defaultBranch: "trunk",
+				private: false,
+			},
+		]);
+	});
+
+	test("paginates with per_page=100 until a short page", async () => {
+		const repos = Array.from({ length: 101 }, (_, i) => ({ owner: "octo", name: `r${i}` }));
+		const forge = makeForge({
+			fetch: stubGitHubAppServer({ installationRepos: repos }).fetch,
+		});
+		const result = await forge.listInstallationRepos();
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value.length).toBe(101);
+	});
+
+	test("maps a transport failure through the shared classifier", async () => {
+		const forge = makeForge({
+			fetch: recordingFetch([jsonResponse(403, { message: "Just no" })]).fetch,
+		});
+		const result = await forge.listInstallationRepos();
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.kind).toBe("forbidden");
 	});
 });

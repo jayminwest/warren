@@ -538,6 +538,33 @@ async function streamErrorFromResponse(res: Response): Promise<Error> {
 /* Ops overview (pl-7e38 step 12 / warren-d850)                            */
 /* ----------------------------------------------------------------------- */
 
+/** One repository the App installation can see (warren-2601). */
+export interface ForgeRepoRow {
+	owner: string;
+	name: string;
+	cloneUrl: string;
+	defaultBranch: string;
+	private: boolean;
+}
+
+/** The `GET /forge/repos` envelope; `supported` is the picker's discriminant. */
+export interface ForgeReposResponse {
+	supported: boolean;
+	repos: ForgeRepoRow[];
+	/** Present when the listing failed — the forge's redacted detail. */
+	error?: string;
+}
+
+export const forgeApi = {
+	/**
+	 * `GET /forge/repos` — the Add Project repo picker's data source
+	 * (warren-2601). `supported: false` (PAT / no forge / listing failure)
+	 * means the dialog keeps the URL-paste path only.
+	 */
+	repos: (signal?: AbortSignal) =>
+		request<ForgeReposResponse>("/forge/repos", { ...(signal ? { signal } : {}) }),
+};
+
 export const opsApi = {
 	/**
 	 * One-poll control-plane snapshot behind the Operations page

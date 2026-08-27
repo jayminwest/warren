@@ -21,6 +21,7 @@ import type {
 	CheckSummary,
 	Forge,
 	ForgeCapabilities,
+	ForgeRepoListing,
 	ForgeResult,
 	GitCredential,
 	GitIdentity,
@@ -63,6 +64,7 @@ export class FakeForge implements Forge {
 		pullRequestBodyEdit: true,
 		branchDelete: true,
 		botIdentity: true,
+		installationRepos: false,
 		credentialLifetime: "static",
 	};
 
@@ -174,6 +176,17 @@ export class FakeForge implements Forge {
 		return Promise.resolve(
 			ok({ name: "warren-fake-forge[bot]", email: "fake-forge@warren.invalid" }),
 		);
+	}
+
+	/** The fake owns no GitHub installation — no repo listing (warren-2601). */
+	listInstallationRepos(): Promise<ForgeResult<readonly ForgeRepoListing[]>> {
+		return Promise.resolve({
+			ok: false,
+			error: {
+				kind: "unsupported",
+				detail: "FakeForge has no installation — no repository listing",
+			},
+		} satisfies ForgeResult<readonly ForgeRepoListing[]>);
 	}
 
 	// --- Seeding seams (FakeForge public API beyond the Forge interface) ---
