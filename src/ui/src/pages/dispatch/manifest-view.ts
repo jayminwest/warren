@@ -74,6 +74,25 @@ export function buildManifestLines(input: ManifestInput): readonly ManifestLine[
 	];
 }
 
+/**
+ * The mobile summary projection (pl-4ab6 / warren-5cf7): the dispatch mock's
+ * 7 flat lines. The full manifest stays md+; phones render this projection.
+ */
+export function buildManifestSummaryLines(input: ManifestInput): readonly ManifestLine[] {
+	return [
+		{ key: "apiVersion: ", value: "warren.run/v1" },
+		{ key: "kind: ", value: "AgentRun" },
+		{ key: "project: ", value: input.project ? input.project.id : "—" },
+		{
+			key: "tracker: ",
+			value: input.seedId.trim().length > 0 ? input.seedId.trim() : "—",
+		},
+		{ key: "branch: ", value: `${input.runBranchPrefix ?? "burrow"}/<new run>` },
+		{ key: "costUsd: ", value: costValue(input.costCap) },
+		{ key: "openPullRequest: ", value: "configured" },
+	];
+}
+
 function modelValue(provider: string, model: string): string {
 	if (provider.length > 0 && model.length > 0) return `${provider}/${model}`;
 	if (model.length > 0) return model;
