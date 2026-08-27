@@ -9,6 +9,7 @@ import {
 } from "@/api/client.ts";
 import type { RunRow } from "@/api/types.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { formatDuration } from "@/pages/telemetry/format.ts";
 import { type JudgeStoreRow, useJudgeVerdicts } from "@/pages/telemetry/judge-verdicts.ts";
 import { useRunsJoin } from "@/pages/telemetry/runs-join.ts";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
@@ -125,16 +126,6 @@ interface AgentEconomicsRow {
 	readonly successRate: number | null;
 	readonly avgDurationMs: number | null;
 	readonly costPerMergedPrUsd: number | null;
-}
-
-/** Milliseconds → compact human duration ("54s", "11m 24s", "16.8h"). */
-function formatDuration(ms: number | null): string {
-	if (ms === null) return "—";
-	const s = Math.round(ms / 1000);
-	if (s < 90) return `${s}s`;
-	const m = Math.floor(s / 60);
-	if (m < 90) return s % 60 === 0 ? `${m}m` : `${m}m ${String(s % 60).padStart(2, "0")}s`;
-	return `${(m / 60).toFixed(1)}h`;
 }
 
 /**
