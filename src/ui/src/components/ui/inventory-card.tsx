@@ -45,11 +45,13 @@ export function InventoryRowCard({
 	subline,
 	figures,
 	meta,
+	roomy,
 	children,
 }: {
 	tone: InventoryCardTone;
-	/** Short state word next to the dot (e.g. "running"). */
-	stateLabel: string;
+	/** Short state word next to the dot (e.g. "running"). Omit for the
+	 * mock's dot-only arm (active-workloads): a bare 6px tone dot, no word. */
+	stateLabel?: string;
 	/** Primary mono identifier. */
 	title: ReactNode;
 	/** Optional link target for the title (keyboard path to detail). */
@@ -60,6 +62,8 @@ export function InventoryRowCard({
 	figures?: ReactNode;
 	/** Quiet full-width meta line under the main row. */
 	meta?: ReactNode;
+	/** Mock row padding (12px inline) instead of the compact default (10px). */
+	roomy?: boolean;
 	/** Actions / badges rendered on the meta line's trailing edge. */
 	children?: ReactNode;
 }) {
@@ -79,17 +83,28 @@ export function InventoryRowCard({
 		);
 
 	return (
-		<div className="flex flex-col gap-2 border-b border-(--color-border) px-2.5 py-2.5 last:border-b-0">
+		<div
+			className={cn(
+				"flex flex-col gap-2 border-b border-(--color-border) last:border-b-0",
+				roomy ? "px-3 py-2.5" : "px-2.5 py-2.5",
+			)}
+		>
 			<div className="flex min-w-0 items-center gap-2.5">
-				<span className="flex w-[70px] shrink-0 items-center gap-[5px]">
-					<span
-						className={cn("h-[5px] w-[5px] shrink-0 rounded-full", toneClass.dot)}
-						aria-hidden
-					/>
-					<span className={cn("truncate font-mono text-[9px] leading-[11px]", toneClass.text)}>
-						{stateLabel}
+				{stateLabel !== undefined ? (
+					<span className="flex w-[70px] shrink-0 items-center gap-[5px]">
+						<span
+							className={cn("h-[5px] w-[5px] shrink-0 rounded-full", toneClass.dot)}
+							aria-hidden
+						/>
+						<span className={cn("truncate font-mono text-[9px] leading-[11px]", toneClass.text)}>
+							{stateLabel}
+						</span>
 					</span>
-				</span>
+				) : (
+					<span className="flex w-[6px] shrink-0 items-center" aria-hidden>
+						<span className={cn("h-[6px] w-[6px] rounded-full", toneClass.dot)} />
+					</span>
+				)}
 				<span className="flex min-w-0 flex-1 flex-col gap-[2px]">
 					{titleNode}
 					{subline !== undefined ? (
@@ -127,10 +142,25 @@ export function CardFigure({ value, className }: { value: ReactNode; className?:
 	);
 }
 
-/** Small mono figure note (cost line under elapsed, etc.). */
-export function CardFigureNote({ value, className }: { value: ReactNode; className?: string }) {
+/** Small mono figure note (cost line under elapsed, etc.). Pass
+ * `tone="warning"` for the near-cap cost tint (mock runs/operations). */
+export function CardFigureNote({
+	value,
+	tone = "default",
+	className,
+}: {
+	value: ReactNode;
+	tone?: "default" | "warning";
+	className?: string;
+}) {
 	return (
-		<span className={cn("font-mono text-[9px] leading-[11px] text-(--color-text-3)", className)}>
+		<span
+			className={cn(
+				"font-mono text-[9px] leading-[11px]",
+				tone === "warning" ? "text-(--color-warning)" : "text-(--color-text-3)",
+				className,
+			)}
+		>
 			{value}
 		</span>
 	);
