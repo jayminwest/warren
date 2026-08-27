@@ -22,6 +22,7 @@ import { Command, CommanderError } from "commander";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
+import { sandboxGitPreflightCached } from "../sandbox/git-preflight.ts";
 import { addClientFlags, clientFlags, type RemoteOpts, resolveCommandClient } from "./client.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { registerBootstrapCommands } from "./commands/bootstrap.ts";
@@ -35,6 +36,7 @@ import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
 import { runProjects } from "./commands/projects.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
+import { registerUpCommand } from "./commands/up.ts";
 import { withCliDb } from "./context.ts";
 import {
 	parseIssueList,
@@ -68,9 +70,8 @@ export function buildProgram(baseContext: CliContext): Command {
 		)
 		.addHelpText("after", `\nExit codes:\n${formatExitCodeTable()}\n`)
 		.exitOverride((err) => {
-			// Let commander handle --help / --version exits, but never let it
-			// kill the process from inside a test harness. Re-throwing here
-			// surfaces the error to the caller.
+			// Let commander handle --help / --version exits, but never kill the
+			// process from inside a test harness — re-throw instead.
 			throw err;
 		});
 
@@ -86,11 +87,10 @@ export function buildProgram(baseContext: CliContext): Command {
 		}
 	});
 
-	// Thread the resolved global --output through the CliContext every
-	// command receives (warren-b61e). Read lazily: commander populates
-	// program.opts() at parse time, after buildProgram returns. The `plan`
-	// group keeps its own per-command --output (ndjson|pretty), which
-	// shadows the global for those subcommands (backward compat).
+	// Thread the resolved global --output through the CliContext (warren-b61e).
+	// Read lazily: commander populates program.opts() at parse time, after
+	// buildProgram returns. The `plan` group's per-command --output shadows
+	// the global (backward compat).
 	const context: CliContext = {
 		...baseContext,
 		get output(): OutputMode | undefined {
@@ -256,7 +256,13 @@ export function buildProgram(baseContext: CliContext): Command {
 				}));
 				const result = await runDoctor(
 					context,
-					{ projects, db },
+					{
+						projects,
+						db,
+						// warren-1219: the real (boot-cached) sandbox git preflight —
+						// `warren doctor --local` is the operator's named surface for it.
+						probeSandboxGit: () => sandboxGitPreflightCached(),
+					},
 					{ noAuth: opts.auth === false, verbose: opts.verbose === true },
 				);
 				return result.exitCode;
@@ -457,9 +463,8 @@ export function buildProgram(baseContext: CliContext): Command {
 	// Agent-facing run read/control commands (warren-b048).
 	registerRunCommands(program, context);
 
-	// Session bootstrap pair (warren-fc12, pl-882c step 11): `login` stores
-	// base URL + token in the client config (D5); `prime` emits the agent
-	// session context derived from this very program definition.
+	// Session bootstrap pair (warren-fc12, pl-882c step 11): `login` persists
+	// base URL + token; `prime` emits the session context.
 	registerBootstrapCommands(program, context);
 
 	program
@@ -471,6 +476,8 @@ export function buildProgram(baseContext: CliContext): Command {
 			process.exit(result.exitCode);
 		});
 
+	// Casual-user boot (warren-c18a): autodetect + serve + auto-login.
+	registerUpCommand(program, context);
 	return program;
 }
 

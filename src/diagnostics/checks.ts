@@ -102,5 +102,5 @@ export {
 	type PreviewLiveCountProbe,
 	type PreviewPortUsageProbe,
 } from "./checks-preview.ts";
-export { BWRAP_PROBE_TIMEOUT_MS, checkBwrap } from "./checks-sandbox.ts";
+export { BWRAP_PROBE_TIMEOUT_MS, checkBwrap, checkSandboxGit } from "./checks-sandbox.ts";
 export { classifyDbFailure, type DbFailureReason, dbFailureMessage } from "./redact.ts";

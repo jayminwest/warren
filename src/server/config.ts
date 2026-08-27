@@ -16,7 +16,9 @@
  *   WARREN_DATA_DIR          data root — defaults to /data
  *   WARREN_DB_URL            dialect-aware database URL (sqlite:/// or postgres://)
  *   WARREN_DB_PATH           legacy SQLite path; back-compat alias for WARREN_DB_URL
- *   WARREN_UI_DIST_DIR       UI dist dir — defaults to <repo>/src/ui/dist
+ *   WARREN_UI_DIST_DIR       UI dist dir — defaults to <repo>/src/ui/dist,
+ *                            or the packaged src/ui/dist next to this module
+ *                            in an npm install (warren-402e)
  *   WARREN_DISABLE_UI        1/true/yes/on (case-insensitive) to disable static UI serving entirely
  *
  * `dbUrl` precedence (R-13 pl-f17e step 5, warren-e2ea): WARREN_DB_URL
@@ -29,6 +31,7 @@
  * env-readers — this loader only handles server-process concerns.
  */
 
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ValidationError } from "../core/errors.ts";
 import { sqliteUrlForPath } from "../db/url.ts";
@@ -127,5 +130,15 @@ function resolveUiDistDir(env: EnvLike, fallback: string | undefined): string | 
 	const explicit = env.WARREN_UI_DIST_DIR;
 	if (parseTrueEnv(env.WARREN_DISABLE_UI)) return null;
 	if (explicit !== undefined && explicit !== "") return explicit;
-	return fallback ?? join(process.cwd(), "src", "ui", "dist");
+	if (fallback !== undefined) return fallback;
+	// Default resolution (warren-402e): first candidate that exists wins.
+	// <cwd>/src/ui/dist covers the repo checkout and the container image
+	// (cwd=/app). The module-relative candidate covers an npm-installed
+	// package, where src/ui/dist ships inside the tarball next to this
+	// file and cwd is the operator's shell, not the repo.
+	const candidates = [
+		join(process.cwd(), "src", "ui", "dist"),
+		join(import.meta.dir, "..", "ui", "dist"),
+	];
+	return candidates.find((dir) => existsSync(dir)) ?? candidates[0] ?? null;
 }

@@ -178,7 +178,8 @@ function handleCloseBrace(
 function parseEntry(text: string): { method: string; pattern: string; handler: string } | null {
 	const methodMatch = text.match(/method:\s*"([A-Z]+)"/);
 	const patternMatch = text.match(/pattern:\s*"([^"]+)"/);
-	const buildMatch = text.match(/build:\s*(?:\(\)\s*=>\s*)?([A-Za-z_][A-Za-z0-9_]*)/);
+	// `build:` may be `() =>`, `(deps) =>`, or a bare identifier reference.
+	const buildMatch = text.match(/build:\s*(?:\(\s*\w*\s*\)\s*=>\s*)?([A-Za-z_][A-Za-z0-9_]*)/);
 	if (!methodMatch || !patternMatch || !buildMatch) return null;
 	const method = methodMatch[1];
 	const pattern = patternMatch[1];

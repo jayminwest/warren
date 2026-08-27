@@ -85,7 +85,8 @@ not a bill. A run whose anthropic credential is `CLAUDE_CODE_OAUTH_TOKEN`
 dispatch, and the UI renders its cost as an estimate; the cap is unchanged.
 `runBranchPrefix` (warren-9993) overrides the prefix warren composes the
 burrow branch from (`${prefix}/${run.id}`); precedence project default >
-`WARREN_RUN_BRANCH_PREFIX` env > built-in `"burrow"`. `agentImage`
+`WARREN_RUN_BRANCH_PREFIX` env > built-in `"warren"` (warren-2de0; the
+legacy default was `"burrow"`). `agentImage`
 (warren-fabb) pins the agent image for the container runtimes — a Python
 mirror runs its agent in a stack-specific image without redeploying warren.
 Precedence: project `agentImage` > `WARREN_DOCKER_AGENT_IMAGE` /

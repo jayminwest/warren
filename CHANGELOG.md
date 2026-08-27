@@ -10,6 +10,14 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+### Changed
+
+- The built-in default run-branch prefix is now `warren/` instead of the
+  legacy `burrow/` (warren-2de0). Fresh installs mint
+  `warren/run_xxxxxxxxxxxx` branches; deployments that configured
+  `runBranchPrefix` (project config or `WARREN_RUN_BRANCH_PREFIX`) are
+  unaffected. Roll back with `WARREN_RUN_BRANCH_PREFIX=burrow`.
+
 ## [0.18.0] — 2026-08-20
 
 The any-setup release. Warren's issue queue is now a real provider seam:

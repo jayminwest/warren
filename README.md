@@ -86,6 +86,18 @@ See [Security](SECURITY.md) for the full threat model and [Roadmap](ROADMAP.md) 
 
 ## Quickstart
 
+### CLI-only install
+
+On macOS or Linux, the one-liner installs Bun if needed and the `warren` CLI globally (no sudo, user-local paths):
+
+```bash
+curl -fsSL https://warren.run/install | sh
+```
+
+That lands `warren` on your PATH and prints the next step, `warren up`. To pin a version or install a local build, see the env knobs (`WARREN_INSTALL_VERSION`, `WARREN_INSTALL_TARBALL`) documented at the top of [`scripts/install.sh`](scripts/install.sh). The script itself lives in this repo. The warren.run serving side lives in the warren-site repo.
+
+### Full deployment via Compose
+
 The shortest complete path uses the shipped Compose file and the `local` runtime on a Linux Docker host. Compose includes the security flags that nested `bwrap` needs.
 
 ```bash

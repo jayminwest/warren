@@ -16,7 +16,6 @@ import { isTerminalRunState } from "../../core/wire.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
-import { resolveForge } from "../../forge/registry.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
@@ -52,6 +51,7 @@ import { seedAgentsAtBoot } from "./agent-seeding.ts";
 import { bindReapWithBootDeps, bootBridgesAndProviderRetry } from "./bridges-wiring.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
+import { bootGitHubAppActivation } from "./github-app-activation-wiring.ts";
 import { makePodWarningRunEventSink } from "./k8s-pod-warning-sink.ts";
 import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
 import {
@@ -84,15 +84,17 @@ export interface BootServerOptions {
 
 export interface WarrenServerHandle extends ServeHandle {
 	stop(): Promise<void>;
+	/** Token from the mint-or-persist path (not env); `warren up` writes the client config. */
+	readonly operatorToken?: string;
 }
 
 export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenServerHandle> {
 	const env = opts.env ?? process.env;
 	const { logger, metricsRegistry } = await bootObservability(env);
 
-	// warren-ef6e fresh-install token bootstrap: with no WARREN_API_TOKEN (and
-	// no --no-auth), mint-or-reuse the persisted operator token from the data
-	// dir. process.env is patched because dispatch-time run-token seams fall
+	// warren-ef6e fresh-install token bootstrap: with no WARREN_API_TOKEN
+	// (and no --no-auth), mint-or-reuse the persisted operator token.
+	// process.env is patched because dispatch-time run-token seams fall
 	// through to `process.env` for the mint secret.
 	const tokenBoot =
 		opts.noAuth === true
@@ -106,8 +108,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		process.env.WARREN_API_TOKEN = tokenBoot.token;
 		if (tokenBoot.source === "minted") {
 			// The field name is deliberately NOT `token`: LOG_REDACT_OPTIONS censors
-			// that name (warren-b2dd). This one line prints the minted credential
-			// exactly once (warren-ef6e) — the intentional exception.
+			// that name (warren-b2dd); this prints the credential exactly once (warren-ef6e).
 			logger.info(
 				{ mintedOperatorToken: tokenBoot.token, path: tokenBoot.path },
 				"WARREN_API_TOKEN unset — minted an operator token (printed exactly once; persisted under the data dir)",
@@ -147,10 +148,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 	const repos = createRepos(db);
 
-	// warren-ce9b: hold every ALREADY-registered project to the allowlist too —
-	// a violation refuses the boot (naming every offender).
+	// warren-ce9b: registered projects must satisfy the allowlist or boot refuses.
 	assertRegisteredProjectsAllowlisted(publicAllowlist, await listProjects(repos.projects));
-
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
 	// warren-f796: the LocalBootBackend owns the local-topology seams; warren-9a26
@@ -178,16 +177,16 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
-	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
-	const forge = resolveForge({}, env);
+	// warren-6c4c: resolve the forge ONCE; warren-b504: opt-in store wraps it in a HotForge.
+	const appCredBoot = { env, dataDir: serverConfig.dataDir, logger };
+	const { forge, activation: gitHubAppActivation } = bootGitHubAppActivation(appCredBoot);
 	const gitHubAppRegistration = bootGitHubAppRegistrationGate(env, logger);
-
 	const warrenConfigs = createWarrenConfigCache();
 	const runBranchPrefixDefault = loadRunBranchPrefixFromEnv(env);
 	const previewPortRange = loadPreviewPortRangeFromEnv(env);
 	// Dialect-polymorphic allocator (warren-adfb): sqlite uses BEGIN/COMMIT
-	// + per-instance mutex; postgres adds `pg_advisory_xact_lock` for cross-
-	// process serialization. Constructed unconditionally for both dialects.
+	// + mutex; postgres adds `pg_advisory_xact_lock` for cross-process
+	// serialization. Constructed unconditionally for both dialects.
 	const adapter = DrizzleAdapter.for(db);
 	const portAllocator = new PreviewPortAllocator(adapter, previewPortRange);
 	const previewLaunchConfig = loadPreviewLaunchConfigFromEnv(env);
@@ -245,8 +244,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// warren-cd3b: the salvage bundle capture lands beside the salvage intake dir.
 	// warren-45e6: the boot-resolved forge drives reap's PR sub-steps.
 	const salvageDir = join(serverConfig.dataDir, "salvage");
-	// warren-4af7: infra-lost auto-retry (src/runs/retry/infra-lost-retry.ts) —
-	// see retry-wiring.ts.
+	// warren-4af7: infra-lost auto-retry — see retry-wiring.ts.
 	const { onInfraLostRun, onRegistryCreated } = wireInfraLostRetry({
 		repos,
 		runtimeProvider,
@@ -394,6 +392,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
+		...(gitHubAppActivation !== undefined ? { gitHubAppActivation } : {}),
 		broker,
 		// warren-f566: the global lifecycle stream broker the bus wiring owns.
 		lifecycleStream: lifecycleBusHandle.lifecycleStream,
@@ -458,6 +457,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	return {
 		transport: handle.transport,
 		url: handle.url,
+		...(tokenBoot !== null && tokenBoot.source !== "env" ? { operatorToken: tokenBoot.token } : {}),
 		stop: async () => {
 			logger.info({}, "warren server stopping");
 			// Stop the HTTP listener first, then drain the scheduler so any in-flight

@@ -197,8 +197,8 @@ export interface SpawnRunInput {
 	 * Deployment-wide run-branch prefix fallback (warren-9993), resolved
 	 * from `WARREN_RUN_BRANCH_PREFIX` by the caller. Project-default
 	 * (`.warren/defaults.json.runBranchPrefix`) wins over this when both
-	 * are set; if neither is set, spawnRun falls back to "burrow" so
-	 * existing deployments are unchanged.
+	 * are set; if neither is set, spawnRun falls back to the built-in default
+	 * ("warren").
 	 */
 	readonly runBranchPrefixDefault?: string;
 	/**

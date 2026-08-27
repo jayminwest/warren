@@ -57,6 +57,8 @@ export interface BuildServerDepsInput {
 	 * composition-point posture as `forge` above.
 	 */
 	readonly gitHubAppRegistration: import("../github-app-gate.ts").GitHubAppRegistrationGate;
+	/** warren-b504: opt-in App credential store + hot forge seam; absent when not armed. */
+	readonly gitHubAppActivation?: import("../../forge/hot-forge.ts").GitHubAppActivation;
 	/**
 	 * Provider-neutral preview sidecar resolver (warren-e24d), gated on the
 	 * runtime's preview-port capability at boot. Threaded onto `ServerDeps` for
@@ -133,6 +135,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
+		gitHubAppActivation,
 		broker,
 		lifecycleStream,
 		bridges,
@@ -183,6 +186,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
+		gitHubAppActivation,
 		salvageDir,
 		broker,
 		lifecycleStream,

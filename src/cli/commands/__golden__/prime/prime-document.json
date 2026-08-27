@@ -403,6 +403,16 @@
           "description": "boot without bearer-token auth (loopback only)"
         }
       ]
+    },
+    {
+      "name": "up",
+      "description": "boot warren for a fresh machine: detect the runtime, default the data dir, serve, and log the operator in",
+      "options": [
+        {
+          "flags": "--no-open",
+          "description": "do not open the UI in a browser (reserved; warren-48f8)"
+        }
+      ]
     }
   ],
   "env": [

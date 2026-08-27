@@ -192,6 +192,17 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # Build the UI into src/ui/dist before publishing (warren-402e, plan
+      # pl-26f3): the npm package ships the built UI so `npm i -g
+      # @os-eco/warren-cli && warren serve` serves the web app, not just
+      # the JSON API. check:package-ui then packs the tarball and fails
+      # hard unless dist/index.html and its assets ride inside — so a
+      # hard unless dist/index.html and its assets ride inside — so a
+      # publish that somehow skipped the build cannot ship. build:ui
+      # installs the UI workspace with --frozen-lockfile itself.
+      - run: bun run build:ui
+      - run: bun run check:package-ui
+
       - name: Publish to npm (idempotent)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -24,7 +24,7 @@
  *      with WARREN_RUNTIME=local.
  *   2. A committing run (prompt carries `closeseed ah-stub-1`, so the
  *      shim commits) reaches terminal `succeeded` and reap PUSHES the
- *      workspace branch: refs/heads/burrow/<runId> resolves in the
+ *      workspace branch: refs/heads/warren/<runId> resolves in the
  *      fixture repo.
  *   3. FALSIFICATION (warren-c865): a run whose agent makes NO commit
  *      reaches terminal `succeeded` with failureReason null — NOT failed
@@ -136,7 +136,7 @@ export const scenario: Scenario = {
 			);
 			assertEqual(commitTerminal.failureReason, null, "committing run carries no failureReason");
 
-			const runBranch = `burrow/${committed.run.id}`;
+			const runBranch = `warren/${committed.run.id}`;
 			const branchSha = execFileSync(
 				"git",
 				["-C", ctx.fixtures.sampleProjectPath, "rev-parse", `refs/heads/${runBranch}`],

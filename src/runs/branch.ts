@@ -13,7 +13,7 @@
  *   - `prefix` resolves with the precedence
  *       project default (`.warren/defaults.json.runBranchPrefix`)
  *         > WARREN_RUN_BRANCH_PREFIX env
- *         > built-in DEFAULT_RUN_BRANCH_PREFIX ("burrow")
+ *         > built-in DEFAULT_RUN_BRANCH_PREFIX ("warren")
  *     so existing deployments are unchanged by default and operators can
  *     opt in to a friendlier prefix per deployment or per project.
  *
@@ -23,7 +23,7 @@
  * project-config parse time, where the operator can act on them.
  */
 
-export const DEFAULT_RUN_BRANCH_PREFIX = "burrow";
+export const DEFAULT_RUN_BRANCH_PREFIX = "warren";
 
 const PREFIX_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 

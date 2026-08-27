@@ -34,6 +34,7 @@ describe("buildProgram", () => {
 			"serve",
 			"show",
 			"tail",
+			"up",
 			"wait",
 		]);
 	});

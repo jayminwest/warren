@@ -25,9 +25,13 @@
  *      the operator to copy into their secret store.
  *   4. Installing the App redirects to the manifest's `setup_url` (`/github-app/installed`) with the installation id (warren-54c7).
  *
- * Nothing here persists: the converted credentials exist only in the rendered
- * callback page, and the pending `state` nonces live in process memory with a
- * ten-minute TTL — a restart mid-flow just means starting over.
+ * Nothing here persists BY DEFAULT: the converted credentials exist only in
+ * the rendered callback page, and the pending `state` nonces live in process
+ * memory with a ten-minute TTL — a restart mid-flow just means starting over.
+ * The warren-b504 opt-in credential store (WARREN_APP_CRED_STORE=data-dir,
+ * ./credential-store.ts) is the one exception: on an armed deployment the
+ * callback persists the App half and the install return route completes and
+ * activates the forge in-process.
  *
  * This module is the domain half; the HTTP surface lives in
  * `src/server/handlers/github-app.ts` (seam stays forge-inward, warren-89a6).
@@ -319,6 +323,12 @@ export function renderRegistrationPage(input: {
 	readonly manifest: GitHubAppManifest;
 	readonly createUrl: string;
 	readonly state: string;
+	/**
+	 * warren-b504: true when the opt-in credential store is armed — the
+	 * footer then tells the truth about persistence. Default false keeps
+	 * the page byte-identical to the historical no-promise.
+	 */
+	readonly storesCredential?: boolean;
 }): string {
 	const manifestJson = escapeHtml(JSON.stringify(input.manifest));
 	const actionUrl = `${input.createUrl}?state=${encodeURIComponent(input.state)}`;
@@ -341,8 +351,11 @@ pre-filled confirmation page for this exact manifest. If GitHub instead
 shows the full &ldquo;Register new GitHub App&rdquo; form asking you to pick
 permissions by hand, <strong>back out and restart here</strong> — filling
 that form in manually creates an App that never redirects back to warren.</p>
-<p class="note">GitHub returns you here with a single-use code; warren converts
-it into the App credentials and shows them to you once. Nothing is stored.</p>`;
+<p class="note">${
+		input.storesCredential === true
+			? "GitHub returns you here with a single-use code. warren stores the App credential under its data dir (mode 0600) and activates the App forge once you install the App."
+			: "GitHub returns you here with a single-use code; warren converts it into the App credentials and shows them to you once. Nothing is stored."
+	}</p>`;
 	return page("Register a GitHub App", body);
 }
 

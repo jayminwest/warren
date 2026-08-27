@@ -180,6 +180,12 @@ export interface ServerDeps {
 	 * always-on behavior; `bootServer` always wires the resolved verdict.
 	 */
 	readonly gitHubAppRegistration?: import("./github-app-gate.ts").GitHubAppRegistrationGate;
+	/**
+	 * Opt-in GitHub App credential store + hot forge activation seam
+	 * (warren-b504, `WARREN_APP_CRED_STORE=data-dir`). Absent (the
+	 * default) keeps the historical render-once registration flow.
+	 */
+	readonly gitHubAppActivation?: import("../forge/hot-forge.ts").GitHubAppActivation;
 	/** K8s-topology `/readyz` sync seam (warren-39e1), boot-wired from the started
 	 * pod-watcher under `WARREN_RUNTIME=k8s`; absent under `local`. */
 	readonly k8sPodSync?: import("../runtime/k8s/pod-watcher.ts").PodSyncSource;
@@ -268,7 +274,7 @@ export interface ServerDeps {
 	 * Deployment-wide run-branch prefix fallback (warren-9993). Resolved
 	 * from `WARREN_RUN_BRANCH_PREFIX` at boot and threaded into every
 	 * `spawnRun` call so a per-project default in `.warren/defaults.json`
-	 * still wins. Unset → spawnRun falls back to "burrow".
+	 * still wins. Unset → spawnRun falls back to the built-in default ("warren").
 	 */
 	readonly runBranchPrefixDefault?: string;
 	/**

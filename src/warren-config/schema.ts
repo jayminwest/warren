@@ -30,7 +30,7 @@
  * project default > agent frontmatter. `runBranchPrefix` (warren-9993)
  * overrides the prefix warren uses when composing the burrow branch as
  * `${prefix}/${run.id}`; precedence is project default >
- * WARREN_RUN_BRANCH_PREFIX env > built-in "burrow". CLI `warren run`
+ * WARREN_RUN_BRANCH_PREFIX env > built-in "warren". CLI `warren run`
  * consumption of `defaultRole`, scheduled-run prompt fallback for
  * `defaultPrompt`, and any template substitution are deferred to R-04 / R-06.
  *
@@ -365,7 +365,8 @@ export const DefaultsConfigSchema = z
 		defaultProvider: z.string().min(1, "defaultProvider must be non-empty if provided").optional(),
 		defaultModel: z.string().min(1, "defaultModel must be non-empty if provided").optional(),
 		// warren-9993: run branch prefix; spawnRun composes `${prefix}/${run.id}`.
-		// Precedence: project default > WARREN_RUN_BRANCH_PREFIX env > "burrow".
+		// Precedence: project default > WARREN_RUN_BRANCH_PREFIX env > built-in
+		// default ("warren"; warren-2de0 flipped the legacy "burrow" default).
 		runBranchPrefix: RunBranchPrefixSchema.optional(),
 		// warren-fabb: per-project agent image override for the container
 		// runtimes (docker + k8s). Precedence: project override >

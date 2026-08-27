@@ -235,9 +235,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-      description: >-
-        warren-54c7: the manifest setup_url target — GitHub's post-install redirect lands here
-        carrying the installation id.
+      description: 'warren-54c7: the manifest setup_url target — GitHub''s post-install redirect.'
   /github-app/register:
     get:
       operationId: registerGitHubAppHandler

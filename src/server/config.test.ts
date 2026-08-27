@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { ValidationError } from "../core/errors.ts";
 import {
 	DEFAULT_BIND_HOST,
@@ -108,6 +109,23 @@ describe("loadServerConfigFromEnv", () => {
 			env: { WARREN_API_TOKEN: "x", WARREN_UI_DIST_DIR: "/app/ui" },
 		});
 		expect(config.uiDistDir).toBe("/app/ui");
+	});
+
+	test("default ui dist dir resolves to a src/ui/dist candidate (warren-402e)", () => {
+		const config = loadServerConfigFromEnv({ env: { WARREN_API_TOKEN: "x" } });
+		// With neither env nor fallback set, the default is one of the two
+		// candidates: <cwd>/src/ui/dist (repo checkout / container) or the
+		// module-relative src/ui/dist (npm-installed package layout).
+		expect(config.uiDistDir).not.toBeNull();
+		expect(config.uiDistDir?.endsWith(join("src", "ui", "dist"))).toBe(true);
+	});
+
+	test("defaultUiDistDir fallback wins over scanned candidates", () => {
+		const config = loadServerConfigFromEnv({
+			env: { WARREN_API_TOKEN: "x" },
+			defaultUiDistDir: "/opt/warren-ui",
+		});
+		expect(config.uiDistDir).toBe("/opt/warren-ui");
 	});
 
 	test("noAuth=true returns token=null without checking env", () => {
