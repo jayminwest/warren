@@ -26,6 +26,15 @@ export {
 } from "./admission.ts";
 export * from "./admission-errors.ts";
 export {
+	AMENDMENT_SCHEMA_VERSION,
+	type AmendmentApplyResult,
+	type AmendmentApproval,
+	applyAmendment,
+	type CampaignAmendment,
+	type ValidatedCampaignAmendment,
+	validateCampaignAmendment,
+} from "./amendment.ts";
+export {
 	CliError,
 	EXIT_CONFIG_INVALID,
 	EXIT_INPUT_INVALID,
@@ -245,6 +254,7 @@ export {
 	type ActionErrorClass,
 	type ActionRow,
 	type ActionState,
+	type AmendmentRow,
 	type AttentionItemRow,
 	type CampaignRow,
 	type CampaignStatus,

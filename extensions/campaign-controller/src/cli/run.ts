@@ -5,6 +5,9 @@
  *
  * - `manifest validate` / `manifest import` — validate or durably import an
  *   immutable campaign manifest plus repository-policy snapshot.
+ * - `amendment validate` / `amendment apply` — validate or apply a digest-bound
+ *   manifest amendment in place (warren-35c4): same campaign row, version
+ *   incremented, no superseded attention noise.
  * - `approve` — the explicit human act binding a manifest digest.
  * - `tick` — one deterministic, bounded, restart-safe dry-run tick.
  * - `status` — campaign / work-item state, budget, PR identities.
@@ -21,6 +24,7 @@ import type { Clock, IdGenerator } from "../clock.ts";
 import { SystemClock, UuidIdGenerator } from "../clock.ts";
 import type { FetchLike as GithubFetchLike } from "../github/http-transport.ts";
 import type { FetchLike } from "../warren-client.ts";
+import { runAmendmentApply, runAmendmentValidate } from "./commands/amendment.ts";
 import { runManifestImport, runManifestValidate } from "./commands/manifest.ts";
 import {
 	runApprove,
@@ -45,6 +49,8 @@ const USAGE = `usage: warren-campaign <command> [flags]
 commands:
   manifest validate [--manifest <p>] [--policy <p>]   validate a campaign manifest (+ policy)
   manifest import --manifest <p> --policy <p>         import the immutable campaign
+  amendment validate --amendment <p>                  validate a manifest amendment
+  amendment apply --amendment <p>                     apply an approved amendment in place
   approve --campaign <id> --digest <sha256> --by <n>  approve a manifest digest
   tick --campaign <id> [--dry-run]                    one dry-run reconciliation tick
   status [--campaign <id>] [--work-item <id>]         campaign / work-item status
@@ -78,6 +84,8 @@ interface ParsedCommand {
 const COMMAND_FLAG_SPECS: Readonly<Record<string, readonly string[]>> = {
 	"manifest validate": ["manifest", "policy"],
 	"manifest import": ["manifest", "policy"],
+	"amendment validate": ["amendment"],
+	"amendment apply": ["amendment"],
 	approve: ["campaign", "digest", "by"],
 	tick: ["campaign", "dry-run"],
 	status: ["campaign", "work-item"],
@@ -135,6 +143,10 @@ async function dispatch(
 			return runManifestValidate(config, { clock: deps.clock });
 		case "manifest import":
 			return runManifestImport(config, { clock: deps.clock, ids: deps.ids });
+		case "amendment validate":
+			return runAmendmentValidate(config, { clock: deps.clock, ids: deps.ids });
+		case "amendment apply":
+			return runAmendmentApply(config, { clock: deps.clock, ids: deps.ids });
 		case "approve":
 			return runApprove(config, deps, command.flags);
 		case "tick":
@@ -179,7 +191,7 @@ function resolveCommandName(words: readonly string[]): string | null {
 	if (words.length === 0) {
 		return null;
 	}
-	if (words[0] === "manifest" || words[0] === "attention") {
+	if (words[0] === "manifest" || words[0] === "attention" || words[0] === "amendment") {
 		if (words.length < 2) {
 			throw new CliError(`the '${words[0]}' command needs a subcommand (see usage)\n${USAGE}`);
 		}
