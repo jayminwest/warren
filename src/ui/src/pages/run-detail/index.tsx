@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { projectsApi, runsApi } from "@/api/client.ts";
 import type { RunEvent, RunRow } from "@/api/types.ts";
 import { isTerminalRunState } from "@/api/types.ts";
@@ -25,7 +25,7 @@ import {
 } from "@/pages/run-detail/side-panels.tsx";
 import { CancelRunButton, SteerForm } from "@/pages/run-detail/steering-panel.tsx";
 import { extractReapSummary, isBridgeStalled } from "@/pages/run-detail-format.ts";
-import { projectLabel } from "@/pages/runs/runs-format.ts";
+import { formatDuration, projectLabel } from "@/pages/runs/runs-format.ts";
 
 /**
  * Run detail — the Direction C workload inspector (warren-8c85 /
@@ -126,7 +126,7 @@ function DispatchFromRunButtons({ run }: { run: RunRow }) {
 	const btn =
 		"inline-flex h-[31px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-text) hover:bg-(--color-surface-hover)";
 	return (
-		<div className="flex gap-[7px]">
+		<div className="flex flex-wrap gap-[7px]">
 			<button
 				type="button"
 				className={btn}
@@ -234,33 +234,92 @@ function RunHeader({
 	onCancelSettled: () => void;
 }) {
 	return (
-		<header className="flex shrink-0 flex-wrap items-center gap-2.5">
-			<h1 className="font-mono text-[16px] leading-5 font-medium tracking-[-0.02em] text-(--color-text)">
-				{run.id}
-			</h1>
-			<span className="flex items-center gap-[7px]">
-				<span className={cn("h-1.5 w-1.5 rounded-full", stateDotClass(run.state))} aria-hidden />
-				<span className={cn("font-mono text-[10px] leading-3", stateColor(run.state))}>
-					{run.state}
+		<>
+			{/*
+			 * Mobile header (warren-ecd8): "← Runs" back affordance instead of
+			 * the RUNS / <ID> breadcrumb, an id + bordered state pill +
+			 * Cancel-as-text row, and a one-line agent · project · seed ·
+			 * elapsed subline — per mock mobile/run-detail.jsx:57-79. The
+			 * dispatch-from-run buttons wrap below md (~340px pair in a
+			 * ~347px row); md+ keeps the desktop breadcrumb header verbatim.
+			 */}
+			<header className="flex shrink-0 flex-col gap-1.5 md:hidden">
+				<nav className="shrink-0 font-mono text-[11px] leading-[14px] font-medium text-(--color-text-3)">
+					<Link to="/runs" className="hover:text-(--color-text)">
+						← Runs
+					</Link>
+				</nav>
+				<div className="flex items-center gap-2">
+					<h1 className="font-mono text-[14px] leading-[18px] font-semibold tracking-[-0.02em] text-(--color-text)">
+						{run.id}
+					</h1>
+					<span className="flex shrink-0 items-center gap-[5px] rounded-(--radius-sm) border border-(--color-border-strong) px-[7px] py-[3px]">
+						<span
+							className={cn("h-[5px] w-[5px] rounded-full", stateDotClass(run.state))}
+							aria-hidden
+						/>
+						<span className={cn("font-mono text-[9px] leading-[11px]", stateColor(run.state))}>
+							{run.state}
+						</span>
+					</span>
+					<span className="flex-1" />
+					<OperatorOnly>
+						{!isTerminal ? (
+							<CancelRunButton
+								runId={run.id}
+								disabled={isTerminal}
+								onSettled={onCancelSettled}
+								mobile
+							/>
+						) : null}
+					</OperatorOnly>
+				</div>
+				<p className="line-clamp-1 font-mono text-[10px] leading-[12px] text-(--color-text-3)">
+					{[
+						run.agentName,
+						projectName,
+						run.seedId !== null ? `seed ${run.seedId}` : null,
+						formatDuration(run, Date.now()),
+					]
+						.filter(Boolean)
+						.join(" · ")}
+				</p>
+				<div className="flex flex-wrap items-center gap-2">
+					{run.state === "failed" && run.failureReason !== null ? (
+						<RunFailureBadge reason={run.failureReason} />
+					) : null}
+					<HeaderBadges run={run} reap={reap} />
+				</div>
+				<OperatorOnly>{isTerminal ? <DispatchFromRunButtons run={run} /> : null}</OperatorOnly>
+			</header>
+			<header className="hidden shrink-0 flex-wrap items-center gap-2.5 md:flex">
+				<h1 className="font-mono text-[16px] leading-5 font-medium tracking-[-0.02em] text-(--color-text)">
+					{run.id}
+				</h1>
+				<span className="flex items-center gap-[7px]">
+					<span className={cn("h-1.5 w-1.5 rounded-full", stateDotClass(run.state))} aria-hidden />
+					<span className={cn("font-mono text-[10px] leading-3", stateColor(run.state))}>
+						{run.state}
+					</span>
 				</span>
-			</span>
-			{run.state === "failed" && run.failureReason !== null ? (
-				<RunFailureBadge reason={run.failureReason} />
-			) : null}
-			<HeaderBadges run={run} reap={reap} />
-			<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
-				{run.agentName} · {projectName}
-				{run.provider !== null ? ` · ${run.provider}` : ""}
-			</span>
-			<span className="flex-1" />
-			<OperatorOnly>
-				{isTerminal ? (
-					<DispatchFromRunButtons run={run} />
-				) : (
-					<CancelRunButton runId={run.id} disabled={isTerminal} onSettled={onCancelSettled} />
-				)}
-			</OperatorOnly>
-		</header>
+				{run.state === "failed" && run.failureReason !== null ? (
+					<RunFailureBadge reason={run.failureReason} />
+				) : null}
+				<HeaderBadges run={run} reap={reap} />
+				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+					{run.agentName} · {projectName}
+					{run.provider !== null ? ` · ${run.provider}` : ""}
+				</span>
+				<span className="flex-1" />
+				<OperatorOnly>
+					{isTerminal ? (
+						<DispatchFromRunButtons run={run} />
+					) : (
+						<CancelRunButton runId={run.id} disabled={isTerminal} onSettled={onCancelSettled} />
+					)}
+				</OperatorOnly>
+			</header>
+		</>
 	);
 }
 
@@ -314,7 +373,7 @@ export function RunDetailPage() {
 
 	return (
 		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6">
-			<nav className="shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<nav className="hidden shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:block">
 				RUNS / {r.id.toUpperCase()}
 			</nav>
 

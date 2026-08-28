@@ -39,7 +39,7 @@ export function SteerForm({ runId, disabled }: { runId: string; disabled: boolea
 					if (body.trim().length === 0) return;
 					steer.mutate();
 				}}
-				className="flex items-end gap-[7px] p-3"
+				className="flex items-end gap-[7px] p-3 max-md:items-center"
 			>
 				<textarea
 					rows={3}
@@ -51,13 +51,18 @@ export function SteerForm({ runId, disabled }: { runId: string; disabled: boolea
 							? "Run is terminal; steering is closed."
 							: "Message the agent at its next turn boundary."
 					}
-					className="min-h-[62px] flex-1 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 py-2 text-[11px] leading-4 text-(--color-text-2) placeholder:text-(--color-text-3)"
+					/*
+					 * Mobile (warren-ecd8): single-line composer below md — a
+					 * one-row input beside the filled Send, per the mock's
+					 * steering-inbox block. md+ keeps the 3-row textarea.
+					 */
+					className="min-h-0 flex-1 resize-none rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 py-2 text-[11px] leading-4 text-(--color-text-2) placeholder:text-(--color-text-3) max-md:h-[36px] max-md:py-0 max-md:leading-[14px]"
 				/>
 				<button
 					type="submit"
 					disabled={disabled || steer.isPending || body.trim().length === 0}
 					className={cn(
-						"inline-flex h-[31px] shrink-0 items-center rounded-(--radius-sm) px-[11px] text-[11px] leading-[14px] font-medium",
+						"inline-flex h-[31px] shrink-0 items-center rounded-(--radius-sm) px-[11px] text-[11px] leading-[14px] font-medium max-md:h-[36px]",
 						disabled || steer.isPending || body.trim().length === 0
 							? "bg-(--color-primary)/40 text-(--color-primary-ink)"
 							: "bg-(--color-primary) text-(--color-primary-ink) hover:opacity-90",
@@ -84,10 +89,13 @@ export function CancelRunButton({
 	runId,
 	disabled,
 	onSettled,
+	mobile,
 }: {
 	runId: string;
 	disabled: boolean;
 	onSettled: () => void;
+	/** Text affordance for the mobile header row (warren-ecd8). */
+	mobile?: boolean;
 }) {
 	const cancel = useMutation({
 		mutationFn: () => runsApi.cancel(runId, {}),
@@ -99,9 +107,13 @@ export function CancelRunButton({
 				type="button"
 				onClick={() => cancel.mutate()}
 				disabled={cancel.isPending || disabled}
-				className="inline-flex h-[31px] items-center gap-1.5 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-danger) hover:bg-(--color-surface-hover) disabled:opacity-50"
+				className={
+					mobile
+						? "font-mono text-[11px] leading-[14px] font-medium text-(--color-danger) disabled:opacity-50"
+						: "inline-flex h-[31px] items-center gap-1.5 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-danger) hover:bg-(--color-surface-hover) disabled:opacity-50"
+				}
 			>
-				■ {cancel.isPending ? "Cancelling…" : "Cancel run"}
+				■ {cancel.isPending ? "Cancelling…" : mobile ? "Cancel" : "Cancel run"}
 			</button>
 			{cancel.isError ? (
 				<p className="font-mono text-[9px] leading-3 text-(--color-danger)">
