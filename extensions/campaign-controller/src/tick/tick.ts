@@ -35,7 +35,7 @@ import { admitWorkItem } from "../admission.ts";
 import { AdmissionRefusal } from "../admission-errors.ts";
 import type { Clock, IdGenerator } from "../clock.ts";
 import { WARREN_DISPATCH_ACTION_TYPE, WarrenDispatcher } from "../dispatch/dispatcher.ts";
-import { CampaignControllerError, StateError } from "../errors.ts";
+import { CampaignControllerError, StateError, ValidationError } from "../errors.ts";
 import type { ReadOnlyGithubClient } from "../github/client.ts";
 import type { GithubPrCreateTransport } from "../github/pr-create.ts";
 import type { GithubIssueSnapshot } from "../github/types.ts";
@@ -51,6 +51,8 @@ import {
 	renderAndJournalPrIntent,
 } from "../pr-intent/intender.ts";
 import { UpstreamPrReconciler } from "../reconcile/reconciler.ts";
+import type { RepositoryPolicy } from "../repository-policy.ts";
+import { composeDispatchPrompt, validateRepositoryPolicy } from "../repository-policy.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
 import type { CampaignRow, CampaignStatus, WorkItemRow } from "../store/types.ts";
 import { runPushedBranch, type WarrenClient } from "../warren-client.ts";
@@ -357,6 +359,27 @@ async function dispatchOutcome(
 			},
 		};
 	}
+	// The policy is re-validated at admission (warren-2a0a); for an item
+	// dispatched in this tick that validation already succeeded with the
+	// same clock, so re-validating here is deterministic and cheap. It is
+	// what lets the guidance render from profile data without new state.
+	let policy: RepositoryPolicy;
+	try {
+		policy = validateRepositoryPolicy(ctx.deps.policy, { nowMs: ctx.nowMs }).policy;
+	} catch (error) {
+		if (error instanceof ValidationError) {
+			return {
+				stage: "dispatch",
+				workItemId: ctx.item.id,
+				status: "refused",
+				detail: {
+					reason: "policy_revalidation_failed",
+					message: error.message,
+				},
+			};
+		}
+		throw error;
+	}
 	const outcome = await ctx.dispatcher.dispatch({
 		campaignId: ctx.campaign.id,
 		workItemId: ctx.item.id,
@@ -364,7 +387,7 @@ async function dispatchOutcome(
 		request: {
 			project: manifest.warren.project,
 			agent: manifest.warren.agent,
-			prompt: manifest.prompt,
+			prompt: composeDispatchPrompt(manifest.prompt, policy),
 			provider: manifest.warren.provider,
 			model: manifest.warren.model,
 			maxCostUsd: manifest.budget.perRunUsd,

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "./errors.ts";
 import { MUTATION_FLAGS, NO_MUTATIONS } from "./mutations.ts";
-import { validateRepositoryPolicy } from "./repository-policy.ts";
+import {
+	composeDispatchPrompt,
+	renderAgentGuidance,
+	validateRepositoryPolicy,
+} from "./repository-policy.ts";
 
 const NOW = Date.parse("2026-08-26T00:00:00.000Z");
 
@@ -18,6 +22,7 @@ function basePolicy(): Record<string, unknown> {
 		stalenessMaxDays: 90,
 		issueFirstRequired: true,
 		aiDisclosure: { required: true, evidenceRequired: true },
+		agentGuidance: { version: 1, norms: ["Produce the smallest possible diff."] },
 		allowedWorkTypes: ["bug-fix", "docs", "test"],
 		forbiddenPaths: [".github/workflows/*", "SECURITY.md"],
 		protectedPaths: ["docs/CONSTITUTION.md"],
@@ -190,5 +195,82 @@ describe("validateRepositoryPolicy", () => {
 		expectInvalid(bad, "upstream");
 		expectInvalid({ ...basePolicy(), schemaVersion: 2 }, "schemaVersion");
 		expectInvalid({ ...basePolicy(), stalenessMaxDays: 0 }, "between 1 and 365");
+	});
+});
+
+describe("agentGuidance block (warren-39b0)", () => {
+	test("a previously-valid policy without the block stays valid", () => {
+		const legacy = basePolicy() as Record<string, unknown>;
+		delete legacy.agentGuidance;
+		const { policy } = validate(legacy);
+		expect(policy.agentGuidance).toBeNull();
+		expect(renderAgentGuidance(policy)).toBeNull();
+		// No guidance means the composed prompt is the base text unchanged.
+		expect(composeDispatchPrompt("base", policy)).toBe("base");
+	});
+
+	test("an explicit null agentGuidance is accepted and renders nothing", () => {
+		const { policy } = validate({ ...basePolicy(), agentGuidance: null });
+		expect(policy.agentGuidance).toBeNull();
+	});
+
+	test("rejects a present-but-malformed guidance block", () => {
+		expectInvalid(
+			{ ...basePolicy(), agentGuidance: { version: 0, norms: ["x"] } },
+			"agentGuidance",
+		);
+		expectInvalid({ ...basePolicy(), agentGuidance: { version: 1, norms: [] } }, "agentGuidance");
+		expectInvalid(
+			{ ...basePolicy(), agentGuidance: { version: 1, norms: ["ok"], extra: true } },
+			"unknown field(s)",
+		);
+		expectInvalid({ ...basePolicy(), agentGuidance: { version: 1, norms: [""] } }, "agentGuidance");
+		expectInvalid(
+			{
+				...basePolicy(),
+				agentGuidance: { version: 1, norms: Array.from({ length: 21 }, (_, i) => `n${i}`) },
+			},
+			"agentGuidance",
+		);
+	});
+
+	test("editing the guidance changes the policy digest, so approval binds the wording", () => {
+		const first = validate(basePolicy());
+		const edited = basePolicy() as { agentGuidance: Record<string, unknown> };
+		edited.agentGuidance = {
+			version: 2,
+			norms: ["Produce the smallest possible diff.", "Cite existing mechanisms."],
+		};
+		const second = validate(edited);
+		expect(second.digest).not.toBe(first.digest);
+		// And the normalized guidance carries the edited content.
+		expect(second.policy.agentGuidance).toEqual({
+			version: 2,
+			norms: ["Produce the smallest possible diff.", "Cite existing mechanisms."],
+		});
+	});
+
+	test("renderAgentGuidance produces a clearly delimited ordered section", () => {
+		const { policy } = validate(basePolicy());
+		const rendered = renderAgentGuidance(policy);
+		expect(rendered).toContain("BEGIN AGENT GUIDANCE");
+		expect(rendered).toContain("agentGuidance v1");
+		expect(rendered).toContain("1. Produce the smallest possible diff.");
+		expect(rendered).toContain("END AGENT GUIDANCE");
+	});
+
+	test("composeDispatchPrompt appends the guidance block for initial and follow-up dispatches", () => {
+		const { policy } = validate(basePolicy());
+		const base = "Fix the assigned issue end to end.";
+		const initial = composeDispatchPrompt(base, policy);
+		const followUp = composeDispatchPrompt("Follow up on review feedback.", policy);
+		for (const prompt of [initial, followUp]) {
+			expect(prompt).toContain("BEGIN AGENT GUIDANCE");
+			expect(prompt).toContain("Produce the smallest possible diff.");
+			expect(prompt).toContain("END AGENT GUIDANCE");
+		}
+		expect(initial.startsWith(base)).toBe(true);
+		expect(followUp.startsWith("Follow up on review feedback.")).toBe(true);
+		expect(initial).not.toBe(followUp);
 	});
 });
