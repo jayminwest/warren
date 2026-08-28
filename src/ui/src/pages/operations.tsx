@@ -102,6 +102,8 @@ export function OperationsPage() {
 					projects={projects.data?.projects}
 					now={now}
 					loading={runs.isLoading}
+					refreshedAt={runs.dataUpdatedAt ? runs.dataUpdatedAt : undefined}
+					total={runs.data?.total}
 				/>
 				<EventsPanel />
 			</div>
