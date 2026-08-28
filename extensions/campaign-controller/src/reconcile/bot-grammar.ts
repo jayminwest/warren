@@ -58,6 +58,25 @@ const GRAMMAR_FIELDS = [
 const FINDING_GROUPS = ["title", "file", "line", "priority"] as const;
 
 /**
+ * Literal suffix GitHub appends to an App's author login: an App named
+ * `clawsweeper` comments as `clawsweeper[bot]`. The classifier compares
+ * whatever the API reports, so the grammar must be able to state it.
+ */
+const APP_BOT_SUFFIX = "[bot]";
+
+/**
+ * A bot login is a plain GitHub login, or an App login with the literal
+ * `[bot]` suffix. In both cases the account name validates with the shared
+ * login grammar; comparison stays exact-match downstream (warren-442e).
+ */
+function isValidBotLogin(login: string): boolean {
+	if (login.endsWith(APP_BOT_SUFFIX)) {
+		return isValidOwner(login.slice(0, -APP_BOT_SUFFIX.length));
+	}
+	return isValidOwner(login);
+}
+
+/**
  * Validate and normalize a bot grammar. Throws `ValidationError` on any
  * violation: unknown keys, oversized values, invalid logins, or a finding
  * pattern that fails to compile or exposes a capture group outside the
@@ -73,9 +92,9 @@ export function validateBotGrammar(input: unknown): ReviewBotGrammar {
 		maxLen: MAX_MARKER_LENGTH,
 	});
 	for (const login of knownBotLogins) {
-		if (!isValidOwner(login)) {
+		if (!isValidBotLogin(login)) {
 			throw new ValidationError(
-				`invalid bot login "${login}" at 'bot grammar.knownBotLogins' — expected a valid GitHub login`,
+				`invalid bot login "${login}" at 'bot grammar.knownBotLogins' — expected a valid GitHub login or App bot login '<owner>[bot]'`,
 			);
 		}
 	}
