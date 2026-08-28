@@ -264,7 +264,8 @@ attention ack --campaign <id> --id <id>             acknowledge an attention ite
 ```
 
 Paths come from flags or `CAMPAIGN_DB_PATH`, `CAMPAIGN_MANIFEST_PATH`,
-`CAMPAIGN_POLICY_PATH`, `CAMPAIGN_SUMMARIES_PATH`, `WARREN_BASE_URL`,
+`CAMPAIGN_POLICY_PATH`, `CAMPAIGN_BOT_GRAMMAR_PATH`, `CAMPAIGN_SUMMARIES_PATH`,
+`WARREN_BASE_URL`,
 `GITHUB_API_BASE`. The Warren credential comes only from
 `WARREN_API_TOKEN` and the optional GitHub credential only from
 `GITHUB_TOKEN`; neither is ever echoed, journaled, or accepted as a flag.

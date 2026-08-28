@@ -65,6 +65,11 @@ request; and write only its own SQLite store.
 - `CAMPAIGN_DB_PATH` — controller SQLite database path.
 - `CAMPAIGN_MANIFEST_PATH` — campaign manifest file.
 - `CAMPAIGN_POLICY_PATH` — repository-policy snapshot file.
+- `CAMPAIGN_BOT_GRAMMAR_PATH` — optional profile review-bot grammar file
+  (e.g. `profiles/openclaw.bot-grammar.json`). When set, the tick's
+  reconciler classifies review-bot output into durable feedback; when
+  absent, classification no-ops. A bad path or invalid grammar aborts the
+  tick at startup.
 - `CAMPAIGN_SUMMARIES_PATH` — operator change summaries (JSON, keyed by
   issue number).
 

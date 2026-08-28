@@ -14,6 +14,7 @@ export const ENV_DB_PATH = "CAMPAIGN_DB_PATH";
 export const ENV_MANIFEST_PATH = "CAMPAIGN_MANIFEST_PATH";
 export const ENV_AMENDMENT_PATH = "CAMPAIGN_AMENDMENT_PATH";
 export const ENV_POLICY_PATH = "CAMPAIGN_POLICY_PATH";
+export const ENV_BOT_GRAMMAR_PATH = "CAMPAIGN_BOT_GRAMMAR_PATH";
 export const ENV_SUMMARIES_PATH = "CAMPAIGN_SUMMARIES_PATH";
 export const ENV_WARREN_BASE_URL = "WARREN_BASE_URL";
 export const ENV_WARREN_API_TOKEN = "WARREN_API_TOKEN";
@@ -24,6 +25,7 @@ export const ENV_GITHUB_API_BASE = "GITHUB_API_BASE";
 export const READ_ENV_NAMES: readonly string[] = [
 	ENV_DB_PATH,
 	ENV_MANIFEST_PATH,
+	ENV_BOT_GRAMMAR_PATH,
 	ENV_POLICY_PATH,
 	ENV_SUMMARIES_PATH,
 	ENV_WARREN_BASE_URL,
@@ -40,6 +42,8 @@ export interface CliConfig {
 	readonly manifestPath: string | null;
 	readonly amendmentPath: string | null;
 	readonly policyPath: string | null;
+	/** Optional review-bot grammar file (warren-8c83); absent = classifier no-ops. */
+	readonly botGrammarPath: string | null;
 	readonly summariesPath: string | null;
 	readonly warrenBaseUrl: string | null;
 	readonly githubBaseUrl: string | null;
@@ -63,6 +67,7 @@ export function resolveConfig(flags: FlagSource, env: EnvSource): CliConfig {
 		manifestPath: pick(flags.manifest, env[ENV_MANIFEST_PATH]),
 		amendmentPath: pick(flags.amendment, env[ENV_AMENDMENT_PATH]),
 		policyPath: pick(flags.policy, env[ENV_POLICY_PATH]),
+		botGrammarPath: pick(flags.grammar, env[ENV_BOT_GRAMMAR_PATH]),
 		summariesPath: pick(flags.summaries, env[ENV_SUMMARIES_PATH]),
 		warrenBaseUrl: pick(flags["warren-url"], env[ENV_WARREN_BASE_URL]),
 		githubBaseUrl: pick(flags["github-url"], env[ENV_GITHUB_API_BASE]),
@@ -91,7 +96,13 @@ function pick(flag: string | true | undefined, envValue: string | undefined): st
 /** Require a path: flag first, then its named env var. */
 export function requirePath(
 	config: CliConfig,
-	key: "manifestPath" | "amendmentPath" | "policyPath" | "summariesPath" | "dbPath",
+	key:
+		| "manifestPath"
+		| "amendmentPath"
+		| "policyPath"
+		| "summariesPath"
+		| "dbPath"
+		| "botGrammarPath",
 	flagName: string,
 	envName: string,
 ): string {

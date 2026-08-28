@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import {
 	type Budgets,
 	diff,
+	isWarrenRunEnv,
 	loadBudgets,
 	type Measurement,
 	measure,
@@ -111,8 +112,9 @@ describe("check-bundle-size", () => {
 			totals: { raw: { js: 999999, css: 999999 }, gzip: { js: 999999, css: 999999 } },
 			largest: { gzip: { js: 999999, css: 999999 } },
 		});
-		// allowRaise=true so the down-only guard does not block this lowering anyway.
-		const res = updateBudgets(measurementOf(1000, 100), path, true);
+		// allowRaise=true so the down-only guard does not block this lowering anyway;
+		// inWarrenRun=false so the warren-6397 lower-refusal does not either.
+		const res = updateBudgets(measurementOf(1000, 100), path, true, false);
 		expect(res.wrote).toBe(true);
 		const written = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown> & Budgets;
 		// js headroom = 800 raw / 400 gzip; css headroom = half (400 / 200).
@@ -131,7 +133,7 @@ describe("check-bundle-size", () => {
 		});
 		// raw js delta = (5000+800) - 1000 = 4800 B, well under the 24576 B cap;
 		// gzip js delta = (500+400) - 100 = 800 B, under the 8192 B cap.
-		const res = updateBudgets(measurementOf(5000, 500), path, false);
+		const res = updateBudgets(measurementOf(5000, 500), path, false, false);
 		expect(res.wrote).toBe(true);
 		expect(res.raised).toEqual([]);
 		expect(res.autoRaised.some((r) => r.startsWith("totals.raw.js"))).toBe(true);
@@ -147,11 +149,46 @@ describe("check-bundle-size", () => {
 		});
 		const before = readFileSync(path, "utf8");
 		// gzip js delta = (100000+400) - 100 ≈ 100300 B, far beyond the 8192 B cap.
-		const res = updateBudgets(measurementOf(200000, 100000), path, false);
+		const res = updateBudgets(measurementOf(200000, 100000), path, false, false);
 		expect(res.wrote).toBe(false);
 		expect(res.raised.some((r) => r.startsWith("totals.gzip.js"))).toBe(true);
 		// File is left untouched when a raise is refused.
 		expect(readFileSync(path, "utf8")).toBe(before);
+	});
+
+	test("updateBudgets refuses a lower inside a warren run and writes nothing (warren-6397)", () => {
+		const path = writeTempBudgets({
+			totals: { raw: { js: 999999, css: 999999 }, gzip: { js: 999999, css: 999999 } },
+			largest: { gzip: { js: 999999, css: 999999 } },
+		});
+		const before = readFileSync(path, "utf8");
+		// Measured + headroom lands far below the current budgets — a lowering.
+		const res = updateBudgets(measurementOf(1000, 100), path, false, true);
+		expect(res.wrote).toBe(false);
+		expect(res.refusedLower.length).toBeGreaterThan(0);
+		expect(res.refusedLower.some((r) => r.startsWith("totals.raw.js"))).toBe(true);
+		expect(res.refusedLower.some((r) => r.includes("largest.gzip.js"))).toBe(true);
+		// File is left untouched when a lowering is refused.
+		expect(readFileSync(path, "utf8")).toBe(before);
+	});
+
+	test("updateBudgets still allows raising within the cap inside a warren run", () => {
+		const path = writeTempBudgets({
+			totals: { raw: { js: 1000, css: 1000 }, gzip: { js: 100, css: 100 } },
+			largest: { gzip: { js: 100, css: 100 } },
+		});
+		const res = updateBudgets(measurementOf(5000, 500), path, false, true);
+		expect(res.wrote).toBe(true);
+		expect(res.refusedLower).toEqual([]);
+		const written = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown> & Budgets;
+		expect(written.totals.raw.js).toBe(5800);
+	});
+
+	test("isWarrenRunEnv detects warren-injected markers and ignores empty values", () => {
+		expect(isWarrenRunEnv({})).toBe(false);
+		expect(isWarrenRunEnv({ WARREN_RUN_ID: "" })).toBe(false);
+		expect(isWarrenRunEnv({ WARREN_API_URL: "http://x" })).toBe(true);
+		expect(isWarrenRunEnv({ WARREN_AGENT_RUNTIME: "pi" })).toBe(true);
 	});
 
 	test("current dist passes the guard when present", () => {

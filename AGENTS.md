@@ -353,11 +353,16 @@ Details on the additional checks:
   Vite's build-log gzip number, which runs about 2KB cooler than this
   guard's Node-zlib measure. Re-baseline with
   `bun run check:bundle-size --update`, which always builds first and
-  writes measured numbers. Lowering always applies. Ordinary growth
-  auto-raises within `AUTO_RAISE_CAP`. A heavy new dep past the cap
-  needs `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1`. On a PR that fails on a
+  writes measured numbers. Ordinary growth auto-raises within
+  `AUTO_RAISE_CAP`. A heavy new dep past the cap needs
+  `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1`. On a PR that fails on a
   within-cap overshoot, the `bundle-size-autoheal` workflow
-  re-baselines and pushes for you.
+  re-baselines and pushes for you. Lowering applies on a laptop or in
+  CI, but `--update` REFUSES to lower budgets when running inside a
+  warren-dispatched run (warren-6397): the agent image's toolchain
+  gzips the build ~1.3-1.5KB cooler than CI, so a pod-written lower
+  budget corrupts the CI-enforced number. Re-baseline lowers from a
+  CI-matching environment instead.
 - **`check:coverage`** (warren-e4b1) — wraps `bun test --coverage` and
   enforces the floors in `scripts/coverage-budgets.json` against the
   "All files" row of Bun's text reporter. CI invokes

@@ -16,6 +16,7 @@ import type { FetchLike as GithubFetchLike } from "../../github/http-transport.t
 import { BunFetchGithubTransport } from "../../github/http-transport.ts";
 import { BunFetchGithubPrCreator } from "../../github/pr-create.ts";
 import { validateRepositoryPolicy } from "../../repository-policy.ts";
+import { validateBotGrammar } from "../../reconcile/bot-grammar.ts";
 import { runTick } from "../../tick/tick.ts";
 import type { FetchLike } from "../../warren-client.ts";
 import { WarrenClient } from "../../warren-client.ts";
@@ -56,6 +57,13 @@ export async function runTickCommand(
 	}
 	const policyPath = requirePath(config, "policyPath", "policy", ENV_POLICY_PATH);
 	const policy = readJsonFile(policyPath, "repository policy");
+	// The bot grammar is optional but fail-loud when configured (warren-8c83):
+	// a bad path or an invalid grammar aborts the tick at startup instead of
+	// silently disabling review-feedback classification.
+	const botGrammar =
+		config.botGrammarPath !== null && config.botGrammarPath.length > 0
+			? validateBotGrammar(readJsonFile(config.botGrammarPath, "bot grammar"))
+			: undefined;
 	const summaries = loadSummaries(config.summariesPath);
 
 	const store = openStore(config, deps.clock, deps.ids);
@@ -82,6 +90,7 @@ export async function runTickCommand(
 				ids: deps.ids,
 				policy,
 				summaries,
+				...(botGrammar !== undefined ? { botGrammar } : {}),
 				...(prCreator !== undefined ? { prCreator } : {}),
 			},
 			campaignId,
