@@ -255,7 +255,7 @@ describe("UpstreamPrReconciler", () => {
 		expect(requested).toHaveLength(1);
 	});
 
-	test("an edit produces a new durable fact and a new attention item", async () => {
+	test("a durable-comment edit updates the durable fact but never a second attention item", async () => {
 		seedQuietUpstream(harness);
 		const path = `/repos/${REPO_FULL}/issues/${PR_NUMBER}/comments`;
 		harness.server.setPaginatedCollection(path, [
@@ -269,8 +269,9 @@ describe("UpstreamPrReconciler", () => {
 		const second = await harness.reconciler.reconcile(harness.target());
 		expect(second.newEvents).toBe(1);
 		expect(eventCount(harness)).toBe(4);
-		const maintainerItems = openReasons(harness);
-		expect(maintainerItems.filter((r) => r === "maintainer_comment")).toHaveLength(2);
+		// The edit is the same subject (warren-b853): one open item only.
+		expect(second.attentionCreated).toBe(0);
+		expect(openReasons(harness).filter((r) => r === "maintainer_comment")).toHaveLength(1);
 	});
 
 	test("a deleted or missing PR raises unresolved ambiguity and skips sub-reads", async () => {
@@ -326,7 +327,7 @@ describe("UpstreamPrReconciler", () => {
 		expect(openReasons(harness)).toEqual(["requested_changes"]);
 	});
 
-	test("check runs map failing, pending, and passing states correctly", async () => {
+	test("a passing run of the same check name suppresses its stale failing item", async () => {
 		seedQuietUpstream(harness);
 		harness.server.setResource(`/repos/${REPO_FULL}/commits/${HEAD_SHA}/check-runs`, {
 			total_count: 3,
@@ -338,11 +339,13 @@ describe("UpstreamPrReconciler", () => {
 		});
 		const result = await harness.reconciler.reconcile(harness.target());
 		expect(result.newEvents).toBe(5); // pr + 3 checks + status
-		const failing = harness.store.events
-			.listOpenAttention(harness.campaignId)
-			.filter((item) => item.reason === "failing_checks");
-		expect(failing).toHaveLength(1);
-		expect(failing[0]?.detailJson).toContain("CR_fail");
+		// The latest "ci" run passed on this PR: no stale failing_checks
+		// attention may accumulate for it (warren-b853).
+		const failing = openReasons(harness).filter((r) => r === "failing_checks");
+		expect(failing).toHaveLength(0);
+		// A re-poll must not re-open it either.
+		const second = await harness.reconciler.reconcile(harness.target());
+		expect(second.attentionCreated).toBe(0);
 	});
 
 	test("a failing combined status raises failing_checks", async () => {

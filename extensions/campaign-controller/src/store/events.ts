@@ -10,6 +10,7 @@
 import { StateError } from "../errors.ts";
 import { nowMs, type StoreContext } from "./context.ts";
 import type {
+	AmendmentRow,
 	AttentionItemRow,
 	GithubEventRow,
 	PrIdentityRow,
@@ -50,6 +51,30 @@ type GithubEventDbRow = {
 	payload_json: string;
 	observed_at_ms: number;
 };
+
+type AmendmentDbRow = {
+	id: string;
+	campaign_id: string;
+	amendment_id: string;
+	amendment_digest: string;
+	previous_manifest_digest: string;
+	new_manifest_digest: string;
+	amendment_json: string;
+	applied_at_ms: number;
+};
+
+function toAmendment(row: AmendmentDbRow): AmendmentRow {
+	return {
+		id: row.id,
+		campaignId: row.campaign_id,
+		amendmentId: row.amendment_id,
+		amendmentDigest: row.amendment_digest,
+		previousManifestDigest: row.previous_manifest_digest,
+		newManifestDigest: row.new_manifest_digest,
+		amendmentJson: row.amendment_json,
+		appliedAtMs: row.applied_at_ms,
+	};
+}
 
 type AttentionDbRow = {
 	id: string;
@@ -276,6 +301,60 @@ export class EventStore {
 		}));
 	}
 
+	/**
+	 * Journal an applied campaign amendment append-only (warren-35c4).
+	 * Unique on the amendment digest, so re-applying the same approved
+	 * document is a no-op rather than a second journal row.
+	 */
+	recordAmendment(input: {
+		campaignId: string;
+		amendmentId: string;
+		amendmentDigest: string;
+		previousManifestDigest: string;
+		newManifestDigest: string;
+		amendmentJson: string;
+	}): AmendmentRow {
+		const id = this.#ctx.ids.newId();
+		this.#ctx.db
+			.query(
+				`INSERT INTO campaign_amendments (id, campaign_id, amendment_id, amendment_digest,
+				 previous_manifest_digest, new_manifest_digest, amendment_json, applied_at_ms)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				id,
+				input.campaignId,
+				input.amendmentId,
+				input.amendmentDigest,
+				input.previousManifestDigest,
+				input.newManifestDigest,
+				input.amendmentJson,
+				nowMs(this.#ctx),
+			);
+		return this.getAmendment(id) as AmendmentRow;
+	}
+
+	getAmendment(id: string): AmendmentRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM campaign_amendments WHERE id = ?")
+			.get(id) as AmendmentDbRow | null;
+		return row === null ? null : toAmendment(row);
+	}
+
+	getAmendmentByDigest(amendmentDigest: string): AmendmentRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM campaign_amendments WHERE amendment_digest = ?")
+			.get(amendmentDigest) as AmendmentDbRow | null;
+		return row === null ? null : toAmendment(row);
+	}
+
+	listAmendments(campaignId: string): AmendmentRow[] {
+		const rows = this.#ctx.db
+			.query("SELECT * FROM campaign_amendments WHERE campaign_id = ? ORDER BY applied_at_ms, id")
+			.all(campaignId) as AmendmentDbRow[];
+		return rows.map(toAmendment);
+	}
+
 	addAttention(input: {
 		campaignId: string;
 		reason: string;
@@ -356,6 +435,31 @@ export class EventStore {
 			return { row: this.getAttentionItem(existing.id) as AttentionItemRow, created: false };
 		}
 		return { row: this.addAttention({ ...input, detailJson }), created: true };
+	}
+
+	/**
+	 * Monotonically resolve an open attention item and stamp the resolving
+	 * evidence into its detail JSON (warren-b853). Attention is derived
+	 * state, so resolution is journal-free: the update is a no-op (false)
+	 * when the item is missing or already resolved, never an error.
+	 */
+	resolveAttentionAuto(id: string, stamp: Record<string, unknown>): boolean {
+		const row = this.getAttentionItem(id);
+		if (row === null || row.resolvedAtMs !== null) return false;
+		let detail: Record<string, unknown> = {};
+		if (row.detailJson !== null) {
+			try {
+				detail = JSON.parse(row.detailJson) as Record<string, unknown>;
+			} catch {
+				detail = { priorDetailJson: row.detailJson };
+			}
+		}
+		const result = this.#ctx.db
+			.query(
+				"UPDATE attention_items SET detail_json = ?, resolved_at_ms = ? WHERE id = ? AND resolved_at_ms IS NULL",
+			)
+			.run(JSON.stringify({ ...detail, ...stamp }), nowMs(this.#ctx), id);
+		return result.changes === 1;
 	}
 
 	resolveAttention(id: string): void {

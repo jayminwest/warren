@@ -159,6 +159,19 @@ export interface PrIdentityRow {
 	readonly createdAtMs: number;
 }
 
+/** A journaled, applied campaign amendment (warren-35c4). Append-only. */
+export interface AmendmentRow {
+	readonly id: string;
+	readonly campaignId: string;
+	readonly amendmentId: string;
+	/** UNIQUE: the same approved amendment journals exactly once. */
+	readonly amendmentDigest: string;
+	readonly previousManifestDigest: string;
+	readonly newManifestDigest: string;
+	readonly amendmentJson: string;
+	readonly appliedAtMs: number;
+}
+
 /** A deduplicated upstream source event keyed by stable GitHub node id. */
 export interface GithubEventRow {
 	readonly nodeId: string;
