@@ -98,6 +98,7 @@ export interface ExecuteMutationInput {
 export interface MutationIoResult {
 	readonly resultPrNumber?: number | null;
 	readonly resultBranch?: string | null;
+	readonly resultUpdatedAt?: string | null;
 }
 
 /**

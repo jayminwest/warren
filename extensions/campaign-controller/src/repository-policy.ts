@@ -88,6 +88,7 @@ export const PR_BODY_SECTION_KEYS = [
 	"userImpact",
 	"evidence",
 	"knownGap",
+	"responseSummary",
 	"runReference",
 	"operatorNotes",
 ] as const;
@@ -159,6 +160,12 @@ export interface RepositoryPolicy {
 	 */
 	prBodyContract: PrBodyContract | null;
 	/**
+	 * Present when the profile declares it; `null` keeps old profiles valid
+	 * and means postComment composes nothing (warren-09f3): a grammar-less
+	 * profile posts no comments at all.
+	 */
+	commentTemplates: CommentTemplatesPolicy | null;
+	/**
 	 * The evidence tiers this profile recognizes (warren-4dc1). `null` keeps
 	 * old profiles valid and means exactly the standard `EVIDENCE_TIERS`.
 	 * Must include `local-provable`, the default tier for untagged issues.
@@ -195,6 +202,7 @@ const TOP_LEVEL_FIELDS = [
 	"aiDisclosure",
 	"agentGuidance",
 	"prBodyContract",
+	"commentTemplates",
 	"evidenceTiers",
 	"allowedWorkTypes",
 	"forbiddenPaths",
@@ -216,6 +224,33 @@ const PR_BODY_CONTRACT_FIELDS = [
 	"footerTemplate",
 ] as const;
 const PR_BODY_SECTION_FIELDS = ["key", "heading", "required"] as const;
+
+/** Named template placeholders the comment composer can fill (warren-09f3). */
+export const COMMENT_PLACEHOLDERS = [
+	"campaignId",
+	"runId",
+	"prNumber",
+	"findingTitles",
+	"evidenceLines",
+	"reReviewCommand",
+] as const;
+
+export type CommentPlaceholder = (typeof COMMENT_PLACEHOLDERS)[number];
+
+/**
+ * Versioned profile-declared comment templates (warren-09f3). Covered by
+ * the policy digest, so operator approval binds the exact wording.
+ */
+export interface CommentTemplatesPolicy {
+	/** Contract revision; bumps whenever the wording changes. */
+	version: number;
+	/** Finding-response reply template with named placeholders. */
+	findingResponseTemplate: string;
+	/** Re-review command template with named placeholders. */
+	reReviewCommandTemplate: string;
+	/** Per-day per-campaign comment cap; over it → attention item. */
+	maxCommentsPerDay: number;
+}
 
 /** Current PR-body contract revision. */
 export const PR_BODY_CONTRACT_VERSION = 1;
@@ -282,6 +317,57 @@ export function validatePrBodyContract(input: unknown, path: string): PrBodyCont
 	return { version, sections, disclosureTemplate, footerTemplate };
 }
 
+/** Versioned comment-template contract revision. */
+export const COMMENT_TEMPLATES_VERSION = 1;
+
+const COMMENT_TEMPLATES_FIELDS = [
+	"version",
+	"findingResponseTemplate",
+	"reReviewCommandTemplate",
+	"maxCommentsPerDay",
+] as const;
+
+/**
+ * Fail closed on any `{token}` in a comment template that the composer
+ * cannot fill (warren-09f3): comment text is composed only from
+ * controller-owned state, so an unfilled placeholder would leak a broken
+ * literal upstream.
+ */
+function requireKnownCommentPlaceholders(template: string, path: string): void {
+	for (const match of template.matchAll(/\{([A-Za-z]+)\}/g)) {
+		if (!COMMENT_PLACEHOLDERS.includes(match[1] as CommentPlaceholder)) {
+			throw new ValidationError(
+				`unknown placeholder {${match[1]}} at '${path}' — allowed: ${COMMENT_PLACEHOLDERS.join(", ")}`,
+			);
+		}
+	}
+}
+
+/**
+ * Validate the optional profile-declared comment templates (warren-09f3).
+ * Templates are data with named placeholders over controller-owned state:
+ * finding titles being addressed, run references, evidence lines, and the
+ * profile-declared re-review command. Absent block → the profile is
+ * grammar-less for comment purposes and postComment composes nothing.
+ */
+export function validateCommentTemplates(input: unknown, path: string): CommentTemplatesPolicy {
+	const raw = asObject(input, path);
+	rejectUnknownKeys(raw, COMMENT_TEMPLATES_FIELDS, path);
+	const version = requireInt(raw, "version", path, { min: 1, max: 1_000 });
+	const findingResponseTemplate = requireString(raw, "findingResponseTemplate", path, {
+		min: 1,
+		max: 2_000,
+	});
+	requireKnownCommentPlaceholders(findingResponseTemplate, `${path}.findingResponseTemplate`);
+	const reReviewCommandTemplate = requireString(raw, "reReviewCommandTemplate", path, {
+		min: 1,
+		max: 2_000,
+	});
+	requireKnownCommentPlaceholders(reReviewCommandTemplate, `${path}.reReviewCommandTemplate`);
+	const maxCommentsPerDay = requireInt(raw, "maxCommentsPerDay", path, { min: 1, max: 1_000 });
+	return { version, findingResponseTemplate, reReviewCommandTemplate, maxCommentsPerDay };
+}
+
 /** Validate the optional profile-declared evidence-tier list (warren-4dc1). */
 function requireEvidenceTiers(root: ReturnType<typeof asObject>): string[] | null {
 	if (root.evidenceTiers === undefined || root.evidenceTiers === null) {
@@ -324,6 +410,15 @@ function requirePrBodyContract(root: ReturnType<typeof asObject>): PrBodyContrac
 	// Optional by design (warren-e361): a previously-valid profile without a
 	// contract stays valid and renders through the default contract.
 	return validatePrBodyContract(root.prBodyContract, "repository policy.prBodyContract");
+}
+
+function requireCommentTemplates(root: ReturnType<typeof asObject>): CommentTemplatesPolicy | null {
+	if (root.commentTemplates === undefined || root.commentTemplates === null) {
+		return null;
+	}
+	// Optional by design (warren-09f3): a previously-valid profile without a
+	// comment-templates block stays valid and posts no comments at all.
+	return validateCommentTemplates(root.commentTemplates, "repository policy.commentTemplates");
 }
 
 /**
@@ -390,6 +485,7 @@ export function validateRepositoryPolicy(
 	const aiDisclosure = requireAiDisclosure(root);
 	const agentGuidance = requireAgentGuidance(root);
 	const prBodyContract = requirePrBodyContract(root);
+	const commentTemplates = requireCommentTemplates(root);
 	const evidenceTiers = requireEvidenceTiers(root);
 	const allowedWorkTypes = requireWorkTypes(root);
 	const forbiddenPaths = requireStringArray(root, "forbiddenPaths", "repository policy", {
@@ -420,6 +516,7 @@ export function validateRepositoryPolicy(
 		aiDisclosure,
 		agentGuidance,
 		prBodyContract,
+		commentTemplates,
 		evidenceTiers,
 		allowedWorkTypes,
 		forbiddenPaths,
