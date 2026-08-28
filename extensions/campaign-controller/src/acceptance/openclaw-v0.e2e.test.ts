@@ -53,7 +53,12 @@ const COMMITTED_EXAMPLE_MANIFEST = JSON.parse(
 /** The operator's per-campaign manifest: the committed example, with the
  * approved prompt text and exactly one explicit issue, re-digest-bound. */
 function campaignManifest(): Record<string, unknown> {
-	const { approval: _approval, promptDigest: _promptDigest, ...rest } = COMMITTED_EXAMPLE_MANIFEST;
+	const {
+		approval: _approval,
+		promptDigest: _promptDigest,
+		issueEvidenceTiers: _tiers,
+		...rest
+	} = COMMITTED_EXAMPLE_MANIFEST;
 	const unapproved = {
 		...rest,
 		prompt: "Fix the assigned OpenClaw issue end to end and run the quality gates.",

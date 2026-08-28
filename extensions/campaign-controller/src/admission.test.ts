@@ -781,3 +781,71 @@ describe("admitWorkItem", () => {
 		expectRefusal(() => admit(h, campaign, 812), "campaign_not_approved");
 	});
 });
+
+describe("importCampaign evidence tiers", () => {
+	/** A manifest re-signed with an optional `issueEvidenceTiers` field. */
+	function withTiers(tiers: Record<string, string>): Record<string, unknown> {
+		const input = signedManifest() as Record<string, unknown>;
+		const { approval, ...rest } = input;
+		const bound = { ...rest, issueEvidenceTiers: tiers };
+		const approvalRecord = approval as Record<string, unknown>;
+		return { ...bound, approval: { ...approvalRecord, manifestDigest: digestOf(bound) } };
+	}
+
+	test("refuses an issue tagged with a tier the repository policy does not recognize", () => {
+		const h = harness();
+		expectRefusal(
+			() =>
+				importCampaign(h.store, {
+					manifest: withTiers({ "812": "real-provider-trace" }),
+					policy: basePolicy(),
+					nowMs: NOW,
+				}),
+			"evidence_tier_unknown",
+		);
+	});
+
+	test("warns (never refuses) when the campaign is majority external-proof-required", () => {
+		const h = harness();
+		const result = importCampaign(h.store, {
+			manifest: withTiers({
+				"815": "external-proof-required",
+				"823": "external-proof-required",
+			}),
+			policy: basePolicy(),
+			nowMs: NOW,
+		});
+		expect(result.warnings.length).toBe(1);
+		expect(result.warnings[0]).toContain("external-proof-required");
+		expect(result.warnings[0]).toContain("advisory");
+		// A warning does not block the approval boundary.
+		const approval = approveCampaign(h.store, {
+			campaignId: result.campaign.id,
+			manifestDigest: result.manifestDigest,
+			approvedBy: "jayminwest",
+			nowMs: NOW,
+		});
+		expect(approval.campaign.status).toBe("approved");
+	});
+
+	test("carries no advisory when most issues are locally provable", () => {
+		const h = harness();
+		const result = importCampaign(h.store, {
+			manifest: withTiers({ "812": "external-proof-required" }),
+			policy: basePolicy(),
+			nowMs: NOW,
+		});
+		expect(result.warnings).toEqual([]);
+	});
+
+	test("a policy-declared tier list admits tiers beyond the standard two", () => {
+		const h = harness();
+		const policy = { ...basePolicy(), evidenceTiers: ["local-provable", "nightly-ci-required"] };
+		const result = importCampaign(h.store, {
+			manifest: withTiers({ "812": "nightly-ci-required" }),
+			policy,
+			nowMs: NOW,
+		});
+		expect(result.warnings).toEqual([]);
+	});
+});

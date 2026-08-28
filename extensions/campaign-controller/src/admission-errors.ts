@@ -24,6 +24,7 @@ export type AdmissionInvariant =
 	| "policy_changed"
 	| "policy_upstream_mismatch"
 	| "issue_not_in_campaign"
+	| "evidence_tier_unknown"
 	| "issue_out_of_order"
 	| "issue_already_admitted"
 	| "issue_repository_not_allowed"

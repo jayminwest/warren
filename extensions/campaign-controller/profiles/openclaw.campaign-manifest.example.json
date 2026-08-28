@@ -11,7 +11,11 @@
 		"repo": "openclaw"
 	},
 	"defaultBranch": "main",
-	"issues": [812, 815, 823],
+	"issues": [
+		812,
+		815,
+		823
+	],
 	"warren": {
 		"project": "openclaw-contrib",
 		"agent": "pi",
@@ -26,9 +30,12 @@
 	},
 	"maxConcurrentRuns": 2,
 	"expiresAt": "2026-12-31T00:00:00.000Z",
+	"issueEvidenceTiers": {
+		"815": "external-proof-required"
+	},
 	"approval": {
 		"approvedBy": "jayminwest",
 		"approvedAt": "2026-08-25T12:00:00.000Z",
-		"manifestDigest": "bb2a1708f48b721c1d16a07845f7247aa1da702770b40956fecc48d2a74e1b44"
+		"manifestDigest": "497b6ae30ba2b5c6d42e32d426092c739a44611c1f405ea26197f95f5d18d80a"
 	}
 }

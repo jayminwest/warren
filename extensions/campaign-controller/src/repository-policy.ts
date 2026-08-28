@@ -87,11 +87,20 @@ export const PR_BODY_SECTION_KEYS = [
 	"solution",
 	"userImpact",
 	"evidence",
+	"knownGap",
 	"runReference",
 	"operatorNotes",
 ] as const;
 
 export type PrBodySectionKey = (typeof PR_BODY_SECTION_KEYS)[number];
+
+/** The standard evidence tiers (warren-4dc1); a profile may declare its own list. */
+export const EVIDENCE_TIERS = ["local-provable", "external-proof-required"] as const;
+
+export type EvidenceTier = (typeof EVIDENCE_TIERS)[number];
+
+/** The tier untagged issues fall back to. */
+export const DEFAULT_EVIDENCE_TIER: EvidenceTier = "local-provable";
 
 /** Named template placeholders the renderer can fill (warren-e361). */
 export const PR_BODY_PLACEHOLDERS = [
@@ -149,6 +158,12 @@ export interface RepositoryPolicy {
 	 * (`profiles/default.pr-body-contract.json`, warren-e361).
 	 */
 	prBodyContract: PrBodyContract | null;
+	/**
+	 * The evidence tiers this profile recognizes (warren-4dc1). `null` keeps
+	 * old profiles valid and means exactly the standard `EVIDENCE_TIERS`.
+	 * Must include `local-provable`, the default tier for untagged issues.
+	 */
+	evidenceTiers: string[] | null;
 	allowedWorkTypes: WorkType[];
 	forbiddenPaths: string[];
 	protectedPaths: string[];
@@ -180,6 +195,7 @@ const TOP_LEVEL_FIELDS = [
 	"aiDisclosure",
 	"agentGuidance",
 	"prBodyContract",
+	"evidenceTiers",
 	"allowedWorkTypes",
 	"forbiddenPaths",
 	"protectedPaths",
@@ -266,6 +282,41 @@ export function validatePrBodyContract(input: unknown, path: string): PrBodyCont
 	return { version, sections, disclosureTemplate, footerTemplate };
 }
 
+/** Validate the optional profile-declared evidence-tier list (warren-4dc1). */
+function requireEvidenceTiers(root: ReturnType<typeof asObject>): string[] | null {
+	if (root.evidenceTiers === undefined || root.evidenceTiers === null) {
+		return null;
+	}
+	const raw = root.evidenceTiers;
+	if (!Array.isArray(raw) || raw.length === 0 || raw.length > 16) {
+		throw new ValidationError(
+			`expected a non-empty array of at most 16 strings at 'repository policy.evidenceTiers'`,
+		);
+	}
+	const tiers: string[] = [];
+	const seen = new Set<string>();
+	for (const item of raw) {
+		if (typeof item !== "string" || item.length < 1 || item.length > 64) {
+			throw new ValidationError(
+				`expected 1–64 character tier names at 'repository policy.evidenceTiers'`,
+			);
+		}
+		if (seen.has(item)) {
+			throw new ValidationError(
+				`duplicate evidence tier "${item}" at 'repository policy.evidenceTiers'`,
+			);
+		}
+		seen.add(item);
+		tiers.push(item);
+	}
+	if (!seen.has(DEFAULT_EVIDENCE_TIER)) {
+		throw new ValidationError(
+			`'repository policy.evidenceTiers' must include "${DEFAULT_EVIDENCE_TIER}" — the default tier for untagged issues`,
+		);
+	}
+	return tiers;
+}
+
 function requirePrBodyContract(root: ReturnType<typeof asObject>): PrBodyContract | null {
 	if (root.prBodyContract === undefined || root.prBodyContract === null) {
 		return null;
@@ -339,6 +390,7 @@ export function validateRepositoryPolicy(
 	const aiDisclosure = requireAiDisclosure(root);
 	const agentGuidance = requireAgentGuidance(root);
 	const prBodyContract = requirePrBodyContract(root);
+	const evidenceTiers = requireEvidenceTiers(root);
 	const allowedWorkTypes = requireWorkTypes(root);
 	const forbiddenPaths = requireStringArray(root, "forbiddenPaths", "repository policy", {
 		minItems: 1,
@@ -368,6 +420,7 @@ export function validateRepositoryPolicy(
 		aiDisclosure,
 		agentGuidance,
 		prBodyContract,
+		evidenceTiers,
 		allowedWorkTypes,
 		forbiddenPaths,
 		protectedPaths,
