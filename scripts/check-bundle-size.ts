@@ -42,8 +42,10 @@
  * is what closes the Vite-vs-guard parity gap — agents stop copying Vite's
  * cooler build-log number). Raising is bounded: a growth within `AUTO_RAISE_CAP`
  * re-baselines hands-free, but a larger jump (a heavy new dep) is refused unless
- * WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 is set (a knowing new floor). Lowering always
- * applies — the ratchet still pulls down.
+ * WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 is set (a knowing new floor). Lowering applies
+ * EXCEPT inside a warren-dispatched run (isWarrenRunEnv, warren-6397): the agent
+ * image's toolchain gzips ~1.3-1.5KB cooler than CI, so pod-written lower budgets
+ * corrupt the CI-enforced numbers. Re-baseline lowers from a CI-matching env.
  */
 
 import { spawnSync } from "node:child_process";
@@ -56,7 +58,10 @@ import { gzipSync } from "node:zlib";
  * css uses half). The build is byte-reproducible across machines as long as
  * deps come from the committed lockfile (build:ui installs --frozen-lockfile),
  * so this is only a small churn buffer for trivial follow-up changes, NOT a
- * cross-platform fudge factor — local and CI measure identical bytes.
+ * cross-platform fudge factor — a laptop and CI measure identical bytes. That
+ * reproducibility does NOT extend to the warren agent image, whose toolchain
+ * measures ~1.3-1.5KB gzip cooler than CI (warren-6397) — which is why
+ * `--update` refuses to LOWER budgets inside a warren run.
  */
 const HEADROOM_RAW = 800;
 const HEADROOM_GZIP = 400;
@@ -191,28 +196,63 @@ export function diff(measurement: Measurement, budgets: Budgets): Failure[] {
 	return failures;
 }
 
-export type UpdateResult = { wrote: boolean; raised: string[]; autoRaised: string[] };
+/**
+ * Env vars warren itself injects into every dispatched agent workspace, one
+ * reliably present across all three runtime providers: the local engine and
+ * docker containers get WARREN_API_URL/WARREN_API_TOKEN via the callback-env
+ * plumbing (src/runs/spawn/callback-env.ts), k8s pods set them directly in
+ * pod-env.ts, and WARREN_AGENT_RUNTIME is composed for every provider. Any
+ * one of these proves the process is running inside a warren-dispatched run
+ * (warren-6397).
+ */
+const WARREN_RUN_ENV_MARKERS: readonly string[] = [
+	"WARREN_RUN_ID",
+	"WARREN_API_URL",
+	"WARREN_AGENT_RUNTIME",
+];
+
+export function isWarrenRunEnv(env: Record<string, string | undefined> = process.env): boolean {
+	return WARREN_RUN_ENV_MARKERS.some((k) => {
+		const v = env[k];
+		return v !== undefined && v !== "";
+	});
+}
+
+export type UpdateResult = {
+	wrote: boolean;
+	raised: string[];
+	autoRaised: string[];
+	refusedLower: string[];
+};
 
 /**
  * Re-baseline budgets from a measurement: budget = measured + headroom, written
  * straight back into bundle-size-budgets.json (numeric fields only; all
- * `$comment*` keys and ordering are preserved). Lowering a budget always
- * applies. Raising is allowed without `allowRaise` only when the increase stays
- * within `AUTO_RAISE_CAP` (ordinary churn re-baselines hands-free); a larger
- * jump is refused, nothing is written, and the offending metrics are returned
- * in `raised` for a deliberate WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 override.
- * Metrics that grew but stayed within the cap are reported in `autoRaised`.
+ * `$comment*` keys and ordering are preserved). Raising is allowed without
+ * `allowRaise` only when the increase stays within `AUTO_RAISE_CAP` (ordinary
+ * churn re-baselines hands-free); a larger jump is refused, nothing is written,
+ * and the offending metrics are returned in `raised` for a deliberate
+ * WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 override. Metrics that grew but stayed
+ * within the cap are reported in `autoRaised`.
+ *
+ * warren-6397: lowering is REFUSED when running inside a warren-dispatched run
+ * (see isWarrenRunEnv). The agent-image toolchain (bun/vite/zlib) gzips the UI
+ * build ~1.3-1.5KB COOLER than CI for identical source, so a pod-written lower
+ * budget corrupts the correct CI-enforced number and every such PR fails CI.
+ * Refused lowers come back in `refusedLower`; nothing is written.
  */
 export function updateBudgets(
 	measurement: Measurement,
 	budgetsPath = BUDGETS_PATH,
 	allowRaise = process.env.WARREN_BUNDLE_SIZE_ALLOW_RAISE === "1",
+	inWarrenRun = isWarrenRunEnv(),
 ): UpdateResult {
 	const raw = JSON.parse(readFileSync(budgetsPath, "utf8")) as Record<string, unknown>;
 	const totals = raw.totals as Budgets["totals"];
 	const largest = raw.largest as Budgets["largest"];
 	const raised: string[] = [];
 	const autoRaised: string[] = [];
+	const refusedLower: string[] = [];
 
 	const apply = (
 		current: number,
@@ -222,7 +262,15 @@ export function updateBudgets(
 		label: string,
 	): number => {
 		const next = measured + headroom;
-		if (next <= current) return next;
+		if (next <= current) {
+			if (next < current && inWarrenRun) {
+				refusedLower.push(
+					`${label}: ${current} → ${next} (-${current - next} B, refused inside a warren run)`,
+				);
+				return current;
+			}
+			return next;
+		}
 		if (allowRaise) return next;
 		const delta = next - current;
 		if (delta <= cap) {
@@ -259,10 +307,12 @@ export function updateBudgets(
 		);
 	}
 
-	if (raised.length > 0) return { wrote: false, raised, autoRaised };
+	if (raised.length > 0 || refusedLower.length > 0) {
+		return { wrote: false, raised, autoRaised, refusedLower };
+	}
 
 	writeFileSync(budgetsPath, `${JSON.stringify(raw, null, "\t")}\n`);
-	return { wrote: true, raised, autoRaised };
+	return { wrote: true, raised, autoRaised, refusedLower };
 }
 
 function fmtBytes(n: number): string {
@@ -283,7 +333,21 @@ function runBuildUi(): void {
 }
 
 function runUpdate(m: Measurement): void {
-	const { wrote, raised, autoRaised } = updateBudgets(m);
+	const { wrote, raised, autoRaised, refusedLower } = updateBudgets(m);
+	if (refusedLower.length > 0) {
+		console.error("");
+		console.error("Bundle-size --update refused to LOWER budgets inside a warren run:");
+		for (const r of refusedLower) console.error(`  ${r}`);
+		console.error("");
+		console.error(
+			"Why: the agent-image toolchain (bun/vite/zlib) gzips the UI build ~1.3-1.5KB COOLER than CI for identical source (warren-6397). A budget lowered from this pod would corrupt the correct CI-enforced number, and every such PR then fails CI. Nothing was written.",
+		);
+		console.error("");
+		console.error(
+			"Instead: re-baseline from a CI-matching environment (a laptop build with --frozen-lockfile, or CI itself) and commit that. If this lowering is genuinely intended and measured outside warren, it will apply there.",
+		);
+		process.exit(1);
+	}
 	if (!wrote) {
 		console.error("");
 		console.error("Bundle-size --update refused to RAISE budgets beyond the auto-raise cap:");
