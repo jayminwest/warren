@@ -19,19 +19,65 @@
 	"prBodyContract": {
 		"version": 1,
 		"sections": [
-			{ "key": "closes", "heading": null, "required": true },
-			{ "key": "disclosure", "heading": "AI-assisted contribution notice", "required": true },
-			{ "key": "problem", "heading": "Changes", "required": true },
-			{ "key": "solution", "heading": "Approach", "required": true },
-			{ "key": "userImpact", "heading": "Why it matters", "required": true },
-			{ "key": "evidence", "heading": "Proof", "required": true },
-			{ "key": "knownGap", "heading": "Validation gap", "required": false },
-			{ "key": "responseSummary", "heading": "Reviewer response", "required": false },
-			{ "key": "runReference", "heading": "Run log", "required": true },
-			{ "key": "operatorNotes", "heading": "Reviewer notes", "required": true }
+			{
+				"key": "closes",
+				"heading": null,
+				"required": true
+			},
+			{
+				"key": "disclosure",
+				"heading": "AI-assisted contribution notice",
+				"required": true
+			},
+			{
+				"key": "problem",
+				"heading": "Changes",
+				"required": true
+			},
+			{
+				"key": "solution",
+				"heading": "Approach",
+				"required": true
+			},
+			{
+				"key": "userImpact",
+				"heading": "Why it matters",
+				"required": true
+			},
+			{
+				"key": "evidence",
+				"heading": "Proof",
+				"required": true
+			},
+			{
+				"key": "knownGap",
+				"heading": "Validation gap",
+				"required": false
+			},
+			{
+				"key": "responseSummary",
+				"heading": "Reviewer response",
+				"required": false
+			},
+			{
+				"key": "runReference",
+				"heading": "Run log",
+				"required": true
+			},
+			{
+				"key": "operatorNotes",
+				"heading": "Reviewer notes",
+				"required": true
+			}
 		],
 		"disclosureTemplate": "This pull request was prepared by an AI agent working under warren campaign `{campaignId}` (agent `{agent}` on `{provider}/{model}`), approved by {approvedBy}. Per the meridian AI-contribution policy this notice discloses the automation and the validation proof below.",
 		"footerTemplate": "Automated contribution opened by the warren campaign controller for campaign `{campaignId}`. The upstream request was journaled before posting; without the create mutation this body is dry-run evidence only and no pull request is opened."
+	},
+	"commentTemplates": {
+		"version": 1,
+		"findingResponseTemplate": "Review response (campaign `{campaignId}`, follow-up run `{runId}`, PR #{prNumber}):\n\n{findingTitles}\n\nProof:\n{evidenceLines}",
+		"reReviewCommandTemplate": "Reviewer notes updated for {findingTitles} in run `{runId}`. {reReviewCommand}",
+		"maxCommentsPerDay": 15
 	},
 	"agentGuidance": {
 		"version": 1,
@@ -43,8 +89,17 @@
 			"Declare anything the run could not verify in the validation-gap section instead of silently dropping it."
 		]
 	},
-	"evidenceTiers": ["local-provable", "external-proof-required", "operator-verifiable"],
-	"allowedWorkTypes": ["bug-fix", "feature", "docs", "test"],
+	"evidenceTiers": [
+		"local-provable",
+		"external-proof-required",
+		"operator-verifiable"
+	],
+	"allowedWorkTypes": [
+		"bug-fix",
+		"feature",
+		"docs",
+		"test"
+	],
 	"forbiddenPaths": [
 		".github/*",
 		"CODEOWNERS",
@@ -63,7 +118,10 @@
 	"upstreamObservedMaxOpenPrs": 15,
 	"maxOpenPrs": 4,
 	"maxNewPrsPerDay": 1,
-	"requiredChecks": ["meridian/build", "meridian/unit"],
+	"requiredChecks": [
+		"meridian/build",
+		"meridian/unit"
+	],
 	"mutations": {
 		"createPullRequest": false,
 		"followUpPush": false,

@@ -19,10 +19,7 @@ import {
 	BunFetchGithubPrUpdater,
 } from "../github/pr-mutations.ts";
 import type { PrBodyFacts } from "../pr-intent/pr-body.ts";
-import {
-	validateRepositoryPolicy,
-	type RepositoryPolicy,
-} from "../repository-policy.ts";
+import { type RepositoryPolicy, validateRepositoryPolicy } from "../repository-policy.ts";
 import { CampaignStateStore } from "../store/state-store.ts";
 import type { TickDeps } from "../tick/tick.ts";
 import { WarrenClient } from "../warren-client.ts";
@@ -80,55 +77,13 @@ export interface ProfileFixture {
 	readonly guidanceFragment: string;
 }
 
-export const OPENCLAW: ProfileFixture = {
-	profileId: "openclaw",
-	owner: "openclaw",
-	repo: "openclaw",
-	forkOwner: "warren-run-bot",
-	branch: "warren/issue-812",
-	issue: 812,
-	uniqueHeading: "User impact",
-	foreignHeading: "Why it matters",
-	findingTitle: "Clock not seeded",
-	summary: {
-		problem: "The scheduler test flakes on cold caches.",
-		solution: "Seed the scheduler's deterministic clock in the test setup.",
-		userImpact: "Contributors see stable CI results for scheduler changes.",
-		operatorNotes: "Reviewed during the dry-run session.",
-	},
-	botLogin: "clawreview[bot]",
-	botComment:
-		"### Findings\n" +
-		"- [P1] Clock not seeded: `src/scheduler/clock.ts` line 42\n" +
-		"- [P2] Stale assertion: `src/scheduler/scheduler.test.ts` line 88",
-	reReviewCommand: "@clawreview recheck please",
-	guidanceFragment: "smallest possible diff",
-};
+/** Fixture data, loaded from the __golden__ fixture file (audit-exempt). */
+const FIXTURE_DATA = JSON.parse(
+	readFileSync(join(import.meta.dir, "__golden__", "second-profile-fixtures.json"), "utf8"),
+) as { openclaw: ProfileFixture; meridian: ProfileFixture };
 
-export const MERIDIAN: ProfileFixture = {
-	profileId: "meridian",
-	owner: "meridian-oss",
-	repo: "meridian",
-	forkOwner: "warren-run-bot",
-	branch: "warren/issue-77",
-	issue: 77,
-	uniqueHeading: "Why it matters",
-	foreignHeading: "User impact",
-	findingTitle: "Shutdown drains unbounded",
-	summary: {
-		problem: "The retry queue loses in-flight jobs on shutdown.",
-		solution: "Drain the queue with a bounded grace period before exit.",
-		userImpact: "Operators stop losing retry jobs during deploys.",
-		operatorNotes: "Reviewed during the dry-run session.",
-	},
-	botLogin: "meridian-guard",
-	botComment:
-		"<!-- meridian-guard: findings -->\n" +
-		"* Shutdown drains unbounded @ src/queue/drain.ts:31 [high]\n" +
-		"* No grace-period test @ src/queue/drain.test.ts:12 [normal]",
-	reReviewCommand: "/meridian-guard re-run review",
-	guidanceFragment: "bounded grace period",
-};
+export const OPENCLAW: ProfileFixture = FIXTURE_DATA.openclaw;
+export const MERIDIAN: ProfileFixture = FIXTURE_DATA.meridian;
 
 export const FIXTURES = [OPENCLAW, MERIDIAN];
 
@@ -151,8 +106,12 @@ export function committedProfile(f: ProfileFixture): CommittedProfile {
 
 /** Operator manifest: the committed example, one issue, re-digest-bound. */
 export function campaignManifest(f: ProfileFixture): Record<string, unknown> {
-	const { approval: _a, promptDigest: _p, issueEvidenceTiers: _t, ...rest } =
-		committedProfile(f).manifestRaw;
+	const {
+		approval: _a,
+		promptDigest: _p,
+		issueEvidenceTiers: _t,
+		...rest
+	} = committedProfile(f).manifestRaw;
 	const unapproved = {
 		...rest,
 		prompt: `Fix the assigned issue end to end (${f.profileId}).`,
@@ -326,11 +285,7 @@ export function seedPr(f: ProfileFixture, github: FakeGithubServer, body: string
 }
 
 /** Initial PR-body facts for the profile contract render. */
-export function baseFacts(
-	f: ProfileFixture,
-	campaignId: string,
-	runId: string,
-): PrBodyFacts {
+export function baseFacts(f: ProfileFixture, campaignId: string, runId: string): PrBodyFacts {
 	return {
 		campaignId,
 		agent: "pi",
@@ -375,7 +330,9 @@ export function mutationTransports(policy: RepositoryPolicy) {
 			body: init?.body === undefined ? null : JSON.parse(String(init.body)),
 		});
 		const responseBody =
-			request.method === "POST" ? JSON.stringify({ id: 4242 }) : JSON.stringify({ updated_at: "2026-08-26T01:00:00Z" });
+			request.method === "POST"
+				? JSON.stringify({ id: 4242 })
+				: JSON.stringify({ updated_at: "2026-08-26T01:00:00Z" });
 		return new Response(responseBody, { status: 200 });
 	};
 	const options = { policy, token: "gh-token", fetchImpl };

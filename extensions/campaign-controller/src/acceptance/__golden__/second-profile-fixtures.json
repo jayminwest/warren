@@ -1,0 +1,45 @@
+{
+	"comment": "Second-profile e2e fixtures (warren-c7f5). Profile-driven data only: every heading, bot login, marker, command, and guidance fragment here mirrors the committed profile data under profiles/ and is loaded at run time, never inlined in controller source.",
+	"openclaw": {
+		"profileId": "openclaw",
+		"owner": "openclaw",
+		"repo": "openclaw",
+		"forkOwner": "warren-run-bot",
+		"branch": "warren/issue-812",
+		"issue": 812,
+		"uniqueHeading": "User impact",
+		"foreignHeading": "Why it matters",
+		"findingTitle": "Clock not seeded",
+		"summary": {
+			"problem": "The scheduler test flakes on cold caches.",
+			"solution": "Seed the scheduler's deterministic clock in the test setup.",
+			"userImpact": "Contributors see stable CI results for scheduler changes.",
+			"operatorNotes": "Reviewed during the dry-run session."
+		},
+		"botLogin": "clawreview-bot",
+		"botComment": "### Findings\n- [P1] Clock not seeded: `src/scheduler/clock.ts` line 42\n- [P2] Stale assertion: `src/scheduler/scheduler.test.ts` line 88",
+		"reReviewCommand": "@clawreview-bot recheck please",
+		"guidanceFragment": "smallest possible diff"
+	},
+	"meridian": {
+		"profileId": "meridian",
+		"owner": "meridian-oss",
+		"repo": "meridian",
+		"forkOwner": "warren-run-bot",
+		"branch": "warren/issue-77",
+		"issue": 77,
+		"uniqueHeading": "Why it matters",
+		"foreignHeading": "User impact",
+		"findingTitle": "Shutdown drains unbounded",
+		"summary": {
+			"problem": "The retry queue loses in-flight jobs on shutdown.",
+			"solution": "Drain the queue with a bounded grace period before exit.",
+			"userImpact": "Operators stop losing retry jobs during deploys.",
+			"operatorNotes": "Reviewed during the dry-run session."
+		},
+		"botLogin": "meridian-guard",
+		"botComment": "<!-- meridian-guard: findings -->\n* Shutdown drains unbounded @ src/queue/drain.ts:31 [high]\n* No grace-period test @ src/queue/drain.test.ts:12 [normal]",
+		"reReviewCommand": "/meridian-guard re-run review",
+		"guidanceFragment": "never introduces a new top-level package"
+	}
+}

@@ -1,7 +1,10 @@
 {
-	"comment": "Profile-declared review-bot grammar for the openclaw profile (plan pl-096b, warren-2ec3). Data consumed by the reconcile classifier; never interpreted by controller source.",
-	"knownBotLogins": ["clawreview[bot]"],
+	"knownBotLogins": [
+		"clawreview-bot"
+	],
 	"findingMarker": "### Findings",
-	"findingLinePattern": "^- \\[(?P<priority>P[0-9])\\] (?P<title>[^:]+)(?:: `(?P<file>[^`]+)`(?: line (?P<line>[0-9]+))?)?$",
-	"reReviewCommands": ["@clawreview recheck please"]
+	"findingLinePattern": "^- \\[(?<priority>P[0-9])\\] (?<title>[^:]+)(?:: `(?<file>[^`]+)`(?: line (?<line>[0-9]+))?)?$",
+	"reReviewCommands": [
+		"@clawreview-bot recheck please"
+	]
 }
