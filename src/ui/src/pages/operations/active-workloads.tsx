@@ -7,11 +7,13 @@ import {
 	InventoryRowCard,
 } from "@/components/ui/inventory-card.tsx";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { costNoteToneOf } from "@/pages/runs/runs-card.helpers.ts";
 import {
 	activeWorkloads,
 	activityLine,
 	formatDurationMs,
 	phaseElapsedMs,
+	refreshedAgeLabel,
 	shortRepo,
 } from "./operations.helpers.ts";
 import { StatePill } from "./state-tone.tsx";
@@ -23,6 +25,12 @@ import { StatePill } from "./state-tone.tsx";
  * prompt's first line — the live toolcall feed the canvas sketches needs
  * per-run event tails this page does not open; a one-poll snapshot stays
  * honest with dispatch intent.
+ *
+ * Mobile (warren-10d3, mobile/operations.jsx:213-337): the header lives
+ * on an in-card --color-thead bar, rows render as dot-only
+ * InventoryRowCards with "awaiting admission" folded into the subline and
+ * a warning tint on near-cap costs, and the LIVE · REFRESHED footer is
+ * visible below md too. The md+ table is unchanged.
  */
 
 const MAX_ROWS = 8;
@@ -32,29 +40,46 @@ export function ActiveWorkloads({
 	projects,
 	now,
 	loading,
+	refreshedAt,
+	total,
 }: {
 	runs: readonly RunRow[] | undefined;
 	projects: readonly ProjectRow[] | undefined;
 	now: number;
 	loading: boolean;
+	/** Epoch ms of the last successful newest-runs fetch (query dataUpdatedAt). */
+	refreshedAt: number | undefined;
+	/** All-time run count from the same response, for the mobile footer. */
+	total: number | undefined;
 }) {
 	const active = runs !== undefined ? activeWorkloads(runs, MAX_ROWS) : [];
 	const running = runs?.filter((r) => r.state === "running").length ?? null;
 	const queued = runs?.filter((r) => r.state === "queued").length ?? null;
+	const windowSummary =
+		running === null || queued === null ? "…" : `${running} RUNNING · ${queued} QUEUED`;
 	const projectIndex = new Map<string, string>();
 	for (const p of projects ?? []) projectIndex.set(p.id, shortRepo(p.gitUrl));
 	return (
 		<div className="flex min-w-0 flex-col md:flex-[1.8]">
-			<header className="flex h-7 shrink-0 items-center pb-1.25">
+			<header className="hidden h-7 shrink-0 items-center pb-1.25 md:flex">
 				<h2 className="text-[11px] leading-3.5 font-semibold text-(--color-text-2)">
 					Active workloads
 				</h2>
 				<span className="flex-1" />
 				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
-					{running === null || queued === null ? "…" : `${running} RUNNING · ${queued} QUEUED`}
+					{windowSummary}
 				</span>
 			</header>
 			<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+				<div className="flex items-center gap-2 border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:hidden">
+					<h2 className="text-[12px] leading-[15px] font-semibold text-(--color-text)">
+						Active workloads
+					</h2>
+					<span className="flex-1" />
+					<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+						{windowSummary}
+					</span>
+				</div>
 				{active.length === 0 ? (
 					<p className="px-3 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
 						{loading ? "loading active workloads…" : "No active workloads — the instance is quiet."}
@@ -75,6 +100,19 @@ export function ActiveWorkloads({
 						))}
 					</InventoryCardList>
 				)}
+				<div className="flex items-center border-t border-(--color-border) px-3 py-2.25 md:hidden">
+					<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+						LIVE · REFRESHED{" "}
+						{refreshedAgeLabel(refreshedAt === undefined ? undefined : now - refreshedAt)}
+					</span>
+					<span className="flex-1" />
+					<Link
+						to="/runs"
+						className="text-[11px] leading-[14px] font-medium text-(--color-primary) hover:underline"
+					>
+						{total === undefined ? "View all runs →" : `View all ${total} runs →`}
+					</Link>
+				</div>
 				<div className="hidden md:block">
 					<div className="flex h-[31px] shrink-0 items-center gap-2.5 border-b border-(--color-border-strong) bg-(--color-thead) px-2.5">
 						<span className="w-[82px] shrink-0 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
@@ -148,8 +186,9 @@ export function ActiveWorkloads({
 	);
 }
 
-/** Mobile active-workload card (warren-dea8): state, run, agent ·
- *  project, activity line, elapsed · cost figures. */
+/** Mobile active-workload card (warren-dea8 / warren-10d3): dot-only
+ *  state, agent · project · "awaiting admission" subline, activity meta,
+ *  elapsed · cost figures with a warning tint near the cost cap. */
 function ActiveWorkloadCard({
 	run,
 	projectLabel,
@@ -163,17 +202,23 @@ function ActiveWorkloadCard({
 	return (
 		<InventoryRowCard
 			tone={tone}
-			stateLabel={run.state}
 			title={run.id}
 			titleTo={`/runs/${run.id}`}
-			subline={`${run.agentName} · ${projectLabel}`}
+			subline={
+				run.state === "queued"
+					? `${run.agentName} · ${projectLabel} · awaiting admission`
+					: `${run.agentName} · ${projectLabel}`
+			}
 			figures={
 				<>
 					<CardFigure value={formatDurationMs(phaseElapsedMs(run, now))} />
-					<CardFigureNote value={run.costUsd === null ? "—" : formatCostUsd(run.costUsd)} />
+					<CardFigureNote
+						value={run.costUsd === null ? "—" : formatCostUsd(run.costUsd)}
+						tone={costNoteToneOf(run)}
+					/>
 				</>
 			}
-			meta={run.state === "queued" ? "awaiting admission" : activityLine(run.prompt)}
+			meta={run.state === "queued" ? undefined : activityLine(run.prompt)}
 		/>
 	);
 }
