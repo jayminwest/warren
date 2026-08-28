@@ -51,6 +51,7 @@ import {
 	renderAndJournalPrIntent,
 } from "../pr-intent/intender.ts";
 import { UpstreamPrReconciler } from "../reconcile/reconciler.ts";
+import type { ReviewBotGrammar } from "../reconcile/bot-grammar.ts";
 import type { RepositoryPolicy } from "../repository-policy.ts";
 import { composeDispatchPrompt, validateRepositoryPolicy } from "../repository-policy.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
@@ -146,6 +147,11 @@ export interface TickDeps {
 	readonly ids: IdGenerator;
 	/** The current repository-policy snapshot, re-validated at admission. */
 	readonly policy: unknown;
+	/**
+	 * Profile-declared review-bot grammar (warren-8c83). Set from the loaded
+	 * grammar file; absent means classification no-ops, exactly as before.
+	 */
+	readonly botGrammar?: ReviewBotGrammar | unknown;
 	/** Operator-supplied change summaries, keyed by issue number. */
 	readonly summaries: ReadonlyMap<number, PrIntentSummaryFacts>;
 	/**
@@ -655,6 +661,7 @@ async function reconcileUpstreamPrs(deps: TickDeps, campaign: CampaignRow): Prom
 			upstreamRepo: identity.upstreamRepo,
 			prNumber: identity.prNumber as number,
 			botLogin: identity.forkOwner,
+			...(deps.botGrammar !== undefined ? { botGrammar: deps.botGrammar } : {}),
 		});
 		outcomes.push({
 			stage: "github_reconcile",
@@ -668,6 +675,7 @@ async function reconcileUpstreamPrs(deps: TickDeps, campaign: CampaignRow): Prom
 				duplicateEvents: result.duplicateEvents,
 				attentionCreated: result.attentionCreated,
 				attentionAlreadyOpen: result.attentionAlreadyOpen,
+				feedbackCreated: result.feedbackCreated,
 				truncated: result.truncated,
 			},
 		});
