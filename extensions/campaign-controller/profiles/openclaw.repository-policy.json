@@ -16,6 +16,16 @@
 		"required": true,
 		"evidenceRequired": true
 	},
+	"agentGuidance": {
+		"version": 1,
+		"norms": [
+			"Produce the smallest possible diff that resolves the issue; scope changes to what the reviewed issue actually requires.",
+			"Never introduce or reserve new public configuration or API surface without explicit maintainer direction; if the fix seems to need one, state the need as a question instead.",
+			"Never add fail-closed validation over input that was previously accepted and valid; tightening input rules is a behavior change that belongs to the maintainers.",
+			"Before summarizing, search the codebase for existing mechanisms that already address the same failure and cite them in the final summary; do not miss an existing fallback.",
+			"State unprovable claims as known gaps rather than omitting them; silent omissions are harder for review to catch than declared uncertainty."
+		]
+	},
 	"allowedWorkTypes": ["bug-fix", "feature", "docs"],
 	"forbiddenPaths": [
 		".github/workflows/*",
