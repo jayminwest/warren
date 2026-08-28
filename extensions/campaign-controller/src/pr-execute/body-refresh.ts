@@ -97,7 +97,7 @@ export type BodyRefreshJournalResult =
 			readonly refreshedBody: string | null;
 	  }
 	| {
-			readonly status: "rendered" | "already_journaled";
+			readonly status: "rendered" | "already_journaled" | "already_settled";
 			readonly actionId: string;
 			readonly requestDigest: string;
 			readonly intent: UpdatePullRequestIntent;
@@ -189,8 +189,21 @@ export function renderAndJournalBodyRefresh(
 		prNumber: input.prNumber,
 		body: refreshedBody,
 	});
+	const actionKey = bodyRefreshActionKey(input.campaignId, input.workItemId, refreshedBody);
+	// An idempotent re-drive onto a settled row reports its standing instead
+	// of replanning — terminal rows never transition again.
+	const settled = store.actions.getActionByKey(actionKey);
+	if (settled !== null && settled.state !== "planned" && settled.state !== "executing") {
+		return {
+			status: "already_settled",
+			actionId: settled.id,
+			requestDigest: settled.requestDigest,
+			intent,
+			refreshedBody,
+		};
+	}
 	const planned = journalMutationIntent(store, {
-		actionKey: bodyRefreshActionKey(input.campaignId, input.workItemId, refreshedBody),
+		actionKey,
 		campaignId: input.campaignId,
 		workItemId: input.workItemId,
 		actionType: UPDATE_PULL_REQUEST_BODY_REFRESH_ACTION_TYPE,

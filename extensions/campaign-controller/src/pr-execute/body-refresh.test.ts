@@ -45,6 +45,9 @@ const GOLDEN = JSON.parse(
 };
 
 const UPSTREAM = { upstreamOwner: "openclaw", upstreamRepo: "openclaw" };
+const RESPONSE_SUMMARY_HEADING = CONTRACT.sections.find(
+	(section) => section.key === "responseSummary",
+)?.heading as string;
 
 function baseFacts(): PrBodyFacts {
 	return { ...GOLDEN.baseFacts };
@@ -197,7 +200,7 @@ describe("journal round trip (warren-09d2)", () => {
 		expect(first.intent).toEqual(
 			renderUpdatePullRequestIntent({ ...UPSTREAM, prNumber: 7, body: first.refreshedBody }),
 		);
-		expect(first.intent.body.body).toContain("Response summary");
+		expect(first.intent.body.body).toContain(`## ${RESPONSE_SUMMARY_HEADING}`);
 	});
 
 	test("same facts replan onto the same row; changed facts fail closed while the first is pending", () => {

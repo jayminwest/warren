@@ -173,6 +173,21 @@ export {
 	NO_MUTATIONS,
 } from "./mutations.ts";
 export {
+	BODY_REFRESH_DIVERGED_REASON,
+	type BodyRefreshJournalResult,
+	bodyHasDiverged,
+	bodyRefreshActionKey,
+	type ExecuteBodyRefreshInput,
+	executeJournaledBodyRefresh,
+	mergeEvidence,
+	type PrBodyRefreshFacts,
+	type RenderAndJournalBodyRefreshInput,
+	renderAndJournalBodyRefresh,
+	renderedBodyDigest,
+	renderRefreshedPrBody,
+	UPDATE_PULL_REQUEST_BODY_REFRESH_ACTION_TYPE,
+} from "./pr-execute/body-refresh.ts";
+export {
 	type ExecuteMutationInput,
 	executeJournaledMutation,
 	FOLLOW_UP_PUSH_ACTION_TYPE,
