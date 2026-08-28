@@ -342,6 +342,31 @@ export class EventStore {
 		return { row: this.addAttention({ ...input, detailJson }), created: true };
 	}
 
+	/**
+	 * Monotonically resolve an open attention item and stamp the resolving
+	 * evidence into its detail JSON (warren-b853). Attention is derived
+	 * state, so resolution is journal-free: the update is a no-op (false)
+	 * when the item is missing or already resolved, never an error.
+	 */
+	resolveAttentionAuto(id: string, stamp: Record<string, unknown>): boolean {
+		const row = this.getAttentionItem(id);
+		if (row === null || row.resolvedAtMs !== null) return false;
+		let detail: Record<string, unknown> = {};
+		if (row.detailJson !== null) {
+			try {
+				detail = JSON.parse(row.detailJson) as Record<string, unknown>;
+			} catch {
+				detail = { priorDetailJson: row.detailJson };
+			}
+		}
+		const result = this.#ctx.db
+			.query(
+				"UPDATE attention_items SET detail_json = ?, resolved_at_ms = ? WHERE id = ? AND resolved_at_ms IS NULL",
+			)
+			.run(JSON.stringify({ ...detail, ...stamp }), nowMs(this.#ctx), id);
+		return result.changes === 1;
+	}
+
 	resolveAttention(id: string): void {
 		const result = this.#ctx.db
 			.query(
