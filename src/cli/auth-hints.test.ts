@@ -11,7 +11,7 @@ describe("authFailureHint", () => {
 		expect(hint).not.toContain("WARREN_API_TOKEN");
 	});
 
-	test("blames the environment and warns about an auto-loaded .env", () => {
+	test("blames the environment and notes a cwd .env is never auto-loaded", () => {
 		const hint = authFailureHint("env", {});
 		expect(hint).toContain("came from WARREN_API_TOKEN in the environment");
 		expect(hint).toContain(".env");

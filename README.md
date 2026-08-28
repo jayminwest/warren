@@ -163,7 +163,7 @@ See [Extensions](docs/design/extensions.md) for their contracts and current pack
 
 ## Status
 
-Stable (`0.18.0`). The run lifecycle is in continuous use on GKE. It operates against real repositories, including this one. [app.warren.run](https://app.warren.run) exposes the read-only run history and event streams without a login.
+Stable (`0.19.0`). The run lifecycle is in continuous use on GKE. It operates against real repositories, including this one. [app.warren.run](https://app.warren.run) exposes the read-only run history and event streams without a login.
 
 Warren is pre-1.0. Unit, integration, and scenario tests exercise the run lifecycle. The current shared-token trust model remains a deliberate limit.
 

@@ -161,9 +161,11 @@ The same walk generates `docs/cli-reference.md` (`bun run gen:cli-ref`).
 The env contract documents `WARREN_BASE_URL`, `WARREN_API_TOKEN`, and
 `WARREN_CLIENT_CONFIG`.
 
-- Bun auto-loads `.env` from the invoking cwd — a stale
-  `WARREN_API_TOKEN` there outranks the client config file on every
-  command (warren-8807, warren-2244).
+- The CLI never auto-loads a cwd `.env`: the `src/cli/main.ts` shebang
+  passes `--env-file=/dev/null`, so only genuinely exported environment
+  variables participate in credential resolution. This closed the
+  stale-dotfile trap of warren-8807/warren-2244 structurally. A guard
+  test in `src/cli/main.test.ts` pins the shebang.
 - `warren login` prefers a token piped on stdin over an ambient env
   token.
 - Auth-rejection errors name the environment as the token source when
@@ -632,16 +634,22 @@ imports it. `check:layers` enforces both directions, because an import
 either way compiles the extension into core and makes its removal
 breaking.
 
-Three extensions ship today. The flagship is `extensions/audit-log/`
-(plan pl-116e), a collector that tails run events, normalizes them
-into an append-only audit log, and exports it over
-`GET /audit-log.jsonl`. Beside it sits `extensions/judge/`
+Five extension packages ship today. The flagship is
+`extensions/audit-log/` (plan pl-116e), a collector that tails run
+events, normalizes them into an append-only audit log, and exports it
+over `GET /audit-log.jsonl`. Beside it sits `extensions/judge/`
 (plan pl-17ca), which reads finished runs, judges them against the
 15-class rubric v1, stores verdicts append-only, and exports them
 over `GET /verdicts.jsonl`. `extensions/tracker-jira/` (warren-27d9)
-is the third. It speaks the warren-tracker/v1 protocol against Jira Cloud and holds
-its own Jira credential. Its README carries the friction list for that
-build.
+speaks the warren-tracker/v1 protocol against Jira Cloud and holds
+its own Jira credential. Its README carries the friction list for
+that build. `extensions/tracker-conformance/` (warren-53ea) is the
+warren-tracker/v1 conformance suite plus FakeTracker, the reference
+in-memory server. `extensions/campaign-controller/` (plan pl-91b6) is
+the first controller extension: it owns durable campaign state and
+drives warren's HTTP command APIs under an operator-approved policy —
+dry-run journaling in V0, plus a single policy-gated create-PR
+mutation from Phase 2.
 
 `extensions/audit-log/FRICTION.md` logs every place the extension
 author had to work around a missing warren surface, and that list is

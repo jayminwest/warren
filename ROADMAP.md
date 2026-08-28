@@ -46,7 +46,7 @@ advance only when pilot evidence supplies their payer.
 | Auth | `AuthProvider` (`src/server/auth.ts`) | **Live** — `NoAuth`, `BearerToken`, `PublicRead` behind `WARREN_AUTH` (pl-b82d). The multi-user widening moved to Deferred until paid (2026-08-03). |
 | Extensions (Tier 1) | lifecycle bus (`src/runs/lifecycle-bus.ts`, `warren-ext/v1`) | **Live, observe-only** — all 6 hooks emit in production (`run_started` + `event_emitted` wired in v0.13.1, warren-28ca). |
 | Forge | `Forge` — repo refs, git auth, PR open/find, checks, error taxonomy | **Live** (v0.15.0, pl-d1c9) — GitHubForge (PAT) + GitHubApp (installation tokens) + FakeForge, boot-resolved via `WARREN_FORGE`, boundary held by a `check:layers` rule pair. Design record: `docs/design/forge-contract.md`. Further forges (GitLab, then Forgejo/Gitea) land in-core as registry arms, not as extensions (Decisions, 2026-08-20). |
-| Issue tracker | `IssueTracker` — capability-flagged (`supportsPlans`, `isGitNative`). Seeds in-core. External trackers arrive through the `RemoteTracker` bridge speaking `warren-tracker/v1` (wire protocol experimental until a foreign implementation survives the conformance suite). | **Live** (v0.18.0, pl-a37b) — `SeedsTracker` + `RemoteTracker`, per-project `tracker` block in `.warren/config.yaml`. Design record: `docs/design/issue-tracker.md`. |
+| Issue tracker | `IssueTracker` — capability-flagged (`supportsPlans`, `isGitNative`). Seeds in-core. External trackers arrive through the `RemoteTracker` bridge speaking `warren-tracker/v1` (wire protocol experimental until a foreign implementation survives the conformance suite). | **Live** (v0.18.0, pl-a37b) — `SeedsTracker` + `RemoteTracker`, per-project `tracker` block in `.warren/config.yaml`. `extensions/tracker-jira/` (v0.19.0) is the first external implementation of the wire protocol. Design record: `docs/design/issue-tracker.md`. |
 | Agent runtime | `AgentRuntimeAdapter` phase 1 — terminal detect, usage, error classes, seed layout | **Live** — phase 2 (harness repatriation) shipped with pl-3007 in v0.17.0. The adapters are warren-owned (`src/runtime/adapters/`). Phase 1 completed with `runtimeId` typed off the union + the `check:runtime-ids` guard (GH#846 items 4–5, PR #964). |
 
 ## Now — in flight
@@ -65,25 +65,20 @@ advance only when pilot evidence supplies their payer.
 
 ## Next — planned, in order
 
-1. **Campaign controller Phase 1.** Ship a narrow generic Tier-1 controller with a
-   dogfood adapter. It owns immutable approved manifests, durable reconciliation,
-   campaign budgets, fail-closed attention, and reporting.
-
-   It uses a separate controller API credential. It may use Warren's current operator
-   token only against a dedicated v1 deployment. Ambiguous dispatch enters
-   `dispatch_uncertain`. Version 1 does not wait for a new core correlation feature.
-
-   PR mutations remain manual. The pilot begins manually, so controller delivery cannot
-   block the first Snakemake cohort. Design record:
-   `docs/design/campaign-controller.md`.
+1. **Upstream contribution loop v1 (Phase 3, pl-096b).** The campaign controller's
+   V0 dry run and Phase 2 policy-gated create-PR shipped in v0.19.0 and opened the
+   first live OpenClaw PR. Phase 3 closes the response loop: consume upstream review
+   comments, checks, and merge outcomes, and turn them into bounded follow-up work.
+   Design record: `docs/design/campaign-controller.md`.
 
 ## Deferred until paid
 
 Honest replacements for old sequencing steps with no payer. Each entry names its price of admission.
 
 - **Integration breadth: Linear, GitLab, and Forgejo/Gitea.** The contracts are ready,
-  but no waiting deployment currently pays for another implementation. Linear remains
-  the intended first external tracker behind `warren-tracker/v1`.
+  but no waiting deployment currently pays for another implementation. Jira shipped as
+  the first external tracker behind `warren-tracker/v1` (v0.19.0,
+  `extensions/tracker-jira/`). Linear follows the same path when a payer appears.
 
   GitLab remains the intended second in-core Forge. Warren-1b6f is no-regret pre-work,
   and warren-7ba8 is the provider issue. Forgejo/Gitea follows GitLab when a real
@@ -137,6 +132,10 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 | The burrow absorption — sandbox, harness adapters, spawn path, and preview sidecars internalized; `src/burrow-client/` deleted; supervisor spawns only warren | v0.17.0 | pl-3007, `docs/design/runtime-and-supervisor.md` |
 | The self-host push — first-boot operator-token minting, `DockerProvider` sibling containers, one-line docker bring-up pinned by `acceptance:container` | v0.17.0 | warren-ef6e, `docs/design/runtime-docker-provider.md` |
 | The any-setup campaign — IssueTracker cut, dispatch-context analytics, external-repo onboarding, and runtime hardening | v0.18.0 | pl-a37b, `docs/design/issue-tracker.md` |
+| Direction C operator console — full UI rebuild on the design spec, Operations index, Event explorer, `GET /events` + `GET /instance` + ops-overview APIs, mobile pass, bug sweep | v0.19.0 | pl-7e38, pl-3ce8, pl-4ab6 (verification sweep warren-2c97 pending) |
+| The casual-user happy path — one-line installer, `warren up` credential wizard + runtime autodetect, browser auth handoff, GitHub App persistence + hot-activation, first-run onboarding | v0.19.0 | pl-26f3 |
+| Campaign controller V0 + Phase 2 — `extensions/campaign-controller/`, immutable manifests, action journal, dry-run tick, policy-gated create-PR, first live OpenClaw PR | v0.19.0 | pl-91b6, `docs/design/campaign-controller.md` |
+| Jira tracker extension — first external tracker, warren-tracker/v1 over Jira Cloud | v0.19.0 | warren-27d9, `docs/design/issue-tracker.md` |
 
 ## Deliberately not in core
 

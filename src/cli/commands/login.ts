@@ -10,8 +10,9 @@
  * Token source precedence: `--token` flag > piped stdin >
  * `WARREN_API_TOKEN` env. An explicitly piped stdin token wins over an
  * ambient env token (warren-2244): the operator typed that credential
- * deliberately, while the env value may be a stale `.env` that Bun
- * auto-loaded from the invoking cwd (warren-8807). This login-local
+ * deliberately, while the env value merely rode along in the shell.
+ * (A cwd `.env` never reaches the CLI at all — the `main.ts` shebang
+ * passes `--env-file=/dev/null`, closing warren-8807.) This login-local
  * precedence overrides the global flag > env > file order only when
  * stdin actually carries a token — every other command keeps the
  * documented global precedence. The stdin arm exists so an interactive
@@ -102,7 +103,7 @@ async function resolveToken(
 		if (fromEnv !== undefined && fromEnv !== "" && fromEnv !== fromStdin) {
 			context.stdio.stderr.write(
 				"warren: using token piped on stdin; ignoring WARREN_API_TOKEN from environment " +
-					"(Bun auto-loads `.env` from your cwd — unset it to silence this warning)\n",
+					"(unset it to silence this warning)\n",
 			);
 		}
 		return fromStdin;

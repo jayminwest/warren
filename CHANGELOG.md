@@ -10,6 +10,60 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-08-27
+
+The operator-console release. The UI is rebuilt end to end on the
+Direction C design — a new Operations index, an Event explorer, and a
+full mobile pass — while a one-line installer and a guided `warren up`
+give first-time users a working instance without touching a config
+file. Around the core, the campaign controller opened its first live
+upstream PR and Jira arrived as the first external tracker.
+
+### Added
+
+- **Operator console rebuild (pl-7e38).** Every page rebuilt on the
+  Direction C design system: a new Operations page as the index route
+  (backed by a new one-poll ops-overview API), an Event explorer backed
+  by the new global events query endpoint (`GET /events`), an Instance
+  facts page (`GET /instance`), and rebuilt Runs, Run detail, Plan
+  runs, Plan run detail, Projects, Project detail, Dispatch, Dispatch
+  plan, Telemetry (four tabs), and Login pages, with new tokens,
+  typography, and a theme switch.
+- **Mobile pass (pl-4ab6).** The console is now phone-usable: a
+  bottom five-tab nav replaces the hamburger, dispatch becomes a
+  card-per-section form, and every page — runs, run detail, plan runs,
+  operations, telemetry, event explorer, instance — gets a conformant
+  mobile arm.
+- **Casual-user happy path (pl-26f3).** `scripts/install.sh` installs
+  bun and the CLI in one line; `warren up` autodetects the runtime
+  (sandbox-exec / bwrap / docker) and walks through credentials with a
+  wizard; a single-use setup code minted at boot hands the browser an
+  authenticated session; GitHub App credentials persist and
+  hot-activate the forge; Add Project lists the App installation's
+  repositories; a zero-project instance renders a setup checklist and
+  offers a starter-task dispatch after the first project registers.
+  The npm package now ships the built UI.
+- **Campaign controller** (`extensions/campaign-controller/`) — a
+  standalone upstream-contribution controller over warren's HTTP API:
+  immutable campaign manifests, repository policy, SQLite action
+  journal, read-only GitHub polling, and a dry-run operator CLI, then
+  a single policy-gated create-PR mutation (Phase 2) with
+  evidence-gate PR bodies. It opened its first live OpenClaw PR and
+  deploys to GKE beside the judge.
+- **Jira tracker extension** (`extensions/tracker-jira/`) — speaks
+  warren-tracker/v1 against Jira Cloud with its own credential.
+- **Judge export proxy** — an operator-gated warren route
+  reverse-proxies the judge `/verdicts.jsonl` export, so the browser
+  stays same-origin and `JUDGE_EXPORT_TOKEN` never reaches the client;
+  the telemetry judge tab now classifies healthy-empty, misconfigured,
+  and absent states honestly.
+- **Honest cost display for subscription-auth runs** — a `costBasis`
+  wire field distinguishes metered API spend from subscription usage.
+- New operator knobs: `WARREN_GIT_TIMEOUT_MS` (host-clone git
+  timeouts), `WARREN_K8S_MEMORY_REQUEST_MIB` / `_LIMIT_MIB` (run-pod
+  memory), and a provisioned RWX repo-cache wired through the K8s
+  deploy pipeline.
+
 ### Changed
 
 - The built-in default run-branch prefix is now `warren/` instead of the
@@ -17,6 +71,38 @@ Releases **0.9.10 and earlier** live in
   `warren/run_xxxxxxxxxxxx` branches; deployments that configured
   `runBranchPrefix` (project config or `WARREN_RUN_BRANCH_PREFIX`) are
   unaffected. Roll back with `WARREN_RUN_BRANCH_PREFIX=burrow`.
+- The git credential path no longer assumes GitHub — the forge
+  contract owns credential shape, clearing the road for non-GitHub
+  forges.
+- The auto-merge gate accepts a comma-separated `AUTO_MERGE_BOT_LOGIN`
+  list, so App-authored and machine-account-authored run PRs both
+  qualify.
+- Provider retry is bounded and reports where it stopped; a retried
+  run keeps its provider, model, and cost cap.
+- README and docs repositioned: the casual install path sits above the
+  fold and operator content moved to its own section.
+
+### Fixed
+
+- Direction C bug sweep (pl-3ce8): full-width topbar, doubled filter
+  carets, frozen live durations (a shared `useNow` tick), overlapping
+  event-kind labels and fixed-height event stream on run detail,
+  telemetry meter-bar overflow and lost `toFixed` formatting, and the
+  unreachable `/events` page now in the nav with the Operations events
+  panel live.
+- K8s: a run no longer zombies after a `stdin_hold_timeout` kill; the
+  git-credential callback accepts a run-scoped token; the agent uid
+  split works on containerd 2.x and deploys gate on it; placeholder
+  Secret templates stay out of the kind and kustomize overlays.
+- Install script: `apt-get update` runs before the prerequisite
+  install, `unzip` is provisioned for the bun bootstrap, and the bun
+  installer runs via a temp file so its bash shebang applies.
+- CLI: `--url` overrides an empty `WARREN_BASE_URL`; `doctor` failure
+  paths report the credential source they resolved.
+- Release/deploy pipeline: a draft release resumes at the tagged SHA,
+  and the gke-live overlay applies per resource with bounded retries.
+- The sandbox git preflight verifies the resolved git actually
+  executes inside the sandbox before a run starts.
 
 ## [0.18.0] — 2026-08-20
 

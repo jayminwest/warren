@@ -24,7 +24,7 @@ Every remote-capable command also accepts `--url <url>` / `--token <token>`, lis
 | Variable | Summary |
 | --- | --- |
 | `WARREN_BASE_URL` | warren server base URL (default http://localhost:8080) |
-| `WARREN_API_TOKEN` | bearer token for the server (required unless WARREN_AUTH=public); note the Bun CLI auto-loads `.env` from your cwd — a stale token there overrides the client config file on every command (`warren login` still prefers a piped stdin token over it) |
+| `WARREN_API_TOKEN` | bearer token for the server (required unless WARREN_AUTH=public); an exported value overrides the client config file, but a cwd `.env` is never auto-loaded (the CLI runs with --env-file=/dev/null) — only variables exported in your shell count (`warren login` still prefers a piped stdin token over the env) |
 | `WARREN_CLIENT_CONFIG` | override the client config path (default ~/.warren/client.json, written by `warren login`) |
 
 ## Commands

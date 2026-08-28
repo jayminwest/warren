@@ -161,3 +161,11 @@ describe("resolveCliExitCode", () => {
 		expect(resolveCliExitCode(err)).toBe(2);
 	});
 });
+
+describe("cli entry shebang", () => {
+	test("keeps --env-file=/dev/null so a cwd .env never reaches the CLI (warren-8807)", async () => {
+		const source = await Bun.file(`${import.meta.dir}/main.ts`).text();
+		const firstLine = source.split("\n", 1)[0];
+		expect(firstLine).toBe("#!/usr/bin/env -S bun --env-file=/dev/null");
+	});
+});

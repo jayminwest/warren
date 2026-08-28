@@ -124,10 +124,9 @@ export function resolveClientConfig(env: EnvLike, flags: ClientFlags = {}): Warr
  * have to explain WHICH credential they sent (warren-8807). The precedence
  * itself is unchanged.
  *
- * A cwd `.env` is indistinguishable from a real environment variable here:
- * Bun loads it before the process starts, so both report `env`. That is
- * still the answer that explains an `[unauthorized]` right after a
- * successful `warren login`.
+ * An `env` source can only be a genuinely exported variable: the
+ * `main.ts` shebang passes `--env-file=/dev/null`, so Bun never folds a
+ * cwd `.env` into `process.env` (warren-8807, closed structurally).
  */
 export function resolveClientConfigWithSources(
 	env: EnvLike,

@@ -47,7 +47,7 @@ export const ENV_CONTRACT: PrimeDocument["env"] = [
 	{
 		name: "WARREN_API_TOKEN",
 		summary:
-			"bearer token for the server (required unless WARREN_AUTH=public); note the Bun CLI auto-loads `.env` from your cwd — a stale token there overrides the client config file on every command (`warren login` still prefers a piped stdin token over it)",
+			"bearer token for the server (required unless WARREN_AUTH=public); an exported value overrides the client config file, but a cwd `.env` is never auto-loaded (the CLI runs with --env-file=/dev/null) — only variables exported in your shell count (`warren login` still prefers a piped stdin token over the env)",
 	},
 	{
 		name: CLIENT_CONFIG_PATH_ENV,

@@ -33,7 +33,7 @@ export function authFailureHint(source: ClientConfigSource | undefined, env: Env
 		case "flag":
 			return "the rejected token came from --token; check it against the server's credential";
 		case "env":
-			return `the rejected token came from WARREN_API_TOKEN in the environment; check it against the server's credential. Bun auto-loads \`.env\` from the invoking cwd, so a stale token there outranks the one \`warren login\` saved in ${configFile}`;
+			return `the rejected token came from WARREN_API_TOKEN in the environment; check it against the server's credential. An exported WARREN_API_TOKEN outranks the token \`warren login\` saved in ${configFile} — unset it to fall back to the config file. (The CLI never auto-loads a cwd \`.env\`, so the variable was exported in this shell.)`;
 		case "config-file":
 			return `the rejected token came from the client config file (${configFile}); re-run \`warren login\` to replace it`;
 		default:

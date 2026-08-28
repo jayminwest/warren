@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S bun --env-file=/dev/null
 /**
- * `warren` / `wr` CLI entry.
+ * `warren` / `wr` CLI entry. The shebang's `--env-file=/dev/null` stops
+ * Bun auto-loading a cwd `.env` over the client config (warren-8807).
  *
  * Post-warren-97a2 (owner decision D3) the CLI collapses onto HTTP: a
  * local user is a remote user pointed at localhost. Remote-capable
@@ -8,14 +9,13 @@
  * the `plan` group) resolve a WarrenClient from `--url`/`--token` flags
  * + `WARREN_BASE_URL`/`WARREN_API_TOKEN` env (client config holds base
  * URL + token ONLY — D5) and drive the server through the SDK. The
- * genuinely-local remainder is exactly `serve`, `db migrate-to-postgres`,
- * and `doctor --local` (the deployment-side checks).
+ * genuinely-local remainder is `serve`, `db migrate-to-postgres`, and
+ * `doctor --local` (the deployment-side checks).
  *
- * The dispatch is intentionally thin: commander handles argv parsing and
- * help text, then each command function takes a `CliContext` (env +
- * stdio + spawn) plus parsed args and returns an `exitCode`. That shape
- * keeps the per-command logic unit-testable without spinning up a real
- * subprocess.
+ * The dispatch is intentionally thin: commander parses argv, then each
+ * command function takes a `CliContext` (env + stdio + spawn) plus
+ * parsed args and returns an `exitCode`, so per-command logic stays
+ * unit-testable without spinning up a real subprocess.
  */
 
 import { Command, CommanderError } from "commander";
