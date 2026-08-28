@@ -79,9 +79,7 @@ describe("openclaw bot-grammar golden", () => {
 			"- [P1] Bind each delivery outcome to its originating cron run — " +
 			"`src/cron/service/failure-alerts.ts:217-222`";
 		const match = pattern.exec(observedLine);
-		expect(match?.groups?.title).toBe(
-			"Bind each delivery outcome to its originating cron run",
-		);
+		expect(match?.groups?.title).toBe("Bind each delivery outcome to its originating cron run");
 		expect(match?.groups?.priority).toBe("P1");
 		expect(match?.groups?.file).toBe("src/cron/service/failure-alerts.ts");
 		// A "217-222" range captures only its first number.

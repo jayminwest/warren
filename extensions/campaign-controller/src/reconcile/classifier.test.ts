@@ -136,20 +136,12 @@ describe("classifyEvent", () => {
 			"## Findings\n" +
 			"- [P1] Bind each delivery outcome to its originating cron run — `" +
 			"src/cron/service/failure-alerts.ts:217-222`";
-		const row = classifyComment(
-			"EV_CS_1",
-			body,
-			"clawsweeper[bot]",
-			"NONE",
-			PROFILE_CLAWSWEEPER,
-		);
+		const row = classifyComment("EV_CS_1", body, "clawsweeper[bot]", "NONE", PROFILE_CLAWSWEEPER);
 		expect(row?.category).toBe("review_bot_findings");
 		const findings = findingsOf(row);
 		expect(findings).toHaveLength(1);
 		const finding = findings[0];
-		expect(finding?.title?.value).toBe(
-			"Bind each delivery outcome to its originating cron run",
-		);
+		expect(finding?.title?.value).toBe("Bind each delivery outcome to its originating cron run");
 		expect(finding?.priority?.value).toBe("P1");
 		expect(finding?.file?.value).toBe("src/cron/service/failure-alerts.ts");
 		// A line range captures the first number only.
