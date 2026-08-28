@@ -48,36 +48,78 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 	);
 }
 
+/** Mock mobile/telemetry.jsx :167-205 fill ramp for the top struggle rows. */
+const STRUGGLE_FILL_RAMP = ["opacity-80", "opacity-60", "opacity-45"] as const;
+
+/** Below-md arm (warren-756e): meter row per directory, no scroll. */
+function DifficultyMeterRow({
+	dir,
+	maxScore,
+	rank,
+}: {
+	dir: DirectoryStat;
+	maxScore: number;
+	rank: number;
+}) {
+	const width =
+		maxScore > 0 ? `${Math.max(4, Math.round((dir.difficultyScore / maxScore) * 100))}%` : "4px";
+	const failShare = dir.failureShare === null ? null : `${Math.round(dir.failureShare * 100)}%`;
+	return (
+		<MeterBar
+			label={dir.directory}
+			labelClass="w-[118px] overflow-clip max-md:text-[9px] max-md:leading-[11px] text-(--color-text-2)"
+			width={width}
+			markClass={cn("h-2 bg-(--color-danger)", STRUGGLE_FILL_RAMP[rank] ?? "opacity-45")}
+			title={`difficulty ${formatScore(dir.difficultyScore)} · fail share ${failShare ?? "—"} · touches ${String(dir.runsTouching)} · retries ${String(dir.retries)}`}
+			value={failShare ?? "—"}
+			valueClass={cn(
+				"w-[30px] text-right",
+				rank === 0 ? "text-(--color-danger)" : "text-(--color-text-2)",
+			)}
+		/>
+	);
+}
+
 function StruggleTable({ directories }: { directories: readonly DirectoryStat[] }) {
 	const top = [...directories]
 		.sort((a, b) => b.difficultyScore - a.difficultyScore)
 		.slice(0, DIRECTORY_ROWS);
 	const maxScore = top.reduce((m, d) => Math.max(m, d.difficultyScore), 0);
 	return (
-		<div className="overflow-x-auto">
-			<table className="w-full">
-				<thead>
-					<tr>
-						{["DIRECTORY", "DIFFICULTY", "FAIL SHARE", "TOUCHES", "RETRIES"].map((h, i) => (
-							<th
-								key={h}
-								className={cn(
-									"pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)",
-									i >= 2 && "text-right",
-								)}
-							>
-								{h}
-							</th>
+		<>
+			{/* md+: the full 5-column table, unchanged. */}
+			<div className="hidden overflow-x-auto md:block">
+				<table className="w-full">
+					<thead>
+						<tr>
+							{["DIRECTORY", "DIFFICULTY", "FAIL SHARE", "TOUCHES", "RETRIES"].map((h, i) => (
+								<th
+									key={h}
+									className={cn(
+										"pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)",
+										i >= 2 && "text-right",
+									)}
+								>
+									{h}
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{top.map((d) => (
+							<DifficultyRow key={d.directory} dir={d} maxScore={maxScore} />
 						))}
-					</tr>
-				</thead>
-				<tbody>
-					{top.map((d) => (
-						<DifficultyRow key={d.directory} dir={d} maxScore={maxScore} />
-					))}
-				</tbody>
-			</table>
-		</div>
+					</tbody>
+				</table>
+			</div>
+			{/* Below md: meter-row list (warren-756e, mock :167-205) — no
+		    horizontally-scrolling table at 375px. */}
+			<div className="flex flex-col gap-[9px] md:hidden">
+				{top.map((d, i) => (
+					<DifficultyMeterRow key={d.directory} dir={d} maxScore={maxScore} rank={i} />
+				))}
+			</div>
+		</>
 	);
 }
 

@@ -8,9 +8,11 @@ import {
 	runAnalyticsApi,
 } from "@/api/client.ts";
 import type { RunRow } from "@/api/types.ts";
+import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import { formatDuration } from "@/pages/telemetry/format.ts";
 import { type JudgeStoreRow, useJudgeVerdicts } from "@/pages/telemetry/judge-verdicts.ts";
+import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { useRunsJoin } from "@/pages/telemetry/runs-join.ts";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
@@ -192,6 +194,48 @@ function EconomicsAgentRow({
 	);
 }
 
+/** Mock mobile/telemetry.jsx :272-315 fill ramp for the spend rows. */
+const ECONOMICS_FILL_RAMP = ["opacity-80", "opacity-60", "opacity-50", "opacity-45"] as const;
+
+/**
+ * Below-md arm (warren-756e): one meter row per agent — 80px label,
+ * track filled by cost-per-merged-PR share (bar width relative to the
+ * window max; agents without a denominator render the quiet stub),
+ * 42px value. Runs/success/duration stay in the title tooltip.
+ */
+function AgentEconomicsMeterRow({
+	row,
+	pass,
+	rank,
+	maxCost,
+}: {
+	row: AgentEconomicsRow;
+	pass?: { pass: number; total: number };
+	rank: number;
+	maxCost: number;
+}) {
+	const known = row.costPerMergedPrUsd !== null && row.costPerMergedPrUsd !== undefined;
+	const width =
+		known && maxCost > 0
+			? `${Math.max(4, Math.round(((row.costPerMergedPrUsd ?? 0) / maxCost) * 100))}%`
+			: "4px";
+	const judgePass =
+		pass === undefined || pass.total === 0 ? "—" : `${Math.round((pass.pass / pass.total) * 100)}%`;
+	return (
+		<MeterBar
+			label={row.agent}
+			labelClass="w-[80px] overflow-clip max-md:text-[9px] max-md:leading-[11px] text-(--color-text-2)"
+			width={width}
+			markClass={cn("h-2 bg-(--color-success)", ECONOMICS_FILL_RAMP[rank] ?? "opacity-45")}
+			title={`${row.agent} · ${String(row.runs)} runs · ${
+				row.successRate === null ? "—" : `${Math.round(row.successRate * 100)}%`
+			} success · ${judgePass} judge pass · ${formatDuration(row.avgDurationMs)} avg`}
+			value={known ? formatCostUsd(row.costPerMergedPrUsd ?? 0) : "—"}
+			valueClass="w-[42px] text-right text-(--color-text)"
+		/>
+	);
+}
+
 function AgentEconomicsTable() {
 	const { from, to } = useTelemetryWindow();
 	const runs = useQuery({
@@ -217,6 +261,8 @@ function AgentEconomicsTable() {
 		costPerMergedPrUsd: costByAgent.get(b.key)?.costPerMergedPrUsd ?? null,
 	}));
 
+	const maxCostPerPr = rows.reduce((m, r) => Math.max(m, r.costPerMergedPrUsd ?? 0), 0);
+
 	return (
 		<TelemetryPanel title="Agent economics" meta="SUCCESS FROM RUN STATE · QUALITY FROM THE JUDGE">
 			{runs.isError ? (
@@ -226,29 +272,44 @@ function AgentEconomicsTable() {
 			) : rows.length === 0 && !runs.isLoading ? (
 				<p className="text-[12px] leading-4 text-(--color-text-3)">No runs in this window.</p>
 			) : (
-				<div className="overflow-x-auto">
-					<table className="w-full">
-						<thead>
-							<tr>
-								{["AGENT", "RUNS", "SUCCESS", "JUDGE PASS", "AVG DUR", "COST / MERGED PR"].map(
-									(h, i) => (
-										<th
-											key={h}
-											className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i >= 1 ? "text-right" : ""}`}
-										>
-											{h}
-										</th>
-									),
-								)}
-							</tr>
-						</thead>
-						<tbody>
-							{rows.map((r) => (
-								<EconomicsAgentRow key={r.agent} row={r} pass={agentPass?.get(r.agent)} />
-							))}
-						</tbody>
-					</table>
-				</div>
+				<>
+					{/* Below md: meter-row list (warren-756e, mock :272-315) —
+				    no horizontally-scrolling 6-column table at 375px. */}
+					<div className="flex flex-col gap-[9px] md:hidden">
+						{rows.map((r, i) => (
+							<AgentEconomicsMeterRow
+								key={r.agent}
+								row={r}
+								pass={agentPass?.get(r.agent)}
+								rank={i}
+								maxCost={maxCostPerPr}
+							/>
+						))}
+					</div>
+					<div className="hidden overflow-x-auto md:block">
+						<table className="w-full">
+							<thead>
+								<tr>
+									{["AGENT", "RUNS", "SUCCESS", "JUDGE PASS", "AVG DUR", "COST / MERGED PR"].map(
+										(h, i) => (
+											<th
+												key={h}
+												className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i >= 1 ? "text-right" : ""}`}
+											>
+												{h}
+											</th>
+										),
+									)}
+								</tr>
+							</thead>
+							<tbody>
+								{rows.map((r) => (
+									<EconomicsAgentRow key={r.agent} row={r} pass={agentPass?.get(r.agent)} />
+								))}
+							</tbody>
+						</table>
+					</div>
+				</>
 			)}
 			<p className="text-[12px] leading-4 text-(--color-text-2)">
 				Avg duration is the mean run duration in the window. Cost per merged PR is undefined ("—")

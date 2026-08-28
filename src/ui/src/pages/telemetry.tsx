@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { OperatorOnly } from "@/components/operator-only.tsx";
 import { cn } from "@/lib/utils.ts";
@@ -7,6 +6,7 @@ import { TelemetryEconomicsTab } from "@/pages/telemetry/economics-tab.tsx";
 import { TelemetryJudgeTab } from "@/pages/telemetry/judge-tab.tsx";
 import { TelemetryLoopTab } from "@/pages/telemetry/loop-tab.tsx";
 import { TelemetryMetricStrip } from "@/pages/telemetry/telemetry-metrics.tsx";
+import { useIsDesktop } from "@/pages/telemetry/use-is-desktop.ts";
 import {
 	TELEMETRY_RANGE_DAYS,
 	TelemetryWindowProvider,
@@ -124,24 +124,6 @@ function TabNav() {
 			))}
 		</nav>
 	);
-}
-
-/** md+ only? True once the viewport reaches the desktop breakpoint. */
-function useIsDesktop(): boolean {
-	const [isDesktop, setIsDesktop] = useState(
-		() =>
-			typeof window !== "undefined" &&
-			typeof window.matchMedia === "function" &&
-			window.matchMedia("(min-width: 768px)").matches,
-	);
-	useEffect(() => {
-		const mq = window.matchMedia("(min-width: 768px)");
-		const update = () => setIsDesktop(mq.matches);
-		update();
-		mq.addEventListener("change", update);
-		return () => mq.removeEventListener("change", update);
-	}, []);
-	return isDesktop;
 }
 
 /**

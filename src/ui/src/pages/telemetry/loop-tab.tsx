@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils.ts";
 import { formatDuration } from "@/pages/telemetry/format.ts";
 import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
+import { useIsDesktop } from "@/pages/telemetry/use-is-desktop.ts";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
 /**
@@ -60,17 +61,26 @@ function shortDay(key: string): string {
 		.toUpperCase();
 }
 
+/**
+ * Mock mobile/telemetry.jsx :114-157 fill ramp for the below-md stage
+ * rows: primary fill at .55/.7/.85/1.0 over the known rows.
+ */
+const STAGE_FILL_RAMP = ["opacity-55", "opacity-70", "opacity-85", "opacity-100"] as const;
+
 /** One "where the time goes" row; bar width is relative to the known max. */
 function StageRow({
 	label,
 	medianMs,
 	maxMs,
 	highlight,
+	knownIndex,
 }: {
 	label: string;
 	medianMs: number | null;
 	maxMs: number;
 	highlight: boolean;
+	/** Position among known-median rows, for the below-md fill ramp. */
+	knownIndex: number;
 }) {
 	const known = medianMs !== null;
 	const width =
@@ -78,19 +88,29 @@ function StageRow({
 	return (
 		<MeterBar
 			label={label}
-			labelClass={cn("w-24", highlight ? "text-(--color-text)" : "text-(--color-text-2)")}
+			labelClass={cn(
+				// Below md: mock :114-157 fixed 74px label / 26px value.
+				"w-[74px] md:w-24",
+				highlight ? "text-(--color-text)" : "text-(--color-text-2)",
+			)}
 			width={width}
 			markClass={cn(
-				"h-3",
+				"h-3 max-md:h-2",
 				!known
 					? "bg-(--color-border)"
 					: highlight
 						? "bg-(--color-primary)"
-						: "bg-(--color-neutral)",
+						: cn(
+								"bg-(--color-neutral) max-md:bg-(--color-primary)",
+								STAGE_FILL_RAMP[knownIndex] ?? "opacity-100",
+							),
 			)}
 			title={known ? formatDuration(medianMs) : "no API surface for this stage yet"}
 			value={formatDuration(medianMs)}
-			valueClass={highlight && known ? "font-semibold text-(--color-primary)" : undefined}
+			valueClass={cn(
+				"max-md:w-[26px] max-md:flex max-md:flex-wrap max-md:justify-end max-md:text-right max-md:text-[10px] max-md:leading-3",
+				highlight && known ? "font-semibold text-(--color-primary)" : undefined,
+			)}
 		/>
 	);
 }
@@ -147,15 +167,50 @@ function OutcomesChart({ totals, series }: OutcomesData) {
 	);
 }
 
+/**
+ * Collapse daily buckets into Monday-keyed weekly buckets (warren-756e
+ * choice): 90D forces ~626px of min-width-[3px] columns into a 347px
+ * box below md, so the below-md arm renders one column per week —
+ * the daily detail stays a desktop affordance, like the mock (no
+ * daily chart at 375px).
+ */
+function collapseToWeeks(series: readonly RunDayBucket[]): RunDayBucket[] {
+	const weeks = new Map<string, RunDayBucket>();
+	for (const b of series) {
+		const d = new Date(`${b.key}T00:00:00Z`);
+		if (Number.isNaN(d.getTime())) continue;
+		const day = d.getUTCDay();
+		const monday = new Date(d);
+		monday.setUTCDate(d.getUTCDate() - ((day + 6) % 7));
+		const key = monday.toISOString().slice(0, 10);
+		const acc = weeks.get(key);
+		if (acc === undefined) {
+			weeks.set(key, { ...b, key });
+		} else {
+			weeks.set(key, {
+				...acc,
+				succeeded: acc.succeeded + b.succeeded,
+				cancelled: acc.cancelled + b.cancelled,
+				failed: acc.failed + b.failed,
+				runs: acc.runs + b.runs,
+			});
+		}
+	}
+	return [...weeks.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
 function OutcomesPanel({
 	runs,
 	days,
+	weekly,
 }: {
 	runs: ReturnType<typeof useTelemetryWindow>["runs"];
 	days: number;
+	weekly: boolean;
 }) {
 	const totals = runs.data?.totals;
-	const series = [...(runs.data?.timeSeries ?? [])].sort((a, b) => a.key.localeCompare(b.key));
+	const daily = [...(runs.data?.timeSeries ?? [])].sort((a, b) => a.key.localeCompare(b.key));
+	const series = weekly ? collapseToWeeks(daily) : daily;
 
 	return (
 		<TelemetryPanel
@@ -178,22 +233,30 @@ function OutcomesPanel({
 
 export function TelemetryLoopTab() {
 	const { runs, days } = useTelemetryWindow();
+	const isDesktop = useIsDesktop();
 	const totals = runs.data?.totals;
 	const stages = buildStages(totals);
 	const knownMax = stages.reduce((m, s) => Math.max(m, s.medianMs ?? 0), 0);
+	// Position among known-median rows, for the below-md fill ramp.
+	const knownIndices: number[] = [];
+	for (const s of stages) {
+		if (s.medianMs !== null) knownIndices.push(knownIndices.length);
+		else knownIndices.push(-1);
+	}
 
 	return (
 		<div className="flex flex-col gap-4 lg:flex-row">
-			<OutcomesPanel runs={runs} days={days} />
+			<OutcomesPanel runs={runs} days={days} weekly={!isDesktop} />
 
 			<TelemetryPanel title="Where the time goes" meta="MEDIAN PER RUN" className="flex-1">
-				{stages.map((s) => (
+				{stages.map((s, i) => (
 					<StageRow
 						key={s.label}
 						label={s.label}
 						medianMs={s.medianMs}
 						maxMs={knownMax}
 						highlight={s.highlight}
+						knownIndex={knownIndices[i] ?? -1}
 					/>
 				))}
 				<p className="mt-1 text-[12px] leading-4 text-(--color-text-2)">
