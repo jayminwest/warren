@@ -810,4 +810,36 @@ describe("runTick with a policy-gated PR creator", () => {
 		expect(tick2.dryRun).toBe(true);
 		expect(stagesOf(tick2.stages).some((stage) => stage.startsWith("pr_execute"))).toBe(false);
 	});
+
+	test("appends the profile's agentGuidance block to every dispatched prompt (warren-39b0)", async () => {
+		const guided = {
+			...basePolicy(),
+			agentGuidance: {
+				version: 1,
+				norms: ["Produce the smallest possible diff.", "Cite existing mechanisms."],
+			},
+		};
+		const h = harness({ issues: [812, 815], policy: guided });
+
+		// Initial dispatch: the first run's prompt carries the delimited block.
+		const tick1 = await runTick(h.deps, h.campaignId);
+		const firstPrompt = h.warren.getRunRow(runIdOf(tick1))?.prompt ?? "";
+		expect(firstPrompt.startsWith("Fix the assigned OpenClaw issue end to end.")).toBe(true);
+		expect(firstPrompt).toContain("BEGIN AGENT GUIDANCE");
+		expect(firstPrompt).toContain("agentGuidance v1");
+		expect(firstPrompt).toContain("1. Produce the smallest possible diff.");
+		expect(firstPrompt).toContain("2. Cite existing mechanisms.");
+		expect(firstPrompt).toContain("END AGENT GUIDANCE");
+
+		// Follow-up dispatch (the second work item, next tick): same block.
+		h.warren.setRunState(runIdOf(tick1), { state: "succeeded", costUsd: 1, targetBranch: BRANCH });
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("dispatch:dispatched");
+		const secondRunId = detailOf(requireStage(tick2, "dispatch")).runId;
+		const secondPrompt =
+			typeof secondRunId === "string" ? (h.warren.getRunRow(secondRunId)?.prompt ?? "") : "";
+		expect(secondPrompt).toContain("BEGIN AGENT GUIDANCE");
+		expect(secondPrompt).toContain("1. Produce the smallest possible diff.");
+		expect(secondPrompt).toContain("END AGENT GUIDANCE");
+	});
 });

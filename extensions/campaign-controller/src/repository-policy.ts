@@ -62,6 +62,19 @@ export interface AiDisclosurePolicy {
 	evidenceRequired: true;
 }
 
+/**
+ * Versioned contribution-design norms the policy binds into every dispatch
+ * prompt (warren-39b0). Profile data, never controller source: the norms
+ * text lives in the repository profile and is covered by the policy digest,
+ * so operator approval binds the exact wording.
+ */
+export interface AgentGuidance {
+	/** Guidance-block revision; bumps whenever the norms wording changes. */
+	version: number;
+	/** Ordered norm strings, rendered verbatim into the dispatch prompt. */
+	norms: string[];
+}
+
 /** The normalized, validated V0 repository policy. */
 export interface RepositoryPolicy {
 	schemaVersion: typeof REPOSITORY_POLICY_SCHEMA_VERSION;
@@ -71,6 +84,8 @@ export interface RepositoryPolicy {
 	stalenessMaxDays: number;
 	issueFirstRequired: true;
 	aiDisclosure: AiDisclosurePolicy;
+	/** Present when the profile declares it; `null` keeps old profiles valid. */
+	agentGuidance: AgentGuidance | null;
 	allowedWorkTypes: WorkType[];
 	forbiddenPaths: string[];
 	protectedPaths: string[];
@@ -100,6 +115,7 @@ const TOP_LEVEL_FIELDS = [
 	"stalenessMaxDays",
 	"issueFirstRequired",
 	"aiDisclosure",
+	"agentGuidance",
 	"allowedWorkTypes",
 	"forbiddenPaths",
 	"protectedPaths",
@@ -112,6 +128,34 @@ const TOP_LEVEL_FIELDS = [
 
 const SOURCE_FIELDS = ["url", "fetchedAt", "sha256"] as const;
 const DISCLOSURE_FIELDS = ["required", "evidenceRequired"] as const;
+const AGENT_GUIDANCE_FIELDS = ["version", "norms"] as const;
+
+/**
+ * Render the versioned agent-guidance block, clearly delimited, for
+ * appending to a dispatched prompt (warren-39b0). Returns `null` when the
+ * profile declares no guidance, so the prompt is the base text unchanged.
+ */
+export function renderAgentGuidance(policy: RepositoryPolicy): string | null {
+	const guidance = policy.agentGuidance;
+	if (guidance === null) return null;
+	const items = guidance.norms.map((norm, index) => `${index + 1}. ${norm}`).join("\n");
+	return [
+		`--- BEGIN AGENT GUIDANCE (repository policy agentGuidance v${guidance.version}) ---`,
+		"The repository policy binds the following contribution norms. They are binding for this run:",
+		items,
+		"--- END AGENT GUIDANCE ---",
+	].join("\n");
+}
+
+/**
+ * Compose the exact prompt warren receives: the approved base prompt with
+ * the profile's agent-guidance block appended. Shared by the initial
+ * dispatch and every follow-up dispatch so the norms bind uniformly.
+ */
+export function composeDispatchPrompt(basePrompt: string, policy: RepositoryPolicy): string {
+	const guidance = renderAgentGuidance(policy);
+	return guidance === null ? basePrompt : `${basePrompt}\n\n${guidance}`;
+}
 
 /**
  * Validate and normalize a repository policy snapshot. Throws
@@ -148,6 +192,7 @@ export function validateRepositoryPolicy(
 		);
 	}
 	const aiDisclosure = requireAiDisclosure(root);
+	const agentGuidance = requireAgentGuidance(root);
 	const allowedWorkTypes = requireWorkTypes(root);
 	const forbiddenPaths = requireStringArray(root, "forbiddenPaths", "repository policy", {
 		minItems: 1,
@@ -175,6 +220,7 @@ export function validateRepositoryPolicy(
 		stalenessMaxDays,
 		issueFirstRequired: true,
 		aiDisclosure,
+		agentGuidance,
 		allowedWorkTypes,
 		forbiddenPaths,
 		protectedPaths,
@@ -231,6 +277,26 @@ function requireAiDisclosure(root: ReturnType<typeof asObject>): AiDisclosurePol
 		);
 	}
 	return { required: true, evidenceRequired: true };
+}
+
+function requireAgentGuidance(root: ReturnType<typeof asObject>): AgentGuidance | null {
+	if (root.agentGuidance === undefined || root.agentGuidance === null) {
+		return null;
+	}
+	// Optional by design (warren-39b0): a previously-valid profile without a
+	// guidance block stays valid. Only a PRESENT block is validated.
+	const raw = asObject(root.agentGuidance, "repository policy.agentGuidance");
+	rejectUnknownKeys(raw, AGENT_GUIDANCE_FIELDS, "repository policy.agentGuidance");
+	const version = requireInt(raw, "version", "repository policy.agentGuidance", {
+		min: 1,
+		max: 1_000,
+	});
+	const norms = requireStringArray(raw, "norms", "repository policy.agentGuidance", {
+		minItems: 1,
+		maxItems: 20,
+		maxLen: 512,
+	});
+	return { version, norms };
 }
 
 function requireWorkTypes(root: ReturnType<typeof asObject>): WorkType[] {
