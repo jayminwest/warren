@@ -367,7 +367,7 @@ describe("body refresh e2e (warren-09d2)", () => {
 			h.store,
 			{
 				campaignId,
-				action: h.store.actions.getAction(journaled.actionId)!,
+				action: requireAction(journaled.actionId),
 				intent: journaled.intent,
 			},
 			h.updater(),
@@ -403,7 +403,7 @@ describe("body refresh e2e (warren-09d2)", () => {
 			h.store,
 			{
 				campaignId,
-				action: h.store.actions.getAction(overridden.actionId)!,
+				action: requireAction(overridden.actionId),
 				intent: overridden.intent,
 			},
 			h.updater(),
