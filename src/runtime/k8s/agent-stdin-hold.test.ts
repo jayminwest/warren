@@ -166,7 +166,7 @@ describe("runAgent · stdin-hold seam", () => {
 			log: silent,
 			skipFinalize: true,
 		});
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		expect(capture.holdStdin).toBe(true);
 		expect(capture.closeStdinCalls).toBe(1);
 		expect(capture.closeStdinBeforeExit).toBe(true);
@@ -185,7 +185,7 @@ describe("runAgent · stdin-hold seam", () => {
 				skipFinalize: true,
 			},
 		);
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		expect(capture.holdStdin).toBeUndefined();
 		expect(capture.closeStdinCalls).toBe(0);
 	});
@@ -206,7 +206,7 @@ describe("runAgent · stdin-hold seam", () => {
 			log: silent,
 			skipFinalize: true,
 		});
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		expect(capture.holdStdin).toBe(true);
 		expect(capture.closeStdinCalls).toBe(1);
 	});
@@ -283,7 +283,7 @@ describe("runAgent · stdin-hold seam", () => {
 				skipFinalize: true,
 			},
 		);
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		expect(capture.holdStdin).toBe(true);
 		expect(capture.writes).toEqual(["/prompt PIVOT NOW\n"]);
 		expect(capture.closeStdinCalls).toBe(1);

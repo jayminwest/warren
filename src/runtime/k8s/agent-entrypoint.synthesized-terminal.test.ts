@@ -172,7 +172,7 @@ describe("runAgent · synthesized terminal envelope", () => {
 			log: silent,
 			skipFinalize: true,
 		});
-		expect(result).toEqual({ exitCode: 3, phase: "failed" });
+		expect(result).toEqual({ exitCode: 3, phase: "failed", cancelledViaSignal: false });
 		const ends = agentEndEnvelopes(lines);
 		expect(ends).toHaveLength(1);
 		expect(ends[0]?.payload).toMatchObject({
@@ -200,7 +200,7 @@ describe("runAgent · synthesized terminal envelope", () => {
 			log: silent,
 			skipFinalize: true,
 		});
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		const ends = agentEndEnvelopes(lines);
 		expect(ends).toHaveLength(1);
 		expect(ends[0]?.payload).toMatchObject({
@@ -231,7 +231,7 @@ describe("runAgent · synthesized terminal envelope", () => {
 				skipFinalize: true,
 			},
 		);
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		const ends = agentEndEnvelopes(lines);
 		expect(ends).toHaveLength(1);
 		expect(ends[0]?.payload.synthesized).toBeUndefined();

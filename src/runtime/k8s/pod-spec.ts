@@ -168,17 +168,17 @@ export const DEFAULT_K8S_CALLBACK_NAMESPACE = "warren";
 export const DEFAULT_K8S_CALLBACK_PORT = "8080";
 
 /**
- * SIGTERM grace on `cancel()` (pl-829f step 19 / warren-31d4). `cancel` is the
- * seam's GRACEFUL stop: it deletes the pod with this `gracePeriodSeconds`, so
- * the kubelet delivers SIGTERM and waits this long before SIGKILL — giving the
- * agent a window to flush. A positive default matters: during the window the
- * pod lingers `Terminating` (phase still `Running`), so a `status()` re-read
- * from the domain's `cancelRun` sees a NON-terminal phase and does NOT
- * prematurely reap the run as `lost`/`failed` (grace=0 would risk the pod
- * vanishing before the domain records the cancel). Overridable via
- * `WARREN_K8S_CANCEL_GRACE_SECONDS`.
+ * SIGTERM grace on `cancel()` (pl-829f step 19 / warren-31d4; warren-01d5).
+ * `cancel` is the seam's GRACEFUL stop: it deletes the pod with this
+ * `gracePeriodSeconds`, so the kubelet delivers SIGTERM and waits before
+ * SIGKILL. The grace must outlast warren-01d5's bounded in-pod salvage window
+ * (the termination handler stops the agent, then finalize/salvage runs:
+ * `WARREN_CANCEL_FINALIZE_MAX_WAIT_MS`, 25s, + push/POST) → 90s. It also
+ * keeps the pod `Terminating` (phase still `Running`) long enough that the
+ * domain's `cancelRun` status re-read does not prematurely reap the run
+ * `lost`/`failed`. Overridable via `WARREN_K8S_CANCEL_GRACE_SECONDS`.
  */
-export const DEFAULT_K8S_CANCEL_GRACE_SECONDS = 30;
+export const DEFAULT_K8S_CANCEL_GRACE_SECONDS = 90;
 /**
  * Grace on `terminate()` (pl-829f step 19 / warren-31d4). `terminate` reclaims
  * the sandbox AFTER `finalize` already ran (contract §6.8 ordering), so the
