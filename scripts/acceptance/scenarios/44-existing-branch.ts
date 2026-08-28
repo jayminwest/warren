@@ -57,7 +57,6 @@ interface CreateRunResponse {
 const SHARED_BRANCH = "shared/existing-branch";
 const SEED_ID_A = "ah-acceptance-44-a";
 const SEED_ID_B = "ah-acceptance-44-b";
-const SEED_TS = "2026-06-18T09:00:00.000Z";
 
 export const scenario: Scenario = {
 	id: "44",
@@ -72,7 +71,7 @@ export const scenario: Scenario = {
 		// 1. The shared branch must exist on the push remote BEFORE any
 		//    existingBranch dispatch (the field refuses to compose a
 		//    workspace onto a branch the remote does not carry).
-		await pushSharedBranch(project.localPath);
+		await pushSharedBranch(ctx.fixtures.sampleProjectPath);
 
 		// 2. Run A onto the existing branch.
 		const runA = await dispatchOnBranch(http, project.id, ctx.fixtures.stubAgentName, SEED_ID_A);
@@ -86,26 +85,21 @@ export const scenario: Scenario = {
 		assertEqual(runB.branch, SHARED_BRANCH, "run B workspace branch is the existing branch");
 
 		// 4. Both commit sets land on ONE branch on the remote.
-		await assertBranchCarriesCommits(project.localPath, [
-			`claude-stub: close ${SEED_ID_A}`,
-			`claude-stub: close ${SEED_ID_B}`,
+		await assertBranchCarriesCommits(ctx.fixtures.sampleProjectPath, [
+			`claude-shim: close ${SEED_ID_A}`,
+			`claude-shim: close ${SEED_ID_B}`,
 		]);
 
 		// 5. Fail closed: a branch absent from the remote is a clean 400
 		//    before any run row exists.
-		const rejected = await http.expectJson<{ error?: { message?: string } }>(
-			"POST",
-			"/runs",
-			400,
-			{
-				body: {
-					agent: ctx.fixtures.stubAgentName,
-					project: project.id,
-					prompt: "should never spawn",
-					existingBranch: "ghost/does-not-exist",
-				},
+		const rejected = await http.expectJson<{ error?: { message?: string } }>("POST", "/runs", 400, {
+			body: {
+				agent: ctx.fixtures.stubAgentName,
+				project: project.id,
+				prompt: "should never spawn",
+				existingBranch: "ghost/does-not-exist",
 			},
-		);
+		});
 		const rejectedMessage = rejected.error?.message ?? JSON.stringify(rejected);
 		assertTrue(
 			rejectedMessage.includes("does not exist on the push remote"),
@@ -137,15 +131,12 @@ async function git(args: readonly string[], cwd: string): Promise<void> {
  * runner's own env has no insteadOf redirect, so the fixture's local path is
  * used directly (buildFixtures exposes sampleProjectPath for exactly this).
  */
-async function pushSharedBranch(sampleProjectPath: string): Promise<void> {
+async function pushSharedBranch(fixtureRemotePath: string): Promise<void> {
 	const workdir = await mkdtemp(join(tmpdir(), "warren-scenario-44-push-"));
 	try {
 		const seedClone = join(workdir, "seed");
-		await git(["clone", "--quiet", sampleProjectPath, seedClone], workdir);
-		await git(
-			["push", "--force", "origin", `HEAD:refs/heads/${SHARED_BRANCH}`],
-			seedClone,
-		);
+		await git(["clone", "--quiet", fixtureRemotePath, seedClone], workdir);
+		await git(["push", "--force", "origin", `HEAD:refs/heads/${SHARED_BRANCH}`], seedClone);
 	} finally {
 		await rm(workdir, { recursive: true, force: true });
 	}
@@ -157,7 +148,7 @@ async function dispatchOnBranch(
 	agentName: string,
 	seedId: string,
 ): Promise<RunRow> {
-	const prompt = `[sleep_ms=1500] [seed_id=${seedId}] [seed_ts=${SEED_TS}] scenario-44 existing-branch`;
+	const prompt = `[sleep_ms=1500] closeseed ${seedId} scenario-44 existing-branch`;
 	const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
 		body: { agent: agentName, project: projectId, prompt, existingBranch: SHARED_BRANCH },
 	});
@@ -183,7 +174,10 @@ async function assertBranchCarriesCommits(
 	const workdir = await mkdtemp(join(tmpdir(), "warren-scenario-44-"));
 	try {
 		const clonePath = join(workdir, "verify");
-		await git(["clone", "--quiet", "--branch", SHARED_BRANCH, sampleProjectPath, clonePath], workdir);
+		await git(
+			["clone", "--quiet", "--branch", SHARED_BRANCH, sampleProjectPath, clonePath],
+			workdir,
+		);
 		const log = Bun.spawnSync(["git", "log", "--format=%s", "-3"], {
 			cwd: clonePath,
 			stdout: "pipe",
@@ -191,7 +185,10 @@ async function assertBranchCarriesCommits(
 		});
 		const logOut = log.stdout.toString();
 		for (const subject of subjects) {
-			assertTrue(logOut.includes(subject), `shared branch log should include '${subject}'; got:\n${logOut}`);
+			assertTrue(
+				logOut.includes(subject),
+				`shared branch log should include '${subject}'; got:\n${logOut}`,
+			);
 		}
 	} finally {
 		await rm(workdir, { recursive: true, force: true });
