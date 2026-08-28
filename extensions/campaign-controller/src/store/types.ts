@@ -45,6 +45,9 @@ export type WorkItemStatus =
 	| "failed"
 	| "cancelled";
 
+/** Terminal PR outcome for a work item (warren-7cd1). */
+export type WorkItemOutcome = "merged" | "closed_unmerged";
+
 /**
  * Action-journal states (design record §6.3). `planned` is committed before
  * the caller performs any I/O; terminal states never transition again.
@@ -101,6 +104,9 @@ export interface WorkItemRow {
 	/** Issue (or replay-case) reference, opaque to the store. */
 	readonly issueRef: string;
 	readonly status: WorkItemStatus;
+	/** Terminal PR outcome; null until reconcile flips it (exactly once). */
+	readonly outcome: WorkItemOutcome | null;
+	readonly outcomeAtMs: number | null;
 	readonly createdAtMs: number;
 	readonly updatedAtMs: number;
 }

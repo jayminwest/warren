@@ -23,6 +23,14 @@
 
 Warren runs agent harnesses as isolated, observable workloads on infrastructure you control. It owns the workspace, run lifecycle, spend limits, live events, intervention, recovery, and Git delivery.
 
+<p align="center">
+  <a href="https://app.warren.run">
+    <img src="docs/screenshots/run-detail.png" alt="A warren run detail page: lifecycle pipeline from admission to Git delivery, live event stream, measured spend, and a merged pull request" width="900">
+  </a>
+  <br>
+  <em>One run, end to end: lifecycle pipeline, live event stream, measured spend, merged PR. From the <a href="https://app.warren.run">live public instance</a>.</em>
+</p>
+
 ## When a run becomes a workload
 
 Warren becomes useful when an agent run stops being a terminal session and starts being a workload. The run may need to continue unattended, repeat on a schedule, survive failure, or become visible to someone besides the person who started it.
@@ -55,6 +63,19 @@ pushed branch ──► optional pull request
 - **History.** Run state, events, cost, token use, and outcomes persist behind one HTTP API, CLI, and UI.
 
 The core guarantee is a pushed workspace branch. Project settings can add PR creation, tracker updates, previews, and other reactions.
+
+## See it running
+
+Every screenshot below is the live public instance at
+[app.warren.run](https://app.warren.run), running warren's own development:
+agents working the warren backlog, on warren.
+
+| | |
+|---|---|
+| [![Operations dashboard](docs/screenshots/operations.png)](https://app.warren.run) | [![Runs list](docs/screenshots/runs.png)](https://app.warren.run/#/runs) |
+| *Operations: control-plane health, lifecycle snapshot, active workloads, structured event log* | *Runs: every workload with state, duration, cost, and Git delivery* |
+| [![Run detail](docs/screenshots/run-detail.png)](https://app.warren.run) | [![Agents](docs/screenshots/agents.png)](https://app.warren.run/#/agents) |
+| *Run detail: lifecycle pipeline, live event stream, budget, and the merged PR* | *Agents: the harness definitions this instance can dispatch* |
 
 ## Harnesses and runtimes
 
