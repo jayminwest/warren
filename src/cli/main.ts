@@ -34,7 +34,7 @@ import { runInit } from "./commands/init.ts";
 import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
 import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
 import { runProjects } from "./commands/projects.ts";
-import { runRun } from "./commands/run.ts";
+import { registerRunCommand } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { registerUpCommand } from "./commands/up.ts";
 import { withCliDb } from "./context.ts";
@@ -117,58 +117,7 @@ export function buildProgram(baseContext: CliContext): Command {
 		process.exit(result.exitCode);
 	});
 
-	addClientFlags(
-		program
-			.command("run")
-			.description(
-				"dispatch a one-shot run against the warren server, tail events as NDJSON, and exit",
-			)
-			.argument("<agent>", "registered agent name")
-			.argument("<project>", "project id (prj_xxx)")
-			.requiredOption("-p, --prompt <text>", "prompt text the agent receives")
-			.option("--trigger <label>", "run trigger label", "cli")
-			.option("--provider <name>", "per-run override of agent frontmatter.provider")
-			.option("--model <name>", "per-run override of agent frontmatter.model")
-			.option(
-				"--max-cost-usd <usd>",
-				"per-run USD spend cap; wins over the agent's own and the project default",
-				parseMaxCostUsd,
-			)
-			.option("--seed <id>", "link the run to a seeds issue (POST /runs seedId)")
-			.option("--base-commit <sha>", "pin the workspace cut to a 40-hex commit SHA"),
-	).action(
-		async (
-			agent: string,
-			project: string,
-			opts: {
-				prompt: string;
-				trigger?: string;
-				provider?: string;
-				model?: string;
-				maxCostUsd?: number;
-				seed?: string;
-				baseCommit?: string;
-			} & RemoteOpts,
-		) => {
-			const { client, context: ctx } = resolveCommandClient(context, opts);
-			const result = await runRun(
-				ctx,
-				{ client },
-				{
-					agent,
-					project,
-					prompt: opts.prompt,
-					...(opts.trigger !== undefined ? { trigger: opts.trigger } : {}),
-					...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
-					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
-					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
-					...(opts.seed !== undefined ? { seedId: opts.seed } : {}),
-					...(opts.baseCommit !== undefined ? { baseCommit: opts.baseCommit } : {}),
-				},
-			);
-			process.exit(result.exitCode);
-		},
-	);
+	registerRunCommand(program, context);
 
 	addClientFlags(
 		program

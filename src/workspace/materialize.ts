@@ -43,6 +43,7 @@ import {
 } from "./git/identity.ts";
 import {
 	addWorktree,
+	addWorktreeDetached,
 	cloneRepo,
 	deleteBranch,
 	discoverHostClone,
@@ -57,6 +58,11 @@ export interface MaterializedWorkspaceSource {
 	kind: WorkspaceSourceKind;
 	/** Branch checked out in the workspace. */
 	branch: string;
+	/**
+	 * warren-326f: false when the branch was checked out rather than carved
+	 * (existing-branch dispatch); remove then keeps the branch ref.
+	 */
+	carvedBranch?: boolean;
 	/** Host clone the worktree was added against. Absent when `kind === 'clone'`. */
 	hostClonePath?: string;
 	/**
@@ -99,13 +105,33 @@ export interface MaterializeProjectOptions {
 	 * add two worktrees on the same branch, so a project that's currently
 	 * checked out at `main` can't be re-used directly.
 	 */
+	/**
+	 * When false (default true), `branch` must already exist and not be checked
+	 * out by another worktree.
+	 */
 	createBranch?: boolean;
+	/**
+	 * warren-326f: when true, the workspace checks out the EXISTING `branch`
+	 * detached (`git worktree add --detach <ws> <branch>`). An existing-branch
+	 * dispatch cannot carve (`-b` fails: the branch exists) and cannot do a
+	 * plain checkout (the host clone's HEAD sits on the same branch after the
+	 * refresh). Finalize still pushes `HEAD:<branch>`, so the detached
+	 * workspace's commits land on the branch. Implies `createBranch: false`.
+	 */
+	detached?: boolean;
 	/**
 	 * Base ref the per-run branch is carved from (warren-232d: no default —
 	 * thread the project's actual default branch; a master-default repo must
 	 * not silently cut off 'main'). Required when `createBranch` is true.
 	 */
 	baseBranch?: string;
+	/**
+	 * warren-326f: recorded on the source when the branch was NOT carved by
+	 * materialization (existing-branch dispatch). Teardown must not delete the
+	 * branch — it predates the run and lives on the remote. Absent/true keeps
+	 * the delete-on-remove behavior of a freshly carved per-run branch.
+	 */
+	carvedBranch?: boolean;
 	/** Path to start probing for an existing host clone (typically projectRoot). */
 	projectRoot?: string;
 	/** Explicit clone fallback (when no host clone is found). */
@@ -211,11 +237,13 @@ export async function removeMaterializedWorkspace(opts: RemoveWorkspaceOptions):
 			await rm(opts.workspacePath, { recursive: true, force: true });
 			if (!isStaleWorktreeError(err)) throw err;
 		}
-		// `git worktree remove` leaves the branch ref behind. Materialization always
-		// carves a fresh per-run branch, so dropping it here keeps `git branch`
-		// clean. Failures are non-fatal: the workspace is gone, which is the
-		// caller's primary intent.
-		await deleteBranch({ hostClonePath, branch: opts.source.branch, force: true }).catch(() => {});
+		// warren-326f: the branch was checked out, not carved — leave the ref
+		// (it lives on the remote; deleting it would orphan follow-up runs).
+		if (opts.source.carvedBranch !== false) {
+			await deleteBranch({ hostClonePath, branch: opts.source.branch, force: true }).catch(
+				() => {},
+			);
+		}
 		return;
 	}
 	await rm(opts.workspacePath, { recursive: true, force: true });
@@ -240,22 +268,32 @@ async function materializeViaWorktree(
 		);
 	}
 	try {
-		await addWorktree({
-			hostClonePath: hostClone.topLevel,
-			workspacePath: options.workspacePath,
-			branch: options.branch,
-			createBranch,
-			...(createBranch && options.baseBranch ? { baseBranch: options.baseBranch } : {}),
-		});
+		if (options.detached === true) {
+			await addWorktreeDetached({
+				hostClonePath: hostClone.topLevel,
+				workspacePath: options.workspacePath,
+				ref: options.branch,
+			});
+		} else {
+			await addWorktree({
+				hostClonePath: hostClone.topLevel,
+				workspacePath: options.workspacePath,
+				branch: options.branch,
+				createBranch,
+				...(createBranch && options.baseBranch ? { baseBranch: options.baseBranch } : {}),
+			});
+		}
 	} catch (err) {
 		throw wrapMaterializationError(`failed to add worktree at ${options.workspacePath}`, err);
 	}
-	return {
+	const source: MaterializedWorkspaceSource = {
 		kind: "worktree",
 		branch: options.branch,
 		hostClonePath: hostClone.topLevel,
 		gitCommonDir: canonicalize(hostClone.gitCommonDir),
 	};
+	if (options.detached === true) source.carvedBranch = false;
+	return source;
 }
 
 async function materializeViaClone(

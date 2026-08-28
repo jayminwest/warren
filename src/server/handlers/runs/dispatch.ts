@@ -149,6 +149,10 @@ async function buildHttpSpawnOptions(
 	// warren-709e (#419): an explicit target branch the run must push to
 	// instead of the composed `${prefix}/${runId}`.
 	const targetBranch = optionalString(body, "targetBranch");
+	// warren-326f: opt-in dispatch onto an existing push-remote branch. The
+	// fail-closed remote-existence check lives in spawnRun (domain layer), so
+	// the handler only forwards the field.
+	const existingBranch = optionalString(body, "existingBranch");
 	const dispatcherHandle = optionalString(body, "dispatcherHandle");
 	// warren-97a2: the HTTP-collapsed `warren run` labels its dispatches
 	// trigger=cli; omitting the field preserves the spawnRun default.
@@ -190,6 +194,7 @@ async function buildHttpSpawnOptions(
 		...(maxCostUsd !== undefined ? { maxCostUsdOverride: maxCostUsd } : {}),
 		seedId,
 		...(targetBranch !== undefined ? { targetBranch } : {}),
+		...(existingBranch !== undefined ? { existingBranch } : {}),
 		...(parentRunId !== undefined ? { parentRunId } : {}),
 		...(cloneKind !== undefined ? { cloneKind } : {}),
 		dispatcherHandle,

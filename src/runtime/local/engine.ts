@@ -32,6 +32,7 @@ import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import { defaultFs } from "../../runs/reap/util.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
+import { branchExists, discoverHostClone } from "../../workspace/git/worktree.ts";
 import {
 	type MaterializedWorkspace,
 	materializeProjectWorkspace,
@@ -134,10 +135,22 @@ export class LocalEngine {
 
 		let workspace: MaterializedWorkspace;
 		try {
+			// warren-326f: an existing-branch dispatch pins branch === baseBranch and
+			// the branch already exists locally (the refresh checked it out) and on
+			// the remote. Carving it with `-b` would fail; a non-detached checkout
+			// would collide with the host clone's HEAD — so check out detached when
+			// the branch pre-exists, and never delete it at teardown (it predates
+			// the run). Every other dispatch takes the untouched carve path.
+			let checkoutExisting = false;
+			if (spec.branch === spec.baseBranch) {
+				const hostClone = await discoverHostClone(spec.hostClonePathHint);
+				checkoutExisting =
+					hostClone !== null && (await branchExists(hostClone.topLevel, spec.branch));
+			}
 			workspace = await materializeProjectWorkspace({
 				workspacePath,
 				branch: spec.branch,
-				createBranch: true,
+				...(checkoutExisting ? { detached: true as const } : { createBranch: true as const }),
 				baseBranch: spec.baseBranch,
 				projectRoot: spec.hostClonePathHint,
 				originUrl: spec.originUrl,
