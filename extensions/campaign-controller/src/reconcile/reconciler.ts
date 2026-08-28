@@ -67,6 +67,8 @@ export interface ReconcileResult {
 	readonly duplicateEvents: number;
 	readonly attentionCreated: number;
 	readonly attentionAlreadyOpen: number;
+	/** Open attention items auto-resolved by a hygiene rule (warren-b853). */
+	readonly attentionResolved: number;
 	readonly truncated: boolean;
 }
 
@@ -90,6 +92,68 @@ interface PrObservation {
 }
 
 const POLICY_EVENT_KIND = "policy_digest";
+
+/** Durable green evidence extracted from one pass's deduplicated events. */
+interface PassingGreenEvidence {
+	/** Event key of the passing check run, by check name. */
+	byCheckName: Map<string, string>;
+	/** Event key of the green combined-status rollup, or null. */
+	combinedStatus: string | null;
+}
+
+function parseJsonLoose(text: string): Record<string, unknown> | null {
+	try {
+		return JSON.parse(text) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
+/** Collect the durable event keys that prove a green state on one ref. */
+function passingGreenEvidence(
+	items: readonly NormalizedGithubEvent[],
+	headSha: string,
+): PassingGreenEvidence {
+	const byCheckName = new Map<string, string>();
+	let combinedStatus: string | null = null;
+	for (const entry of items) {
+		const payload = parseJsonLoose(entry.payloadJson);
+		if (payload === null) continue;
+		if (entry.eventKind === "check_run") {
+			if (
+				payload.ref === headSha &&
+				typeof payload.name === "string" &&
+				payload.conclusion === "success"
+			) {
+				byCheckName.set(payload.name, entry.key);
+			}
+		} else if (entry.eventKind === "combined_status" && payload.state === "success") {
+			combinedStatus = entry.key;
+		}
+	}
+	return { byCheckName, combinedStatus };
+}
+
+/**
+ * The resolving evidence key for one open `failing_checks` item, or null
+ * when the item does not match a green observation on the same PR. Named
+ * check items match on the stored check name; the combined rollup item
+ * (keyed by sha, no check name) matches on the head sha reporting an
+ * overall green state.
+ */
+function resolvingGreenKey(
+	detailJson: string | null,
+	pr: GithubPullRequestSnapshot,
+	passing: PassingGreenEvidence,
+): string | null {
+	if (detailJson === null) return null;
+	const detail = parseJsonLoose(detailJson);
+	if (detail === null || detail.prNumber !== pr.number) return null;
+	if (typeof detail.checkName === "string") {
+		return passing.byCheckName.get(detail.checkName) ?? null;
+	}
+	return detail.sha === pr.headSha ? passing.combinedStatus : null;
+}
 
 export class UpstreamPrReconciler {
 	readonly #client: ReadOnlyGithubClient;
@@ -131,6 +195,8 @@ export class UpstreamPrReconciler {
 			staleAfterMs: target.staleAfterMs ?? 0,
 		});
 		const { attentionCreated, attentionAlreadyOpen } = this.#storeAttention(target, candidates);
+		const attentionResolved =
+			observation.pr === null ? 0 : this.#resolveGreenChecks(target, items, observation);
 
 		return {
 			notificationsSeen: observation.notificationsSeen,
@@ -139,8 +205,41 @@ export class UpstreamPrReconciler {
 			duplicateEvents: duplicateCount + durableDuplicates,
 			attentionCreated,
 			attentionAlreadyOpen,
+			attentionResolved,
 			truncated: observation.truncated,
 		};
+	}
+
+	/**
+	 * Attention hygiene (warren-b853): an open `failing_checks` item for a
+	 * stored check name auto-resolves when a later observation shows that
+	 * same check name passing on the same pull request. Resolution is
+	 * monotonic and journal-free — the resolved detail is stamped with the
+	 * passing check-run's durable event key as the resolving evidence.
+	 */
+	#resolveGreenChecks(
+		target: UpstreamPrTarget,
+		items: readonly NormalizedGithubEvent[],
+		observation: PrObservation,
+	): number {
+		const pr = observation.pr;
+		if (pr === null) return 0;
+		const passing = passingGreenEvidence(items, pr.headSha);
+		let resolved = 0;
+		for (const item of this.#store.events.listOpenAttention(target.campaignId)) {
+			if (item.reason !== "failing_checks") continue;
+			const resolvingEventKey = resolvingGreenKey(item.detailJson, pr, passing);
+			if (resolvingEventKey === null) continue;
+			if (
+				this.#store.events.resolveAttentionAuto(item.id, {
+					resolvedByRule: "failing_check_green",
+					resolvingEventKey,
+				})
+			) {
+				resolved += 1;
+			}
+		}
+		return resolved;
 	}
 
 	/** Read the authoritative upstream world for one target. */
