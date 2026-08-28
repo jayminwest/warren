@@ -139,4 +139,20 @@ CREATE TABLE leases (
 );
 `,
 	},
+	{
+		id: 2,
+		name: "002_review_feedback",
+		sql: `
+CREATE TABLE review_feedback (
+	id TEXT PRIMARY KEY,
+	campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+	work_item_id TEXT,
+	category TEXT NOT NULL,
+	source_event_node_id TEXT NOT NULL,
+	fields_json TEXT NOT NULL,
+	created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX idx_review_feedback_campaign ON review_feedback(campaign_id);
+`,
+	},
 ];

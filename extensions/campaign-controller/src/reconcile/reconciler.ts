@@ -31,6 +31,8 @@ import type {
 } from "../github/types.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
 import { deriveAttentionCandidates } from "./attention.ts";
+import { type ReviewBotGrammar, validateBotGrammar } from "./bot-grammar.ts";
+import { classifyEvents, feedbackRowId } from "./classifier.ts";
 import {
 	dedupeEvents,
 	type NormalizedGithubEvent,
@@ -54,6 +56,12 @@ export interface UpstreamPrTarget {
 	readonly botLogin: string;
 	/** Optional policy file path whose content digest is watched. */
 	readonly policyPath?: string;
+	/**
+	 * Profile-declared review-bot grammar (plan pl-096b, warren-2ec3).
+	 * When set, newly stored events are classified into durable review
+	 * feedback; comment text is matched as data and never carried onward.
+	 */
+	readonly botGrammar?: ReviewBotGrammar | unknown;
 	/** Default 0 (staleness classification off). */
 	readonly staleAfterMs?: number;
 }
@@ -67,6 +75,8 @@ export interface ReconcileResult {
 	readonly duplicateEvents: number;
 	readonly attentionCreated: number;
 	readonly attentionAlreadyOpen: number;
+	/** Feedback rows newly classified and stored (warren-2ec3). */
+	readonly feedbackCreated: number;
 	readonly truncated: boolean;
 }
 
@@ -114,7 +124,8 @@ export class UpstreamPrReconciler {
 		const normalized = this.#normalize(repoFullName, observation);
 		if (policyEvent !== null) normalized.push(policyEvent);
 		const { items, duplicateCount } = dedupeEvents(normalized);
-		const { newEvents, durableDuplicates } = this.#storeEvents(target, items);
+		const { newEvents, durableDuplicates, newlyStored } = this.#storeEvents(target, items);
+		const feedbackCreated = this.#classify(target, newlyStored);
 
 		const candidates = deriveAttentionCandidates({
 			repoFullName,
@@ -139,6 +150,7 @@ export class UpstreamPrReconciler {
 			duplicateEvents: duplicateCount + durableDuplicates,
 			attentionCreated,
 			attentionAlreadyOpen,
+			feedbackCreated,
 			truncated: observation.truncated,
 		};
 	}
@@ -233,13 +245,18 @@ export class UpstreamPrReconciler {
 		return normalized;
 	}
 
-	/** Persist events; returns new vs already-durable counts. */
+	/** Persist events; returns new vs already-durable counts plus the new rows. */
 	#storeEvents(
 		target: UpstreamPrTarget,
 		items: readonly NormalizedGithubEvent[],
-	): { newEvents: number; durableDuplicates: number } {
+	): {
+		newEvents: number;
+		durableDuplicates: number;
+		newlyStored: NormalizedGithubEvent[];
+	} {
 		let newEvents = 0;
 		let durableDuplicates = 0;
+		const newlyStored: NormalizedGithubEvent[] = [];
 		for (const entry of items) {
 			const stored = this.#store.events.recordGithubEvent({
 				nodeId: entry.key,
@@ -249,11 +266,42 @@ export class UpstreamPrReconciler {
 			});
 			if (stored) {
 				newEvents += 1;
+				newlyStored.push(entry);
 			} else {
 				durableDuplicates += 1;
 			}
 		}
-		return { newEvents, durableDuplicates };
+		return { newEvents, durableDuplicates, newlyStored };
+	}
+
+	/**
+	 * Classify newly stored events through the profile-declared bot grammar
+	 * and persist the feedback rows. Classification is pure: untrusted
+	 * comment text is matched as data and never enters the stored fields.
+	 */
+	#classify(target: UpstreamPrTarget, newlyStored: readonly NormalizedGithubEvent[]): number {
+		if (target.botGrammar === undefined || newlyStored.length === 0) return 0;
+		const grammar = validateBotGrammar(target.botGrammar);
+		let created = 0;
+		for (const row of classifyEvents(
+			newlyStored.map((entry) => ({
+				eventKind: entry.eventKind,
+				key: entry.key,
+				payloadJson: entry.payloadJson,
+			})),
+			grammar,
+		)) {
+			const outcome = this.#store.events.addFeedbackOnce({
+				id: feedbackRowId(row),
+				campaignId: target.campaignId,
+				workItemId: target.workItemId ?? null,
+				category: row.category,
+				sourceEventNodeId: row.sourceEventNodeId,
+				fieldsJson: canonicalJson(row.fields),
+			});
+			if (outcome.created) created += 1;
+		}
+		return created;
 	}
 
 	/** Persist attention candidates through the deduplicating write. */
