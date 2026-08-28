@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FixedClock, SequentialIdGenerator } from "../clock.ts";
-import { renderUpdateBranchIntent, type UpdateBranchIntent } from "../github/pr-mutations.ts";
+import { canonicalJson, sha256Hex } from "../digest.ts";
+import {
+	GithubMutationUncertainError,
+	renderUpdateBranchIntent,
+	type UpdateBranchIntent,
+} from "../github/pr-mutations.ts";
 import type { GithubPullRequestSnapshot } from "../github/types.ts";
 import { CampaignStateStore } from "../store/state-store.ts";
 import {
@@ -226,6 +231,112 @@ describe("handleBranchFreshness", () => {
 		);
 		expect(again.status).toBe("conflict_repair_suppressed");
 		expect(dispatchCalls).toHaveLength(1);
+	});
+
+	test("a definitively refused updateBranch settles permanent failure with attention", async () => {
+		const outcome = await handleBranchFreshness(
+			{
+				store,
+				branchUpdater: {
+					updateBranch: async () => {
+						throw new Error("HTTP 422 update-branch refused");
+					},
+				},
+				dispatch: null,
+				followUpPushEnabled: false,
+			},
+			baseInput("behind"),
+		);
+		expect(outcome.status).toBe("update_branch_failed");
+		const action = store.actions.getActionByKey(
+			branchUpdateActionKey(campaignId, snapshot("behind")),
+		);
+		expect(action?.state).toBe("permanent_failure");
+		const attention = store.events.listOpenAttention(campaignId);
+		expect(attention.some((a) => a.reason === "mutation_failed")).toBe(true);
+	});
+
+	test("a refused conflict-repair dispatch settles the journaled intent, no active run", async () => {
+		const outcome = await handleBranchFreshness(
+			{
+				store,
+				branchUpdater: null,
+				dispatch: async () => {
+					throw new Error("dispatch rejected");
+				},
+				followUpPushEnabled: true,
+			},
+			baseInput("dirty"),
+		);
+		expect(outcome.status).toBe("conflict_repair_dispatch_failed");
+		const action = store.actions.getActionByKey(
+			conflictRepairActionKey(campaignId, snapshot("dirty")),
+		);
+		expect(action?.state).toBe("permanent_failure");
+		// A re-tick against the same base SHA suppresses, never auto-retries.
+		const calls: { existingBranch: string }[] = [];
+		const again = await handleBranchFreshness(
+			{ store, branchUpdater: null, dispatch: fakeDispatch(calls), followUpPushEnabled: true },
+			baseInput("dirty"),
+		);
+		expect(again.status).toBe("conflict_repair_suppressed");
+		expect(calls).toHaveLength(0);
+	});
+
+	test("a pending update-branch row from an earlier tick suppresses re-trigger", async () => {
+		const intent = renderUpdateBranchIntent({
+			upstreamOwner: UPSTREAM.owner,
+			upstreamRepo: UPSTREAM.repo,
+			prNumber: 7,
+		});
+		const key = branchUpdateActionKey(campaignId, snapshot("behind"));
+		store.actions.beginAction({
+			actionKey: key,
+			campaignId,
+			workItemId,
+			actionType: "pr_update_branch",
+			requestDigest: sha256Hex(canonicalJson(intent)),
+			policyDigest: "policy-digest-1",
+		});
+		const updater = new FakeBranchUpdater();
+		const outcome = await handleBranchFreshness(deps(updater, null), baseInput("behind"));
+		expect(outcome.status).toBe("update_branch_planned");
+		expect(updater.calls).toHaveLength(0);
+	});
+
+	test("an ambiguous updateBranch transport failure settles uncertain, never re-sent", async () => {
+		const outcome = await handleBranchFreshness(
+			{
+				store,
+				branchUpdater: {
+					updateBranch: async () => {
+						throw new GithubMutationUncertainError("transport failed after send", {
+							path: "/repos/openclaw/openclaw/pulls/7/update-branch",
+						});
+					},
+				},
+				dispatch: null,
+				followUpPushEnabled: false,
+			},
+			baseInput("behind"),
+		);
+		expect(outcome.status).toBe("update_branch_uncertain");
+		const action = store.actions.getActionByKey(
+			branchUpdateActionKey(campaignId, snapshot("behind")),
+		);
+		expect(action?.state).toBe("uncertain");
+		// A re-tick sees the frozen uncertain row and never re-sends.
+		const again = await handleBranchFreshness(
+			{
+				store,
+				branchUpdater: { updateBranch: async () => ({ message: null }) },
+				dispatch: null,
+				followUpPushEnabled: false,
+			},
+			baseInput("behind"),
+		);
+		expect(again.status).toBe("update_branch_already_settled");
+		expect(again.actionId).toBe(action?.id ?? null);
 	});
 
 	test("conflicted with the followUpPush gate closed opens attention, no dispatch", async () => {

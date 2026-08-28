@@ -290,9 +290,11 @@ async function handleConflictRepair(
 		}),
 	);
 
-	// Idempotent pre-check: a pending repair run suppresses re-trigger.
+	// Idempotent pre-check: an already-journaled repair row (pending or
+	// settled) suppresses re-trigger — a failed attempt needs operator
+	// attention, not an automatic retry loop.
 	const existing = deps.store.actions.getActionByKey(actionKey);
-	if (existing !== null && PENDING_STATES.has(existing.state)) {
+	if (existing !== null) {
 		return { status: "conflict_repair_suppressed", actionId: existing.id, runId: null };
 	}
 
