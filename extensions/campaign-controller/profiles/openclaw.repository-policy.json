@@ -17,7 +17,7 @@
 		"evidenceRequired": true
 	},
 	"prBodyContract": {
-		"version": 1,
+		"version": 2,
 		"sections": [
 			{ "key": "closes", "heading": null, "required": true },
 			{ "key": "disclosure", "heading": "AI disclosure", "required": true },
@@ -25,6 +25,7 @@
 			{ "key": "solution", "heading": "Solution", "required": true },
 			{ "key": "userImpact", "heading": "User impact", "required": true },
 			{ "key": "evidence", "heading": "Evidence", "required": true },
+			{ "key": "knownGap", "heading": "Known gap", "required": false },
 			{ "key": "runReference", "heading": "Warren run reference", "required": true },
 			{ "key": "operatorNotes", "heading": "Operator review notes", "required": true }
 		],
@@ -41,6 +42,7 @@
 			"State unprovable claims as known gaps rather than omitting them; silent omissions are harder for review to catch than declared uncertainty."
 		]
 	},
+	"evidenceTiers": ["local-provable", "external-proof-required"],
 	"allowedWorkTypes": ["bug-fix", "feature", "docs"],
 	"forbiddenPaths": [
 		".github/workflows/*",

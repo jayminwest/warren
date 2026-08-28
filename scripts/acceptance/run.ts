@@ -65,6 +65,7 @@ import { scenario as scenario40 } from "./scenarios/40-fake-forge-roundtrip.ts";
 import { scenario as scenario41 } from "./scenarios/41-local-topology-self-host.ts";
 import { scenario as scenario42 } from "./scenarios/42-self-host-one-liner.ts";
 import { scenario as scenario43 } from "./scenarios/43-remote-tracker-roundtrip.ts";
+import { scenario as scenario44 } from "./scenarios/44-existing-branch.ts";
 
 const SCENARIOS: readonly Scenario[] = [
 	scenario01,
@@ -99,6 +100,7 @@ const SCENARIOS: readonly Scenario[] = [
 	scenario41,
 	scenario42,
 	scenario43,
+	scenario44,
 ];
 
 interface ParsedArgs {

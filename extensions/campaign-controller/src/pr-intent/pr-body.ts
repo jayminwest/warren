@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import { ValidationError } from "../errors.ts";
 import {
+	DEFAULT_EVIDENCE_TIER,
 	PR_BODY_PLACEHOLDERS,
 	type PrBodyContract,
 	type PrBodySectionKey,
@@ -38,6 +39,13 @@ export interface PrBodyFacts {
 	userImpact: string;
 	/** Non-empty validation-evidence lines; rendered as bullets. */
 	evidence: readonly string[];
+	/** The evidence tier tagged on this issue (warren-4dc1); untagged issues are local-provable. */
+	evidenceTier?: string;
+	/**
+	 * What external proof is outstanding and that an operator will attach it
+	 * (warren-4dc1); required when the tier is `external-proof-required`.
+	 */
+	knownGap?: string;
 	operatorNotes: string;
 }
 
@@ -78,6 +86,15 @@ const SECTION_RENDERERS: Record<PrBodySectionKey, SectionRenderer> = {
 	solution: (facts) => [facts.solution],
 	userImpact: (facts) => [facts.userImpact],
 	evidence: (facts) => facts.evidence.map((line) => `- ${line}`),
+	knownGap: (facts) => {
+		const tier = facts.evidenceTier ?? DEFAULT_EVIDENCE_TIER;
+		if (tier === DEFAULT_EVIDENCE_TIER) return []; // local-provable: no known-gap slot
+		if (typeof facts.knownGap !== "string" || facts.knownGap.trim().length === 0) return [];
+		return [
+			`- ${facts.knownGap.trim()}`,
+			"- This proof requires a real external system no run sandbox can reach; an operator will attach it to this pull request before merge.",
+		];
+	},
 	runReference: (facts) => [
 		`- Warren run \`${facts.runId}\` (state: succeeded)`,
 		`- Fork branch \`${facts.forkOwner}:${facts.branch}\` — maintainers may push edits to this branch (maintainer_can_modify)`,
@@ -88,13 +105,16 @@ const SECTION_RENDERERS: Record<PrBodySectionKey, SectionRenderer> = {
 
 /**
  * Render the exact PR body by walking the contract's ordered sections. The
- * footer block (separator + footer template) always closes the body.
+ * footer block (separator + footer template) always closes the body. A
+ * section whose renderer produced no content (the conditional known-gap slot
+ * for local-provable evidence, warren-4dc1) is skipped entirely.
  */
 export function renderPrBody(contract: PrBodyContract, facts: PrBodyFacts): string {
 	const disclosure = expandTokens(contract.disclosureTemplate, facts);
 	const blocks: string[][] = [];
 	for (const section of contract.sections) {
 		const content = SECTION_RENDERERS[section.key](facts, disclosure);
+		if (content.length === 0) continue;
 		blocks.push(section.heading === null ? content : [`## ${section.heading}`, "", ...content]);
 	}
 	blocks.push(["---", "", expandTokens(contract.footerTemplate, facts)]);

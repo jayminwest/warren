@@ -25,10 +25,44 @@
  * silently checking out a branch that doesn't exist on this origin.
  */
 
+import { existsSync } from "node:fs";
 import { ValidationError } from "../../core/errors.ts";
+import { defaultSpawn } from "../../projects/clone.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
+import { assertBranchOnRemote, validateExistingBranchShape } from "../target-branch.ts";
 import { readProjectDefaults } from "./agent-cache.ts";
 import type { SpawnRunInput } from "./types.ts";
+
+/**
+ * warren-326f: resolve the explicit `existingBranch` opt-in. Shape-validated
+ * (grammar, default-branch refusal, exclusivity with ref/targetBranch/
+ * parentRunId) then FAIL-CLOSED against the push remote with
+ * `git ls-remote --heads` — a branch the remote does not carry is a 400
+ * before any side effect (no clone refresh, no run row). Returns the
+ * normalized short branch name, or `undefined` when the field was absent
+ * (default dispatches are byte-identical to the composed branch path).
+ */
+export async function resolveExistingBranch(
+	input: SpawnRunInput,
+	project: { gitUrl: string; localPath: string; defaultBranch?: string | null },
+): Promise<string | undefined> {
+	const branch = validateExistingBranchShape({
+		existingBranch: input.existingBranch,
+		targetBranch: input.targetBranch,
+		ref: input.ref,
+		defaultBranch: project.defaultBranch ?? undefined,
+		parentRunId: input.parentRunId,
+	});
+	if (branch === undefined) return undefined;
+	await assertBranchOnRemote({
+		gitUrl: project.gitUrl,
+		branch,
+		spawn: input.projectSpawn ?? defaultSpawn,
+		gitCredential: input.gitCredential,
+		cwd: existsSync(project.localPath) ? project.localPath : process.cwd(),
+	});
+	return branch;
+}
 
 export async function resolveContinuationRef(
 	input: SpawnRunInput,

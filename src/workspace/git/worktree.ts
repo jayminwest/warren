@@ -80,6 +80,23 @@ export async function addWorktree(opts: AddWorktreeOptions): Promise<void> {
 	await runGitOrThrow(args, { cwd: opts.hostClonePath });
 }
 
+/**
+ * warren-326f: check out an EXISTING ref detached (`git worktree add --detach
+ * <ws> <ref>`). Existing-branch dispatches cannot use `addWorktree`: `-b` fails
+ * on a branch that already exists, and a non-detached checkout refuses when the
+ * host clone's HEAD sits on the same branch. The workspace still commits onto
+ * the ref — finalize pushes `HEAD:<branch>` from the detached HEAD.
+ */
+export async function addWorktreeDetached(opts: {
+	hostClonePath: string;
+	workspacePath: string;
+	ref: string;
+}): Promise<void> {
+	await runGitOrThrow(["worktree", "add", "--detach", opts.workspacePath, opts.ref], {
+		cwd: opts.hostClonePath,
+	});
+}
+
 export interface RemoveWorktreeOptions {
 	hostClonePath: string;
 	workspacePath: string;

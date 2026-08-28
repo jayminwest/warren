@@ -36,7 +36,11 @@ import { ValidationError } from "./errors.ts";
 import { checkRepoCoordinates, type RepoCoordinates } from "./github-grammar.ts";
 import { type CampaignManifest, validateCampaignManifest } from "./manifest.ts";
 import { EXECUTABLE_MUTATION_FLAGS, MUTATION_FLAGS } from "./mutations.ts";
-import { type RepositoryPolicy, validateRepositoryPolicy } from "./repository-policy.ts";
+import {
+	DEFAULT_EVIDENCE_TIER,
+	type RepositoryPolicy,
+	validateRepositoryPolicy,
+} from "./repository-policy.ts";
 import type { CampaignStateStore } from "./store/state-store.ts";
 import type { CampaignRow, ReservationRow, WorkItemRow } from "./store/types.ts";
 
@@ -60,6 +64,11 @@ export interface CampaignImportResult {
 	readonly policyDigest: string;
 	/** True when this import invalidated prior approval of an older digest. */
 	readonly invalidatedPriorVersions: boolean;
+	/**
+	 * Non-fatal advisories recorded at import (warren-4dc1); a warning never
+	 * blocks dispatch, it steers issue selection toward provable work.
+	 */
+	readonly warnings: readonly string[];
 }
 
 /** The recorded approval: what was bound, by whom, and until when. */
@@ -97,6 +106,35 @@ export interface AdmissionResult {
 
 function usdToCents(usd: number): number {
 	return Math.round(usd * 100);
+}
+
+/**
+ * Cross-check the manifest's per-issue evidence tiers (warren-4dc1) against
+ * the tiers the repository policy recognizes, and advise (never refuse) when
+ * the campaign is majority external-proof-required: selection is steered
+ * toward locally provable work. Returns the advisory list.
+ */
+function evidenceTierAdvisories(manifest: CampaignManifest, policy: RepositoryPolicy): string[] {
+	const recognized = policy.evidenceTiers ?? [DEFAULT_EVIDENCE_TIER, "external-proof-required"];
+	for (const [issue, tier] of Object.entries(manifest.issueEvidenceTiers ?? {})) {
+		if (!recognized.includes(tier)) {
+			throw new AdmissionRefusal(
+				"evidence_tier_unknown",
+				`issue ${issue} carries evidence tier '${tier}', which the repository policy does not recognize (recognizes: ${recognized.join(", ")})`,
+			);
+		}
+	}
+	const external = manifest.issues.filter(
+		(issue) =>
+			(manifest.issueEvidenceTiers?.[String(issue)] ?? DEFAULT_EVIDENCE_TIER) !==
+			DEFAULT_EVIDENCE_TIER,
+	).length;
+	if (external * 2 > manifest.issues.length) {
+		return [
+			`advisory: ${external} of ${manifest.issues.length} issues are tagged 'external-proof-required' — a majority of this campaign's evidence needs a real external system; prefer locally provable issue selection where possible`,
+		];
+	}
+	return [];
 }
 
 function parseManifestRow(row: CampaignRow): CampaignManifest {
@@ -141,6 +179,8 @@ export function importCampaign(
 		);
 	}
 
+	const advisory = evidenceTierAdvisories(manifest, policy);
+
 	const existing = store.campaigns.getCampaignByDigest(digest);
 	if (existing !== null) {
 		return {
@@ -149,6 +189,7 @@ export function importCampaign(
 			manifestDigest: digest,
 			policyDigest,
 			invalidatedPriorVersions: false,
+			warnings: advisory,
 		};
 	}
 
@@ -187,7 +228,14 @@ export function importCampaign(
 			status: "candidate",
 		}),
 	);
-	return { campaign, workItems, manifestDigest: digest, policyDigest, invalidatedPriorVersions };
+	return {
+		campaign,
+		workItems,
+		manifestDigest: digest,
+		policyDigest,
+		invalidatedPriorVersions,
+		warnings: advisory,
+	};
 }
 
 /**
