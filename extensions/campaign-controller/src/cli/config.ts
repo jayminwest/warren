@@ -12,6 +12,7 @@ import { CliError } from "./exit-codes.ts";
 
 export const ENV_DB_PATH = "CAMPAIGN_DB_PATH";
 export const ENV_MANIFEST_PATH = "CAMPAIGN_MANIFEST_PATH";
+export const ENV_AMENDMENT_PATH = "CAMPAIGN_AMENDMENT_PATH";
 export const ENV_POLICY_PATH = "CAMPAIGN_POLICY_PATH";
 export const ENV_SUMMARIES_PATH = "CAMPAIGN_SUMMARIES_PATH";
 export const ENV_WARREN_BASE_URL = "WARREN_BASE_URL";
@@ -37,6 +38,7 @@ export const SECRET_FLAGS: readonly string[] = ["warren-token", "github-token", 
 export interface CliConfig {
 	readonly dbPath: string | null;
 	readonly manifestPath: string | null;
+	readonly amendmentPath: string | null;
 	readonly policyPath: string | null;
 	readonly summariesPath: string | null;
 	readonly warrenBaseUrl: string | null;
@@ -59,6 +61,7 @@ export function resolveConfig(flags: FlagSource, env: EnvSource): CliConfig {
 	return {
 		dbPath: pick(flags.db, env[ENV_DB_PATH]),
 		manifestPath: pick(flags.manifest, env[ENV_MANIFEST_PATH]),
+		amendmentPath: pick(flags.amendment, env[ENV_AMENDMENT_PATH]),
 		policyPath: pick(flags.policy, env[ENV_POLICY_PATH]),
 		summariesPath: pick(flags.summaries, env[ENV_SUMMARIES_PATH]),
 		warrenBaseUrl: pick(flags["warren-url"], env[ENV_WARREN_BASE_URL]),
@@ -88,7 +91,7 @@ function pick(flag: string | true | undefined, envValue: string | undefined): st
 /** Require a path: flag first, then its named env var. */
 export function requirePath(
 	config: CliConfig,
-	key: "manifestPath" | "policyPath" | "summariesPath" | "dbPath",
+	key: "manifestPath" | "amendmentPath" | "policyPath" | "summariesPath" | "dbPath",
 	flagName: string,
 	envName: string,
 ): string {

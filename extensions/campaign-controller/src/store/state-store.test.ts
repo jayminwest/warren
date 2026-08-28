@@ -33,7 +33,7 @@ describe("CampaignStateStore", () => {
 		store.close();
 
 		const reopened = openStore();
-		expect(reopened.appliedMigrationIds()).toEqual([1]);
+		expect(reopened.appliedMigrationIds()).toEqual(MIGRATIONS.map((migration) => migration.id));
 		reopened.close();
 	});
 
@@ -126,7 +126,7 @@ describe("CampaignStateStore", () => {
 
 	test("an in-memory store works for tests without touching the filesystem", () => {
 		const store = new CampaignStateStore(":memory:", { clock, ids });
-		expect(store.appliedMigrationIds()).toEqual([1]);
+		expect(store.appliedMigrationIds()).toEqual(MIGRATIONS.map((migration) => migration.id));
 		store.close();
 	});
 });

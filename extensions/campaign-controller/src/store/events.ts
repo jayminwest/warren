@@ -9,7 +9,13 @@
  */
 import { StateError } from "../errors.ts";
 import { nowMs, type StoreContext } from "./context.ts";
-import type { AttentionItemRow, GithubEventRow, PrIdentityRow, RunLinkRow } from "./types.ts";
+import type {
+	AmendmentRow,
+	AttentionItemRow,
+	GithubEventRow,
+	PrIdentityRow,
+	RunLinkRow,
+} from "./types.ts";
 
 type RunLinkDbRow = {
 	run_id: string;
@@ -44,6 +50,30 @@ type GithubEventDbRow = {
 	payload_json: string;
 	observed_at_ms: number;
 };
+
+type AmendmentDbRow = {
+	id: string;
+	campaign_id: string;
+	amendment_id: string;
+	amendment_digest: string;
+	previous_manifest_digest: string;
+	new_manifest_digest: string;
+	amendment_json: string;
+	applied_at_ms: number;
+};
+
+function toAmendment(row: AmendmentDbRow): AmendmentRow {
+	return {
+		id: row.id,
+		campaignId: row.campaign_id,
+		amendmentId: row.amendment_id,
+		amendmentDigest: row.amendment_digest,
+		previousManifestDigest: row.previous_manifest_digest,
+		newManifestDigest: row.new_manifest_digest,
+		amendmentJson: row.amendment_json,
+		appliedAtMs: row.applied_at_ms,
+	};
+}
 
 type AttentionDbRow = {
 	id: string;
@@ -258,6 +288,60 @@ export class EventStore {
 			payloadJson: row.payload_json,
 			observedAtMs: row.observed_at_ms,
 		}));
+	}
+
+	/**
+	 * Journal an applied campaign amendment append-only (warren-35c4).
+	 * Unique on the amendment digest, so re-applying the same approved
+	 * document is a no-op rather than a second journal row.
+	 */
+	recordAmendment(input: {
+		campaignId: string;
+		amendmentId: string;
+		amendmentDigest: string;
+		previousManifestDigest: string;
+		newManifestDigest: string;
+		amendmentJson: string;
+	}): AmendmentRow {
+		const id = this.#ctx.ids.newId();
+		this.#ctx.db
+			.query(
+				`INSERT INTO campaign_amendments (id, campaign_id, amendment_id, amendment_digest,
+				 previous_manifest_digest, new_manifest_digest, amendment_json, applied_at_ms)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				id,
+				input.campaignId,
+				input.amendmentId,
+				input.amendmentDigest,
+				input.previousManifestDigest,
+				input.newManifestDigest,
+				input.amendmentJson,
+				nowMs(this.#ctx),
+			);
+		return this.getAmendment(id) as AmendmentRow;
+	}
+
+	getAmendment(id: string): AmendmentRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM campaign_amendments WHERE id = ?")
+			.get(id) as AmendmentDbRow | null;
+		return row === null ? null : toAmendment(row);
+	}
+
+	getAmendmentByDigest(amendmentDigest: string): AmendmentRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM campaign_amendments WHERE amendment_digest = ?")
+			.get(amendmentDigest) as AmendmentDbRow | null;
+		return row === null ? null : toAmendment(row);
+	}
+
+	listAmendments(campaignId: string): AmendmentRow[] {
+		const rows = this.#ctx.db
+			.query("SELECT * FROM campaign_amendments WHERE campaign_id = ? ORDER BY applied_at_ms, id")
+			.all(campaignId) as AmendmentDbRow[];
+		return rows.map(toAmendment);
 	}
 
 	addAttention(input: {

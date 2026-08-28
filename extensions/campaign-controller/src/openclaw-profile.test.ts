@@ -12,7 +12,11 @@
 import { describe, expect, test } from "bun:test";
 import { canonicalJson, digestOf } from "./digest.ts";
 import { validateCampaignManifest } from "./manifest.ts";
-import { OPENCLAW_UPSTREAM_MAX_OPEN_PRS, validateRepositoryPolicy } from "./repository-policy.ts";
+import {
+	composeDispatchPrompt,
+	OPENCLAW_UPSTREAM_MAX_OPEN_PRS,
+	validateRepositoryPolicy,
+} from "./repository-policy.ts";
 
 const DATA_DIR = new URL("../profiles/", import.meta.url);
 /** Pinned to one day after the committed snapshot was fetched. */
@@ -125,5 +129,29 @@ describe("openclaw campaign-manifest golden", () => {
 		expect(digestOf(policy.policy)).toBe(policy.digest);
 		const { approval: _a, ...unapproved } = manifest.manifest;
 		expect(digestOf(unapproved)).toBe(manifest.digest);
+	});
+
+	test("the committed profile binds versioned agent guidance (warren-39b0)", async () => {
+		const { policy } = validateRepositoryPolicy(
+			await loadGolden("openclaw.repository-policy.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		const guidance = policy.agentGuidance;
+		expect(guidance).not.toBeNull();
+		expect(guidance?.version).toBe(1);
+		expect(guidance?.norms.length).toBeGreaterThan(0);
+		// Contribution-design norms from the openclaw#131131 review failure:
+		// minimal-diff, no new public config surface, no fail-closed validation
+		// over previously-valid config, cite existing mechanisms, declare gaps.
+		expect(guidance?.norms.some((norm) => norm.includes("smallest possible diff"))).toBe(true);
+		expect(guidance?.norms.some((norm) => norm.includes("public configuration or API"))).toBe(true);
+		expect(guidance?.norms.some((norm) => norm.includes("fail-closed validation"))).toBe(true);
+		expect(guidance?.norms.some((norm) => norm.includes("existing mechanisms"))).toBe(true);
+		expect(guidance?.norms.some((norm) => norm.includes("known gaps"))).toBe(true);
+		// The guidance is profile data, not controller source: it renders into
+		// the dispatch prompt through the shared composition path.
+		const composed = composeDispatchPrompt("Base prompt.", policy);
+		expect(composed).toContain("BEGIN AGENT GUIDANCE");
+		expect(composed).toContain("1. Produce");
 	});
 });
