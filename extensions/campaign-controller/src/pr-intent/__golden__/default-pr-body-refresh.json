@@ -1,0 +1,63 @@
+{
+	"contract": "profiles/default.pr-body-contract.json (version 3)",
+	"baseFacts": {
+		"campaignId": "camp-openclaw-812",
+		"agent": "pi",
+		"provider": "anthropic",
+		"model": "claude-sonnet-4-5",
+		"approvedBy": "jayminwest",
+		"runId": "run_1111",
+		"branch": "warren/issue-812",
+		"forkOwner": "warren-run-bot",
+		"issueNumber": 812,
+		"problem": "The scheduler test flakes on cold caches, producing intermittent CI failures unrelated to the change under test.",
+		"solution": "Seed the scheduler's deterministic clock in the test setup so cold-cache ordering cannot vary between runs.",
+		"userImpact": "Contributors see stable CI results for scheduler changes; no runtime behavior changes.",
+		"evidence": [
+			"bun test src/scheduler.test.ts — 42 passing, 0 failing",
+			"bun run lint — clean"
+		],
+		"evidenceTier": "external-proof-required",
+		"knownGap": "The fix needs a staging-cluster soak run to prove no scheduler drift under real load; an operator will attach that report.",
+		"operatorNotes": "Reviewed during the 2026-08-25 EOD dry-run session; full evidence in the campaign log."
+	},
+	"refresh": {
+		"followUpRunId": "run_2222",
+		"newEvidence": [
+			"bun run lint — clean",
+			"bun test src/scheduler.test.ts — 44 passing, 0 failing (follow-up)"
+		],
+		"addressedFindings": [
+			"Seed the clock in beforeAll, not per-test",
+			"Cover the leap-second edge in the new test"
+		],
+		"knownGap": null
+	},
+	"refreshedFacts": {
+		"campaignId": "camp-openclaw-812",
+		"agent": "pi",
+		"provider": "anthropic",
+		"model": "claude-sonnet-4-5",
+		"approvedBy": "jayminwest",
+		"runId": "run_1111",
+		"branch": "warren/issue-812",
+		"forkOwner": "warren-run-bot",
+		"issueNumber": 812,
+		"problem": "The scheduler test flakes on cold caches, producing intermittent CI failures unrelated to the change under test.",
+		"solution": "Seed the scheduler's deterministic clock in the test setup so cold-cache ordering cannot vary between runs.",
+		"userImpact": "Contributors see stable CI results for scheduler changes; no runtime behavior changes.",
+		"evidence": [
+			"bun test src/scheduler.test.ts — 42 passing, 0 failing",
+			"bun run lint — clean",
+			"bun test src/scheduler.test.ts — 44 passing, 0 failing (follow-up)"
+		],
+		"evidenceTier": "external-proof-required",
+		"operatorNotes": "Reviewed during the 2026-08-25 EOD dry-run session; full evidence in the campaign log.",
+		"addressedFindings": [
+			"Seed the clock in beforeAll, not per-test",
+			"Cover the leap-second edge in the new test"
+		],
+		"followUpRunId": "run_2222"
+	},
+	"body": "Closes #812\n\n## AI disclosure\n\nThis contribution was prepared by an AI agent under the warren campaign `camp-openclaw-812` (agent `pi` on `anthropic/claude-sonnet-4-5`), approved by jayminwest. It follows the repository's AI-assisted contribution policy: the work is disclosed here and carries validation evidence below.\n\n## Problem\n\nThe scheduler test flakes on cold caches, producing intermittent CI failures unrelated to the change under test.\n\n## Solution\n\nSeed the scheduler's deterministic clock in the test setup so cold-cache ordering cannot vary between runs.\n\n## Impact\n\nContributors see stable CI results for scheduler changes; no runtime behavior changes.\n\n## Evidence\n\n- bun test src/scheduler.test.ts — 42 passing, 0 failing\n- bun run lint — clean\n- bun test src/scheduler.test.ts — 44 passing, 0 failing (follow-up)\n\n## Response summary\n\n- Seed the clock in beforeAll, not per-test\n- Cover the leap-second edge in the new test\n\n## Run reference\n\n- Warren run `run_1111` (state: succeeded)\n- Warren run `run_2222` (state: succeeded) — follow-up\n- Fork branch `warren-run-bot:warren/issue-812` — maintainers may push edits to this branch (maintainer_can_modify)\n- Issue: #812\n\n## Operator notes\n\nReviewed during the 2026-08-25 EOD dry-run session; full evidence in the campaign log.\n\n---\n\nOpened by the warren campaign controller from a journaled, owner-approved cross-fork intent (campaign `camp-openclaw-812`). The exact request was journaled before any posting; when the campaign policy does not enable the create mutation, this body exists only as dry-run evidence and no pull request is opened."
+}

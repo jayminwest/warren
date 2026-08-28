@@ -83,7 +83,7 @@ describe("pr-body contract as data", () => {
 			JSON.parse(readFileSync(join(PROFILES, "default.pr-body-contract.json"), "utf8")),
 			"default pr-body contract",
 		);
-		expect(contract.version).toBe(2);
+		expect(contract.version).toBe(3);
 		expect(contract.sections.length).toBeGreaterThan(0);
 	});
 

@@ -88,6 +88,7 @@ export const PR_BODY_SECTION_KEYS = [
 	"userImpact",
 	"evidence",
 	"knownGap",
+	"responseSummary",
 	"runReference",
 	"operatorNotes",
 ] as const;

@@ -174,6 +174,7 @@ function parsePullRequest(raw: Raw): GithubPullRequestSnapshot {
 		state: requiredString(raw, "state"),
 		draft: requiredBoolean(raw, "draft"),
 		title: requiredString(raw, "title"),
+		body: optionalString(raw, "body"),
 		authorLogin: loginOf(raw),
 		headRef: requiredString(head, "ref"),
 		headSha: requiredString(head, "sha"),

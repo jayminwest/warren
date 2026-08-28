@@ -145,11 +145,11 @@ Open <http://localhost:8080>, paste the minted token, add a GitHub repository, a
 
 ### Operator references
 
-- [Docker self-host guide](docs/self-host/docker.md) — sibling-container topology, custom agent images, persistence, macOS Docker Desktop requirements.
-- [Kubernetes runbook](docs/RUNBOOK-K8S.md) — cluster deployment, secrets, RBAC, admission, incident response.
-- [Credentials](docs/credentials.md) — model and GitHub credential paths, including the static-token and machine-account guidance.
-- [Operations](docs/operations.md) — probes, logs, metrics, cost, backups, triage.
-- [Environment reference](.env.example) — every deployment knob, annotated.
+- [Docker self-host guide](docs/self-host/docker.md): sibling-container topology, custom agent images, persistence, macOS Docker Desktop requirements.
+- [Kubernetes runbook](docs/RUNBOOK-K8S.md): cluster deployment, secrets, RBAC, admission, incident response.
+- [Credentials](docs/credentials.md): model and GitHub credential paths, including the static-token and machine-account guidance.
+- [Operations](docs/operations.md): probes, logs, metrics, cost, backups, triage.
+- [Environment reference](.env.example): every deployment knob, annotated.
 
 ## Optional integrations and extensions
 

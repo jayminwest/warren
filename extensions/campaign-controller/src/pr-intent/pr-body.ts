@@ -46,6 +46,13 @@ export interface PrBodyFacts {
 	 * (warren-4dc1); required when the tier is `external-proof-required`.
 	 */
 	knownGap?: string;
+	/** Structured titles (verbatim, no quoted content) of findings the
+	 * follow-up addressed; renders the response-summary section (warren-09d2)
+	 * only when the contract declares it and the list is non-empty.
+	 */
+	addressedFindings?: readonly string[];
+	/** The follow-up run's id (warren-09d2); adds a run-reference bullet when present. */
+	followUpRunId?: string;
 	operatorNotes: string;
 }
 
@@ -95,8 +102,16 @@ const SECTION_RENDERERS: Record<PrBodySectionKey, SectionRenderer> = {
 			"- This proof requires a real external system no run sandbox can reach; an operator will attach it to this pull request before merge.",
 		];
 	},
+	responseSummary: (facts) =>
+		(facts.addressedFindings ?? [])
+			.map((title) => title.trim())
+			.filter((title) => title.length > 0)
+			.map((title) => `- ${title}`),
 	runReference: (facts) => [
 		`- Warren run \`${facts.runId}\` (state: succeeded)`,
+		...(facts.followUpRunId === undefined
+			? []
+			: [`- Warren run \`${facts.followUpRunId}\` (state: succeeded) — follow-up`]),
 		`- Fork branch \`${facts.forkOwner}:${facts.branch}\` — maintainers may push edits to this branch (maintainer_can_modify)`,
 		`- Issue: #${facts.issueNumber}`,
 	],

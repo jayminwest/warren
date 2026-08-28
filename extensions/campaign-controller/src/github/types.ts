@@ -121,6 +121,8 @@ export interface GithubPullRequestSnapshot {
 	state: string;
 	draft: boolean;
 	title: string;
+	/** Raw PR body text; `null` when GitHub serves none (warren-09d2 divergence checks). */
+	body: string | null;
 	authorLogin: string;
 	headRef: string;
 	headSha: string;
