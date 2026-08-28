@@ -1,0 +1,83 @@
+{
+	"schemaVersion": 1,
+	"profileId": "meridian",
+	"upstream": {
+		"owner": "meridian-oss",
+		"repo": "meridian"
+	},
+	"source": {
+		"url": "https://raw.githubusercontent.com/meridian-oss/meridian/main/CONTRIBUTING.md",
+		"fetchedAt": "2026-08-26T15:00:00.000Z",
+		"sha256": "9d1a6f0b7c3e25aa8ef4106dc70b5129384f6aeb1cc72d407f5529a30e6db104"
+	},
+	"stalenessMaxDays": 120,
+	"issueFirstRequired": true,
+	"aiDisclosure": {
+		"required": true,
+		"evidenceRequired": true
+	},
+	"prBodyContract": {
+		"version": 1,
+		"sections": [
+			{ "key": "closes", "heading": null, "required": true },
+			{ "key": "disclosure", "heading": "AI-assisted contribution notice", "required": true },
+			{ "key": "problem", "heading": "Changes", "required": true },
+			{ "key": "solution", "heading": "Approach", "required": true },
+			{ "key": "userImpact", "heading": "Why it matters", "required": true },
+			{ "key": "evidence", "heading": "Proof", "required": true },
+			{ "key": "knownGap", "heading": "Validation gap", "required": false },
+			{ "key": "responseSummary", "heading": "Reviewer response", "required": false },
+			{ "key": "runReference", "heading": "Run log", "required": true },
+			{ "key": "operatorNotes", "heading": "Reviewer notes", "required": true }
+		],
+		"disclosureTemplate": "This pull request was prepared by an AI agent working under warren campaign `{campaignId}` (agent `{agent}` on `{provider}/{model}`), approved by {approvedBy}. Per the meridian AI-contribution policy this notice discloses the automation and the validation proof below.",
+		"footerTemplate": "Automated contribution opened by the warren campaign controller for campaign `{campaignId}`. The upstream request was journaled before posting; without the create mutation this body is dry-run evidence only and no pull request is opened."
+	},
+	"agentGuidance": {
+		"version": 1,
+		"norms": [
+			"Keep the patch minimal and self-contained; refactor only what the issue explicitly requires.",
+			"Follow the existing module layout and naming; a meridian change never introduces a new top-level package on its own.",
+			"Do not widen public exports or configuration surface without an accepted upstream issue saying so.",
+			"Prefer reusing the helpers in scripts/lib over writing parallel logic; cite the reused helper in the summary.",
+			"Declare anything the run could not verify in the validation-gap section instead of silently dropping it."
+		]
+	},
+	"evidenceTiers": ["local-provable", "external-proof-required", "operator-verifiable"],
+	"allowedWorkTypes": ["bug-fix", "feature", "docs", "test"],
+	"forbiddenPaths": [
+		".github/*",
+		"CODEOWNERS",
+		"NOTICE",
+		"docs/adr/*",
+		"package.json",
+		"pnpm-lock.yaml"
+	],
+	"protectedPaths": [
+		"src/auth/*",
+		"src/wallet/*",
+		"tsconfig.json",
+		"package-lock.json",
+		".gitignore"
+	],
+	"upstreamObservedMaxOpenPrs": 15,
+	"maxOpenPrs": 4,
+	"maxNewPrsPerDay": 1,
+	"requiredChecks": ["meridian/build", "meridian/unit"],
+	"mutations": {
+		"createPullRequest": false,
+		"followUpPush": false,
+		"updatePullRequest": false,
+		"pushCommits": false,
+		"updateBranch": false,
+		"postComment": false,
+		"editComment": false,
+		"requestReview": false,
+		"addLabels": false,
+		"closePullRequest": false,
+		"reopenPullRequest": false,
+		"enableAutoMerge": false,
+		"mergePullRequest": false,
+		"editIssue": false
+	}
+}

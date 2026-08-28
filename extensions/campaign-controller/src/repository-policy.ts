@@ -4,8 +4,8 @@
  *
  * A repository policy is a *snapshot* of an upstream repository's
  * contribution rules, pinned to a source URL, fetch time, and content hash.
- * OpenClaw is data here — a committed profile under `data/` — never a
- * conditional in controller code. The policy binds the issue-first
+ * Repository-specific rules are data here — committed profiles under
+ * `../profiles/` — never conditionals in controller code. The policy binds the issue-first
  * requirement, AI-disclosure/evidence requirements, allowed work types,
  * forbidden/protected paths, the upstream open-PR limit, the controller's
  * own stricter caps, required checks, and every mutation flag. In V0 all
@@ -39,9 +39,6 @@ export const REPOSITORY_POLICY_SCHEMA_VERSION = 1;
 
 /** Hard ceiling on how old a policy snapshot may declare itself valid. */
 export const MAX_STALENESS_DAYS = 365;
-
-/** OpenClaw's own contribution rule caps contributors at 20 open PRs. */
-export const OPENCLAW_UPSTREAM_MAX_OPEN_PRS = 20;
 
 /** Work types the V0 controller vocabulary admits. */
 export const WORK_TYPES = ["bug-fix", "feature", "docs", "test", "refactor", "chore"] as const;

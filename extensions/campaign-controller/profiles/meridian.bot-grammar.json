@@ -1,0 +1,7 @@
+{
+	"comment": "Profile-declared review-bot grammar for the meridian profile (plan pl-096b, warren-2ec3). Different marker, login, line grammar, and re-review command from the openclaw profile — the classifier must prove it reads these as data only.",
+	"knownBotLogins": ["meridian-guard"],
+	"findingMarker": "<!-- meridian-guard: findings -->",
+	"findingLinePattern": "^\\* (?P<title>[^@]+) @ (?P<file>[a-zA-Z0-9_./-]+):(?P<line>[0-9]+)(?: \\[(?P<priority>high|normal|low)\\])?$",
+	"reReviewCommands": ["/meridian-guard re-run review"]
+}

@@ -15,7 +15,6 @@
 		"docs/PHILOSOPHY.md",
 		"docs/RUNBOOK-K8S.md",
 		"docs/labels.md",
-		"docs/local-models.md",
 		"docs/project-setup.md",
 		"docs/design/k8s-migration.md",
 		"docs/design/runtime-provider-contract.md",

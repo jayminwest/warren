@@ -14,7 +14,6 @@ This directory holds operator, API, architecture, and contributor documentation.
 - [`project-setup.md`](project-setup.md) — repository permissions, CI, auto-merge, and branch cleanup.
 - [`onboarding-external-repos.md`](onboarding-external-repos.md) — configure a mirror or repository that you do not control.
 - [`previews.md`](previews.md) — optional per-run preview environments, DNS, TLS, auth, and lifecycle.
-- [`local-models.md`](local-models.md): dispatch pi runs against a local OpenAI-compatible model server (unsupported but verified).
 - [`pr-templates.md`](pr-templates.md) — customize generated pull request body fragments.
 
 ## Integrate with warren

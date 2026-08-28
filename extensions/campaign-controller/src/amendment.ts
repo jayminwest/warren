@@ -169,7 +169,7 @@ export function validateCampaignAmendment(
 		min: 8,
 		max: 54,
 		pattern: AMENDMENT_ID,
-		patternHint: "an 'ame-' prefixed lowercase kebab-case id, e.g. ame-openclaw-append-424",
+		patternHint: "an 'ame-' prefixed lowercase kebab-case id, e.g. ame-2026-08-26-append-424",
 	});
 	const campaignId = requireString(root, "campaignId", "campaign amendment", {
 		min: 8,

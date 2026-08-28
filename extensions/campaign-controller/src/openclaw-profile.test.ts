@@ -12,11 +12,7 @@
 import { describe, expect, test } from "bun:test";
 import { canonicalJson, digestOf } from "./digest.ts";
 import { validateCampaignManifest } from "./manifest.ts";
-import {
-	composeDispatchPrompt,
-	OPENCLAW_UPSTREAM_MAX_OPEN_PRS,
-	validateRepositoryPolicy,
-} from "./repository-policy.ts";
+import { composeDispatchPrompt, validateRepositoryPolicy } from "./repository-policy.ts";
 
 const DATA_DIR = new URL("../profiles/", import.meta.url);
 /** Pinned to one day after the committed snapshot was fetched. */
@@ -34,8 +30,8 @@ describe("openclaw repository-policy golden", () => {
 		);
 		expect(policy.profileId).toBe("openclaw");
 		expect(policy.upstream).toEqual({ owner: "openclaw", repo: "openclaw" });
-		expect(policy.upstreamObservedMaxOpenPrs).toBe(OPENCLAW_UPSTREAM_MAX_OPEN_PRS);
-		expect(OPENCLAW_UPSTREAM_MAX_OPEN_PRS).toBe(20);
+		// The upstream limit is profile data, pinned to the committed snapshot.
+		expect(policy.upstreamObservedMaxOpenPrs).toBe(20);
 	});
 
 	test("the controller cap is strictly stricter than the upstream limit", async () => {
@@ -43,7 +39,7 @@ describe("openclaw repository-policy golden", () => {
 			await loadGolden("openclaw.repository-policy.json"),
 			{ nowMs: PINNED_NOW },
 		);
-		expect(policy.maxOpenPrs).toBeLessThan(OPENCLAW_UPSTREAM_MAX_OPEN_PRS);
+		expect(policy.maxOpenPrs).toBeLessThan(policy.upstreamObservedMaxOpenPrs);
 		expect(policy.maxNewPrsPerDay).toBeLessThanOrEqual(policy.maxOpenPrs);
 	});
 

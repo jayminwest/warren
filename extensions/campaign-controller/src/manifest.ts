@@ -155,7 +155,7 @@ export function validateCampaignManifest(
 		min: 8,
 		max: 54,
 		pattern: CAMPAIGN_ID,
-		patternHint: "a 'camp-' prefixed lowercase kebab-case id, e.g. camp-openclaw-eod-v0",
+		patternHint: "a 'camp-' prefixed lowercase kebab-case id, e.g. camp-2026-08-26-eod-v0",
 	});
 	const campaignVersion = requireInt(root, "campaignVersion", "campaign manifest", {
 		min: 1,

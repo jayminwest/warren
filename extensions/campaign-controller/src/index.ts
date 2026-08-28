@@ -259,7 +259,6 @@ export {
 	type CommentPlaceholder,
 	type CommentTemplatesPolicy,
 	MAX_STALENESS_DAYS,
-	OPENCLAW_UPSTREAM_MAX_OPEN_PRS,
 	type PolicySource,
 	type PolicyValidationOptions,
 	REPOSITORY_POLICY_SCHEMA_VERSION,

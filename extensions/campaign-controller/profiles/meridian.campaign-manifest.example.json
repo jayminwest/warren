@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"campaignId": "camp-meridian-v0",
+	"campaignVersion": 1,
+	"upstream": {
+		"owner": "meridian-oss",
+		"repo": "meridian"
+	},
+	"fork": {
+		"owner": "warren-run-bot",
+		"repo": "meridian"
+	},
+	"defaultBranch": "main",
+	"issues": [77, 81],
+	"warren": {
+		"project": "meridian-contrib",
+		"agent": "pi",
+		"provider": "anthropic",
+		"model": "claude-sonnet-4-5"
+	},
+	"promptDigest": "0f0b2f8b4d81c1a4b6d9ec652374a86b8f5a1a1c0196e8f4b3f45f8db99de527",
+	"budget": {
+		"perRunUsd": 4,
+		"dailyUsd": 12,
+		"totalUsd": 60
+	},
+	"maxConcurrentRuns": 2,
+	"expiresAt": "2026-12-31T00:00:00.000Z",
+	"issueEvidenceTiers": {
+		"81": "external-proof-required"
+	},
+	"approval": {
+		"approvedBy": "jayminwest",
+		"approvedAt": "2026-08-25T12:00:00.000Z",
+		"manifestDigest": "497b6ae30ba2b5c6d42e32d426092c739a44611c1f405ea26197f95f5d18d80a"
+	}
+}
