@@ -12,6 +12,7 @@
 import { describe, expect, test } from "bun:test";
 import { canonicalJson, digestOf } from "./digest.ts";
 import { validateCampaignManifest } from "./manifest.ts";
+import { validateBotGrammar } from "./reconcile/bot-grammar.ts";
 import { composeDispatchPrompt, validateRepositoryPolicy } from "./repository-policy.ts";
 
 const DATA_DIR = new URL("../profiles/", import.meta.url);
@@ -61,6 +62,30 @@ describe("openclaw repository-policy golden", () => {
 		for (const [flag, allowed] of Object.entries(policy.mutations)) {
 			expect(allowed, flag).toBe(false);
 		}
+	});
+});
+
+describe("openclaw bot-grammar golden", () => {
+	test("the committed grammar validates and pins the observed ClawSweeper format", async () => {
+		const grammar = validateBotGrammar(await loadGolden("openclaw.bot-grammar.json"));
+		// Observed live on openclaw PR 132081: GitHub reports the App author
+		// login with the literal '[bot]' suffix — the classifier exact-matches
+		// the same literal (warren-442e).
+		expect(grammar.knownBotLogins).toEqual(["clawsweeper[bot]"]);
+		expect(grammar.findingMarker).toBe("## Findings");
+		expect(grammar.reReviewCommands).toEqual(["@clawsweeper re-review"]);
+		const pattern = new RegExp(grammar.findingLinePattern);
+		const observedLine =
+			"- [P1] Bind each delivery outcome to its originating cron run — " +
+			"`src/cron/service/failure-alerts.ts:217-222`";
+		const match = pattern.exec(observedLine);
+		expect(match?.groups?.title).toBe(
+			"Bind each delivery outcome to its originating cron run",
+		);
+		expect(match?.groups?.priority).toBe("P1");
+		expect(match?.groups?.file).toBe("src/cron/service/failure-alerts.ts");
+		// A "217-222" range captures only its first number.
+		expect(match?.groups?.line).toBe("217");
 	});
 });
 
