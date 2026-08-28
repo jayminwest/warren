@@ -139,4 +139,12 @@ CREATE TABLE leases (
 );
 `,
 	},
+	{
+		id: 2,
+		name: "002_work_item_terminal_outcome",
+		sql: `
+ALTER TABLE work_items ADD COLUMN outcome TEXT;
+ALTER TABLE work_items ADD COLUMN outcome_at_ms INTEGER;
+`,
+	},
 ];

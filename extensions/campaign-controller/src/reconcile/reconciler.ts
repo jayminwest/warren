@@ -30,6 +30,7 @@ import type {
 	GithubReviewSnapshot,
 } from "../github/types.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
+import type { WorkItemOutcome } from "../store/types.ts";
 import { deriveAttentionCandidates } from "./attention.ts";
 import {
 	dedupeEvents,
@@ -42,6 +43,7 @@ import {
 	normalizeReview,
 	normalizeReviewComment,
 } from "./events.ts";
+import { classifyTerminalOutcome } from "./terminal.ts";
 
 /** The upstream PR identity one reconciliation targets. */
 export interface UpstreamPrTarget {
@@ -67,6 +69,10 @@ export interface ReconcileResult {
 	readonly duplicateEvents: number;
 	readonly attentionCreated: number;
 	readonly attentionAlreadyOpen: number;
+	/** Terminal outcome derived this pass (null while the PR is open). */
+	readonly terminalOutcome: WorkItemOutcome | null;
+	/** True when this pass flipped the work item (exactly-once). */
+	readonly outcomeRecorded: boolean;
 	readonly truncated: boolean;
 }
 
@@ -132,6 +138,9 @@ export class UpstreamPrReconciler {
 		});
 		const { attentionCreated, attentionAlreadyOpen } = this.#storeAttention(target, candidates);
 
+		const terminalOutcome = classifyTerminalOutcome(observation.pr);
+		const outcomeRecorded = this.#recordOutcome(target, terminalOutcome);
+
 		return {
 			notificationsSeen: observation.notificationsSeen,
 			prMissing: observation.pr === null,
@@ -139,8 +148,20 @@ export class UpstreamPrReconciler {
 			duplicateEvents: duplicateCount + durableDuplicates,
 			attentionCreated,
 			attentionAlreadyOpen,
+			terminalOutcome,
+			outcomeRecorded,
 			truncated: observation.truncated,
 		};
+	}
+
+	/**
+	 * Flip the target work item to the classified terminal outcome. The
+	 * store enforces exactly-once; a missing work-item binding simply
+	 * observes the outcome without recording it.
+	 */
+	#recordOutcome(target: UpstreamPrTarget, outcome: WorkItemOutcome | null): boolean {
+		if (outcome === null || target.workItemId == null) return false;
+		return this.#store.campaigns.recordWorkItemOutcome(target.workItemId, outcome).recorded;
 	}
 
 	/** Read the authoritative upstream world for one target. */

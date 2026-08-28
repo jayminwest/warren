@@ -9,6 +9,7 @@
 import { approveCampaign } from "../../admission.ts";
 import type { Clock, IdGenerator } from "../../clock.ts";
 import { StateError } from "../../errors.ts";
+import { buildCampaignReport } from "../../report/report.ts";
 import type { CampaignStateStore } from "../../store/state-store.ts";
 import type { CliConfig } from "../config.ts";
 import { CliError } from "../exit-codes.ts";
@@ -170,6 +171,7 @@ function campaignStatus(store: CampaignStateStore, campaignId: string): Record<s
 			availableUsdCents: store.budget.availableUsdCents(campaignId),
 		},
 		openAttention: store.events.listOpenAttention(campaignId).length,
+		report: buildCampaignReport(store, campaignId),
 	};
 }
 

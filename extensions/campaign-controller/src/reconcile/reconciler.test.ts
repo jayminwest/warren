@@ -522,3 +522,80 @@ describe("UpstreamPrReconciler", () => {
 		}
 	});
 });
+
+describe("UpstreamPrReconciler terminal accounting (warren-7cd1)", () => {
+	let harness: Harness;
+
+	beforeEach(() => {
+		harness = newHarness();
+	});
+
+	afterEach(() => {
+		rmSync(harness.dir, { recursive: true, force: true });
+	});
+
+	test("a merged PR flips the work item to the merged outcome exactly once", async () => {
+		seedQuietUpstream(harness);
+		harness.server.setResource(
+			`/repos/${REPO_FULL}/pulls/${PR_NUMBER}`,
+			prBody({ state: "closed", merged_at: "2026-08-20T00:00:00Z" }),
+		);
+		const first = await harness.reconciler.reconcile(harness.target());
+		expect(first.terminalOutcome).toBe("merged");
+		expect(first.outcomeRecorded).toBe(true);
+		const item = harness.store.campaigns.getWorkItem(harness.workItemId);
+		expect(item?.outcome).toBe("merged");
+		expect(item?.outcomeAtMs).toBe(NOW);
+		expect(item?.status).toBe("merged");
+
+		const second = await harness.reconciler.reconcile(harness.target());
+		expect(second.terminalOutcome).toBe("merged");
+		expect(second.outcomeRecorded).toBe(false);
+		expect(harness.store.campaigns.getWorkItem(harness.workItemId)?.outcomeAtMs).toBe(NOW);
+	});
+
+	test("a closed-unmerged PR flips the work item to closed_unmerged exactly once", async () => {
+		seedQuietUpstream(harness);
+		harness.server.setResource(
+			`/repos/${REPO_FULL}/pulls/${PR_NUMBER}`,
+			prBody({ state: "closed", closed_at: "2026-08-21T00:00:00Z" }),
+		);
+		const result = await harness.reconciler.reconcile(harness.target());
+		expect(result.terminalOutcome).toBe("closed_unmerged");
+		expect(result.outcomeRecorded).toBe(true);
+		const item = harness.store.campaigns.getWorkItem(harness.workItemId);
+		expect(item?.outcome).toBe("closed_unmerged");
+		expect(item?.status).toBe("terminal");
+
+		const second = await harness.reconciler.reconcile(harness.target());
+		expect(second.outcomeRecorded).toBe(false);
+		expect(harness.store.campaigns.getWorkItem(harness.workItemId)?.outcome).toBe(
+			"closed_unmerged",
+		);
+	});
+
+	test("an open PR records no outcome", async () => {
+		seedQuietUpstream(harness);
+		const result = await harness.reconciler.reconcile(harness.target());
+		expect(result.terminalOutcome).toBeNull();
+		expect(result.outcomeRecorded).toBe(false);
+		expect(harness.store.campaigns.getWorkItem(harness.workItemId)?.outcome).toBeNull();
+	});
+
+	test("the first recorded outcome wins over a later contradicting observation", async () => {
+		seedQuietUpstream(harness);
+		harness.server.setResource(
+			`/repos/${REPO_FULL}/pulls/${PR_NUMBER}`,
+			prBody({ state: "closed", merged_at: "2026-08-20T00:00:00Z" }),
+		);
+		await harness.reconciler.reconcile(harness.target());
+		harness.server.setResource(
+			`/repos/${REPO_FULL}/pulls/${PR_NUMBER}`,
+			prBody({ state: "closed", merged_at: null, closed_at: "2026-08-22T00:00:00Z" }),
+		);
+		const second = await harness.reconciler.reconcile(harness.target());
+		expect(second.terminalOutcome).toBe("closed_unmerged");
+		expect(second.outcomeRecorded).toBe(false);
+		expect(harness.store.campaigns.getWorkItem(harness.workItemId)?.outcome).toBe("merged");
+	});
+});

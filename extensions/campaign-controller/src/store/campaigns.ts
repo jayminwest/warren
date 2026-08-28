@@ -7,7 +7,13 @@
  */
 import { StateError } from "../errors.ts";
 import { nowMs, type StoreContext } from "./context.ts";
-import type { CampaignRow, CampaignStatus, WorkItemRow, WorkItemStatus } from "./types.ts";
+import type {
+	CampaignRow,
+	CampaignStatus,
+	WorkItemOutcome,
+	WorkItemRow,
+	WorkItemStatus,
+} from "./types.ts";
 
 type CampaignDbRow = {
 	id: string;
@@ -27,6 +33,8 @@ type WorkItemDbRow = {
 	position: number;
 	issue_ref: string;
 	status: string;
+	outcome: string | null;
+	outcome_at_ms: number | null;
 	created_at_ms: number;
 	updated_at_ms: number;
 };
@@ -52,6 +60,8 @@ function toWorkItem(row: WorkItemDbRow): WorkItemRow {
 		position: row.position,
 		issueRef: row.issue_ref,
 		status: row.status as WorkItemStatus,
+		outcome: (row.outcome as WorkItemOutcome | null) ?? null,
+		outcomeAtMs: row.outcome_at_ms ?? null,
 		createdAtMs: row.created_at_ms,
 		updatedAtMs: row.updated_at_ms,
 	};
@@ -202,5 +212,30 @@ export class CampaignStore {
 		this.#ctx.db
 			.query("UPDATE work_items SET status = ?, updated_at_ms = ? WHERE id = ?")
 			.run(status, nowMs(this.#ctx), id);
+	}
+
+	/**
+	 * Flip a work item to its terminal PR outcome (warren-7cd1). Exactly
+	 * once: an outcome already recorded wins, whatever the caller observed,
+	 * so a re-delivered reconcile can never rewrite history. The status
+	 * moves to `merged` or `terminal` alongside the outcome column.
+	 */
+	recordWorkItemOutcome(
+		id: string,
+		outcome: WorkItemOutcome,
+	): { recorded: boolean; item: WorkItemRow } {
+		const item = this.getWorkItem(id);
+		if (item === null) throw new StateError(`unknown work item: ${id}`);
+		if (item.outcome !== null) {
+			return { recorded: false, item };
+		}
+		const now = nowMs(this.#ctx);
+		const status: WorkItemStatus = outcome === "merged" ? "merged" : "terminal";
+		this.#ctx.db
+			.query(
+				"UPDATE work_items SET outcome = ?, outcome_at_ms = ?, status = ?, updated_at_ms = ? WHERE id = ?",
+			)
+			.run(outcome, now, status, now, id);
+		return { recorded: true, item: this.getWorkItem(id) as WorkItemRow };
 	}
 }
