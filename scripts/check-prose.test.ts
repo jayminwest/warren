@@ -184,6 +184,23 @@ describe("other mechanical rules", () => {
 		expect(countOf("A seamless and robust control plane.", "marketing-adjective")).toBe(2);
 	});
 
+	test("flags an em dash", () => {
+		expect(countOf("The run finished — the branch is pushed.", "dash")).toBe(1);
+	});
+
+	test("flags a spaced en dash and a spaced double hyphen", () => {
+		expect(countOf("The run finished – the branch is pushed.", "dash")).toBe(1);
+		expect(countOf("The run finished -- the branch is pushed.", "dash")).toBe(1);
+	});
+
+	test("does not flag hyphenated compounds, ranges, or CLI flags", () => {
+		expect(countOf("Use kebab-case names for steps 1–5 with the --json flag.", "dash")).toBe(0);
+	});
+
+	test("does not flag a dash inside inline code", () => {
+		expect(countOf("Run `warren run -- --json` to pass args through.", "dash")).toBe(0);
+	});
+
 	test("flags nominalizations", () => {
 		expect(countOf("Perform an analysis of the log.", "nominalization")).toBe(1);
 	});

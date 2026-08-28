@@ -5,8 +5,8 @@
  * Walks the human-authored markdown listed in `scripts/prose-budgets.json` and
  * counts violations of the mechanical STE rules: sentence length, passive
  * voice, `-ing` main verbs, nominalizations, phrasal verbs, noun stacks over
- * three words, semicolons, contractions, Latin abbreviations, marketing
- * adjectives, and the substitution list.
+ * three words, semicolons, clause dashes, contractions, Latin abbreviations,
+ * marketing adjectives, and the substitution list.
  *
  * Budget semantics mirror `check-file-sizes.ts`:
  *
@@ -252,6 +252,14 @@ function checkNounStacks(violations: Violation[], line: number, sentence: string
 	}
 }
 
+/**
+ * Clause dashes: an em dash anywhere, or an en dash / double hyphen standing
+ * alone between spaces. A dash splices two thoughts into one sentence. STE
+ * wants the rewrite: two sentences, or a colon. Hyphenated compounds
+ * (kebab-case) and unspaced ranges (1–5) do not match.
+ */
+const DASH_RE = /—|(?<=\s)(?:--|–)(?=\s)/g;
+
 const PASSIVE_RE = new RegExp(`\\b(?:${BE})\\s+(\\w+ed|${IRREGULAR_PP})\\b(\\s+by\\b)?`, "gi");
 const ING_RE = new RegExp(`\\b(?:${BE})\\s+(\\w+ing)\\b`, "gi");
 const NOMINAL_RE =
@@ -280,6 +288,10 @@ function checkLineRules(violations: Violation[], line: number, text: string): vo
 	}
 	for (let idx = text.indexOf(";"); idx !== -1; idx = text.indexOf(";", idx + 1)) {
 		violations.push({ rule: "semicolon", line, text: text.slice(Math.max(0, idx - 20), idx + 1) });
+	}
+	for (const m of text.matchAll(DASH_RE)) {
+		const idx = m.index ?? 0;
+		violations.push({ rule: "dash", line, text: text.slice(Math.max(0, idx - 20), idx + 2) });
 	}
 	pushPhraseHits(violations, "latin-abbreviation", line, text, LATIN);
 	pushPhraseHits(violations, "phrasal-verb", line, text, PHRASAL);

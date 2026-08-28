@@ -343,6 +343,12 @@ describe("runCli", () => {
 		expect(record(workItems[0]).issueRef).toBe("812");
 		expect(result.budget).toEqual({ capUsdCents: 10000, availableUsdCents: 10000 });
 		expect(result.openAttention).toBe(0);
+		const report = record(result.report);
+		expect(report.campaignId).toBe(id);
+		expect(report.prsOpened).toBe(0);
+		expect(report.prsMerged).toBe(0);
+		expect(report.costPerMergedPrUsdCents).toBeNull();
+		expect(list(report.items)).toHaveLength(1);
 	});
 
 	test("approve with the wrong digest refuses with exit 4 and the invariant", async () => {

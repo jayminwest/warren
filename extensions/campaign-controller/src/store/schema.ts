@@ -172,4 +172,11 @@ CREATE TABLE review_feedback (
 CREATE INDEX idx_review_feedback_campaign ON review_feedback(campaign_id);
 `,
 	},
+	{
+		id: 4,
+		name: "004_work_item_terminal_outcome",
+		sql: `
+ALTER TABLE work_items ADD COLUMN outcome TEXT;
+ALTER TABLE work_items ADD COLUMN outcome_at_ms INTEGER;`,
+	},
 ];
