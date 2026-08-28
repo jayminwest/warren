@@ -41,13 +41,13 @@ function fakeApi(opts: { podDeleteError?: unknown } = {}): {
 }
 
 describe("K8sProvider.cancel — delegation + env plumbing", () => {
-	test("deletes the pod with the default 30s SIGTERM grace", async () => {
+	test("deletes the pod with the default 90s SIGTERM grace (warren-01d5 salvage window)", async () => {
 		const fake = fakeApi();
 		await new K8sProvider({ coreApi: () => fake.api, serverEnv: {} }).cancel(handle);
 		expect(fake.podDeletes[0]).toEqual({
 			name: "run-run-prov-teardown",
 			namespace: "warren-runs",
-			gracePeriodSeconds: 30,
+			gracePeriodSeconds: 90,
 		});
 	});
 

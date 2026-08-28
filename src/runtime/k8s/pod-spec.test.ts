@@ -119,9 +119,9 @@ describe("resolveK8sPodConfig", () => {
 		});
 	});
 
-	test("teardown grace periods default to 30s (cancel) / 0s (terminate)", () => {
+	test("teardown grace periods default to 90s (cancel) / 0s (terminate)", () => {
 		const c = resolveK8sPodConfig({});
-		expect(c.cancelGracePeriodSeconds).toBe(30);
+		expect(c.cancelGracePeriodSeconds).toBe(90);
 		expect(c.terminateGracePeriodSeconds).toBe(0);
 	});
 
@@ -137,16 +137,16 @@ describe("resolveK8sPodConfig", () => {
 	test("invalid grace env (negative / non-integer / blank) falls back to the default", () => {
 		expect(
 			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "-5" }).cancelGracePeriodSeconds,
-		).toBe(30);
+		).toBe(90);
 		expect(
 			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "1.5" }).cancelGracePeriodSeconds,
-		).toBe(30);
+		).toBe(90);
 		expect(
 			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "  " }).cancelGracePeriodSeconds,
-		).toBe(30);
+		).toBe(90);
 		expect(
 			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "abc" }).cancelGracePeriodSeconds,
-		).toBe(30);
+		).toBe(90);
 	});
 
 	test("callback + git-secret read from env", () => {

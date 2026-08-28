@@ -87,7 +87,7 @@ describe("cancelK8sRun", () => {
 		expect(fake.podDeletes[0]).toEqual({
 			name: "run-run-teardown",
 			namespace: "warren-runs",
-			gracePeriodSeconds: 30,
+			gracePeriodSeconds: 90,
 		});
 	});
 

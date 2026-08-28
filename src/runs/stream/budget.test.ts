@@ -103,4 +103,54 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 		});
 		expect(cancels).toHaveLength(0);
 	});
+
+	/**
+	 * warren-01d5: the cost-cap cancel must travel the SAME graceful path as an
+	 * operator cancel — a single `provider.cancel`-shaped cancel request and a
+	 * `cancelled` terminal outcome that drives reap's finalize/salvage pipeline
+	 * (bridge terminal-detect → reap → `provider.finalize` → salvage) — not a
+	 * hard stop that skips finalize. Both shapes below produce identical bridge
+	 * outcomes: an operator cancel surfaces as the agent's own terminal
+	 * `agent_end` envelope (warren side then cancels + reaps); a cost-cap trip
+	 * breaks the stream itself. Same outcome, same cancel-seam contract.
+	 */
+	test("cost-cap cancel follows the same graceful terminal path as an operator cancel", async () => {
+		// Operator cancel: the run-state probe — the same projection cancelRun's
+		// post-cancel status re-read observes — reports the backend `cancelled`
+		// phase and the bridge synthesizes the terminal outcome from it.
+		const operatorResult = await bridgeRunStream({
+			runId,
+			sandboxRunId,
+			repos,
+			broker,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			cancelBurrowRun: async () => {},
+			runStatePollMs: 1,
+			runStateDrainMs: 1,
+			runStateProbe: async () => ({ state: "cancelled", exitCode: null }),
+			source: source([turnEnd(sandboxRunId, 1, 0.1)]),
+		});
+		expect(operatorResult.terminalDetected).toEqual({ outcome: "cancelled" });
+
+		// Cost-cap cancel: the bridge itself drives the graceful cancel seam and
+		// reports the identical `cancelled` terminal outcome, so reap's
+		// finalize/salvage pipeline runs for both paths.
+		const costCapCancels: string[] = [];
+		const costCapResult = await bridgeRunStream({
+			runId,
+			sandboxRunId,
+			repos,
+			broker,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			costCapUsd: 1,
+			cancelBurrowRun: async (reason) => {
+				costCapCancels.push(reason);
+			},
+			source: source([turnEnd(sandboxRunId, 3, 2)]),
+		});
+		expect(costCapResult.terminalDetected).toEqual(operatorResult.terminalDetected);
+		expect(costCapCancels).toHaveLength(1);
+	});
 });

@@ -268,7 +268,7 @@ describe("runAgent", () => {
 			log: silent,
 			skipFinalize: true,
 		});
-		expect(result).toEqual({ exitCode: 0, phase: "succeeded" });
+		expect(result).toEqual({ exitCode: 0, phase: "succeeded", cancelledViaSignal: false });
 		const payloads = lines.map(
 			(l) => (JSON.parse(l) as { payload: { line: string } }).payload.line,
 		);
@@ -319,7 +319,7 @@ describe("runAgent", () => {
 			log: silent,
 			skipFinalize: true,
 		});
-		expect(result).toEqual({ exitCode: 137, phase: "failed" });
+		expect(result).toEqual({ exitCode: 137, phase: "failed", cancelledViaSignal: false });
 		const kinds = lines.map((l) => (JSON.parse(l) as { kind: string }).kind);
 		expect(kinds).toContain("oom_killed");
 	});
@@ -353,7 +353,7 @@ describe("runAgent", () => {
 				log: silent,
 			},
 		);
-		expect(result).toEqual({ exitCode: 1, phase: "failed" });
+		expect(result).toEqual({ exitCode: 1, phase: "failed", cancelledViaSignal: false });
 		expect(lines.some((l) => l.includes("not registered"))).toBe(true);
 	});
 });

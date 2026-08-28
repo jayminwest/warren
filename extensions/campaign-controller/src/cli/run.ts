@@ -52,7 +52,7 @@ commands:
   amendment validate --amendment <p>                  validate a manifest amendment
   amendment apply --amendment <p>                     apply an approved amendment in place
   approve --campaign <id> --digest <sha256> --by <n>  approve a manifest digest
-  tick --campaign <id> [--dry-run]                    one dry-run reconciliation tick
+  tick --campaign <id> [--grammar <p>] [--dry-run]    one dry-run reconciliation tick
   status [--campaign <id>] [--work-item <id>]         campaign / work-item status
   journal [--campaign <id>] [--work-item <id>]        the durable action journal
   attention list --campaign <id> [--all]              open attention items
@@ -87,7 +87,7 @@ const COMMAND_FLAG_SPECS: Readonly<Record<string, readonly string[]>> = {
 	"amendment validate": ["amendment"],
 	"amendment apply": ["amendment"],
 	approve: ["campaign", "digest", "by"],
-	tick: ["campaign", "dry-run"],
+	tick: ["campaign", "grammar", "dry-run"],
 	status: ["campaign", "work-item"],
 	journal: ["campaign", "work-item"],
 	"attention list": ["campaign", "all"],

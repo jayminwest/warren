@@ -125,6 +125,13 @@ export interface AgentEntrypointDeps {
 	finalize?: FinalizeEntrypointDeps;
 	/** Skip the in-pod finalize step entirely (tests that only exercise the agent). */
 	skipFinalize?: boolean;
+	/**
+	 * Register a handler for the pod's termination signal (warren-01d5). The
+	 * default `runAgentEntrypoint` main wiring installs `SIGTERM`/`SIGINT` on
+	 * the process; tests inject a registrar they can fire directly. Absent
+	 * (unit tests of `runAgent`) ⇒ no signal handling is installed.
+	 */
+	registerCancelSignal?: (handler: (signal: string) => void) => void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -134,6 +141,13 @@ export interface AgentEntrypointDeps {
 export interface AgentRunResult {
 	exitCode: number;
 	phase: "succeeded" | "failed";
+	/**
+	 * warren-01d5: a registered termination signal fired while the agent ran —
+	 * the entrypoint killed the agent child so the caller's post-step (the
+	 * finalize/salvage entrypoint) can still run inside the pod's cancel grace
+	 * window instead of the kubelet SIGKILLing everything with the work unpushed.
+	 */
+	cancelledViaSignal: boolean;
 }
 
 /**
@@ -226,7 +240,7 @@ export async function runAgent(
 	const runtime = registry.get(env.runtimeId);
 	if (runtime === undefined) {
 		emitSystem(out, "error", { message: `runtime '${env.runtimeId}' is not registered` });
-		return { exitCode: 1, phase: "failed" };
+		return { exitCode: 1, phase: "failed", cancelledViaSignal: false };
 	}
 
 	const pendingMessages = await drainInbox(env, http, log);
@@ -251,7 +265,7 @@ export async function runAgent(
 		emitSystem(out, "error", {
 			message: `runtime '${env.runtimeId}' declares no buildSpawnCommand`,
 		});
-		return { exitCode: 1, phase: "failed" };
+		return { exitCode: 1, phase: "failed", cancelledViaSignal: false };
 	}
 
 	// A runtime that declares `shouldCloseStdinOnEvent` (pi) exits the instant
@@ -263,7 +277,7 @@ export async function runAgent(
 	const baseCommand = runtime.buildSpawnCommand(ctx);
 
 	const command = await resolveAgentCommand(baseCommand, useStdinHold, env, { spawn, out, log });
-	if (command === null) return { exitCode: 1, phase: "failed" };
+	if (command === null) return { exitCode: 1, phase: "failed", cancelledViaSignal: false };
 	log(`agent-entrypoint: launching '${runtime.runtimeId}' in ${env.workspacePath}`);
 	const spawned = await spawn(command, { cwd: env.workspacePath });
 	// warren-950d: under the uid split the watchdog's kill is a cross-uid
@@ -274,6 +288,23 @@ export async function runAgent(
 		spawn,
 		cwd: env.workspacePath,
 		log,
+	});
+
+	// warren-01d5: a graceful cancel (a cost-cap trip or an operator cancel
+	// both land on `provider.cancel(handle)` → pod delete → kubelet SIGTERM)
+	// must NOT hard-kill this entrypoint before the finalize/salvage step
+	// runs — the pod is the only place the committed work exists. Latch the
+	// first signal, witness it on the event stream, and stop the agent child
+	// so the spawn loop below returns promptly; control then falls through
+	// `runAgentEntrypoint` into `runFinalizeEntrypoint`, which pushes the
+	// branch / posts the salvage bundle before the process exits.
+	const cancelledViaSignal = { value: false };
+	deps.registerCancelSignal?.((signal) => {
+		if (cancelledViaSignal.value) return;
+		cancelledViaSignal.value = true;
+		log(`agent-entrypoint: ${signal} received; stopping the agent for graceful finalize`);
+		emitSystem(out, "cancel_requested", { signal, stop: "graceful" });
+		proc.kill?.();
 	});
 
 	// All the stdin-hold machinery (close-on-trigger, auto-reply, idle watchdog,
@@ -348,7 +379,7 @@ export async function runAgent(
 	emitSynthesizedTerminalEnvelope(out, sawTerminalEnvelope, exitCode);
 	const phase = exitCode === 0 ? "succeeded" : "failed";
 	log(`agent-entrypoint: '${runtime.runtimeId}' exited ${exitCode} (${phase})`);
-	return { exitCode, phase };
+	return { exitCode, phase, cancelledViaSignal: cancelledViaSignal.value };
 }
 
 /**
@@ -388,15 +419,10 @@ export async function runAgentEntrypoint(
 	let finalizeDelivered = true;
 	if (deps.skipFinalize !== true && canFinalize) {
 		try {
-			// warren-5202: overlay the agent's exit code so the finalize step can
-			// report it on every intent poll (`?agent_exit=`) — a recovering
-			// control plane classifies the run's outcome from the pod's own
-			// witness, not the (possibly log-rotated) terminal envelope.
-			const finalizeEnvSource: AgentEnvSource = {
-				...envSource,
-				WARREN_AGENT_EXIT_CODE: String(result.exitCode),
-			};
-			finalizeDelivered = await runFinalizeEntrypoint(finalizeEnvSource, deps.finalize);
+			finalizeDelivered = await runFinalizeEntrypoint(
+				buildFinalizeEnvSource(envSource, result),
+				deps.finalize,
+			);
 		} catch (err) {
 			// A thrown finalize error means nothing was delivered — treat it as a
 			// delivery failure for exit-code purposes (warren-4d6a).
@@ -419,8 +445,51 @@ export async function runAgentEntrypoint(
 	return result.exitCode;
 }
 
+/**
+ * Build the env the finalize entrypoint runs with: the pod env overlaid with
+ * the agent's exit code (warren-5202 — reported on every intent poll so a
+ * recovering control plane can classify the outcome from the pod's own
+ * witness, not the (possibly log-rotated) terminal envelope), plus — warren-01d5
+ * — a BOUNDED intent-poll budget under a signal-driven cancel. The pod then has
+ * only the cancel grace window left, so the poll is bounded to a slice of it
+ * (default 25s): if warren's intent arrives in time the branch is pushed from
+ * the pod; if not, the entrypoint still banks the no-intent salvage bundle
+ * before exiting — the same finalize/salvage outcome a natural completion gets.
+ */
+function buildFinalizeEnvSource(envSource: AgentEnvSource, result: AgentRunResult): AgentEnvSource {
+	return {
+		...envSource,
+		WARREN_AGENT_EXIT_CODE: String(result.exitCode),
+		...(result.cancelledViaSignal && envSource.WARREN_FINALIZE_MAX_WAIT_MS === undefined
+			? { WARREN_FINALIZE_MAX_WAIT_MS: cancelFinalizeMaxWaitMs(envSource) }
+			: {}),
+	};
+}
+
+/**
+ * warren-01d5: bounded finalize budget under a signal-driven cancel, as
+ * `WARREN_CANCEL_FINALIZE_MAX_WAIT_MS` (ms). Must fit inside the pod's
+ * cancel grace (`WARREN_K8S_CANCEL_GRACE_SECONDS`) so the entrypoint can
+ * still bank the no-intent salvage bundle and exit before the SIGKILL.
+ */
+const DEFAULT_CANCEL_FINALIZE_MAX_WAIT_MS = "25000";
+
+function cancelFinalizeMaxWaitMs(envSource: AgentEnvSource): string {
+	const raw = envSource.WARREN_CANCEL_FINALIZE_MAX_WAIT_MS?.trim();
+	return raw !== undefined && raw !== "" ? raw : DEFAULT_CANCEL_FINALIZE_MAX_WAIT_MS;
+}
+
 if (import.meta.main) {
-	runAgentEntrypoint(process.env)
+	runAgentEntrypoint(process.env, {
+		// warren-01d5: route the pod's termination signal into the graceful
+		// stop path — K8sProvider.cancel deletes the pod, the kubelet delivers
+		// SIGTERM, and this handler stops the agent so the in-pod
+		// finalize/salvage step still runs inside the cancel grace window.
+		registerCancelSignal: (handler) => {
+			process.on("SIGTERM", () => handler("SIGTERM"));
+			process.on("SIGINT", () => handler("SIGINT"));
+		},
+	})
 		.then((code) => process.exit(code))
 		.catch((err: unknown) => {
 			console.error(err instanceof Error ? err.message : String(err));

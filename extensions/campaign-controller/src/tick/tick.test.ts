@@ -13,7 +13,7 @@
  * - restart over a file-backed store resuming exactly once.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approveCampaign, importCampaign } from "../admission.ts";
@@ -24,6 +24,7 @@ import { FakeGithubServer } from "../github/fake-server.ts";
 import { GithubPrAlreadyExistsError, type GithubPrCreateTransport } from "../github/pr-create.ts";
 import { FakeGithubPrCreator } from "../github/pr-create-fake.ts";
 import { PR_INTENT_ACTION_TYPE } from "../pr-intent/intender.ts";
+import { validateBotGrammar } from "../reconcile/bot-grammar.ts";
 import { CampaignStateStore } from "../store/state-store.ts";
 import { WarrenClient } from "../warren-client.ts";
 import { FakeWarrenServer } from "../warren-fake.ts";
@@ -192,6 +193,8 @@ function harness(options: {
 	ids?: SequentialIdGenerator;
 	/** Import/approve with this policy instead of the dry-run base one. */
 	policy?: Record<string, unknown>;
+	/** Profile bot grammar; absent means the classifier no-ops (warren-8c83). */
+	botGrammar?: unknown;
 	/** Wire the Phase 2 creator so ticks execute journaled intents. */
 	prCreator?: GithubPrCreateTransport;
 }): TickHarness {
@@ -236,6 +239,7 @@ function harness(options: {
 			ids,
 			policy,
 			summaries,
+			...(options.botGrammar !== undefined ? { botGrammar: options.botGrammar } : {}),
 			...(options.prCreator !== undefined ? { prCreator: options.prCreator } : {}),
 		},
 	};
@@ -843,5 +847,120 @@ describe("runTick with a policy-gated PR creator", () => {
 		expect(secondPrompt).toContain("BEGIN AGENT GUIDANCE");
 		expect(secondPrompt).toContain("1. Produce the smallest possible diff.");
 		expect(secondPrompt).toContain("END AGENT GUIDANCE");
+	});
+});
+
+/** The review-bot grammar the openclaw profile declares (data, not code). */
+function openclawBotGrammar(): unknown {
+	return JSON.parse(
+		readFileSync(join(import.meta.dir, "..", "..", "profiles", "openclaw.bot-grammar.json"), "utf8"),
+	) as unknown;
+}
+
+/**
+ * warren-8c83: drive a campaign to a linked upstream PR with a review-bot
+ * finding comment, entirely through the real tick composition.
+ */
+describe("runTick with a profile bot grammar (warren-8c83)", () => {
+	async function linkPrWithBotComment(h: TickHarness): Promise<void> {
+		const tick1 = await runTick(h.deps, h.campaignId);
+		h.warren.setRunState(runIdOf(tick1), {
+			state: "succeeded",
+			costUsd: 1.25,
+			targetBranch: BRANCH,
+		});
+		await runTick(h.deps, h.campaignId); // renders + journals the intent
+
+		const identity = h.store.events.listPrIdentities(h.campaignId)[0] as {
+			id: string;
+			workItemId: string;
+		};
+		h.store.events.recordPrIdentity({
+			campaignId: h.campaignId,
+			workItemId: identity.workItemId,
+			upstreamOwner: "openclaw",
+			upstreamRepo: "openclaw",
+			forkOwner: "warren-run-bot",
+			forkRepo: "openclaw",
+			headBranch: BRANCH,
+			prNumber: 7,
+			prUrl: "https://github.com/openclaw/openclaw/pull/7",
+		});
+		const sha = "abc123abc123abc123abc123abc123abc123abc1";
+		h.github.setResource("/repos/openclaw/openclaw/pulls/7", {
+			node_id: "PR_7",
+			number: 7,
+			state: "open",
+			draft: false,
+			title: "Flaky scheduler test (#812)",
+			user: { login: "warren-run-bot" },
+			head: { ref: BRANCH, sha, repo: { full_name: "warren-run-bot/openclaw" } },
+			base: {
+				ref: "main",
+				sha: "def456def456def456def456def456def456def4",
+				repo: { full_name: "openclaw/openclaw" },
+			},
+			merged_at: null,
+			closed_at: null,
+			created_at: "2026-08-26T00:00:00.000Z",
+			updated_at: "2026-08-26T00:00:00.000Z",
+			html_url: "https://github.com/openclaw/openclaw/pull/7",
+		});
+		h.github.setResource("/repos/openclaw/openclaw/pulls/7/reviews", []);
+		h.github.setResource("/repos/openclaw/openclaw/pulls/7/comments", []);
+		h.github.setResource(`/repos/openclaw/openclaw/commits/${sha}/check-runs`, {
+			total_count: 0,
+			check_runs: [],
+		});
+		h.github.setResource(`/repos/openclaw/openclaw/commits/${sha}/status`, {
+			state: "pending",
+			total_count: 0,
+			sha,
+			statuses: [],
+		});
+		h.github.setPaginatedCollection("/repos/openclaw/openclaw/issues/7/comments", [
+			{
+				node_id: "IC_bot_1",
+				id: 1,
+				user: { login: "clawreview-bot" },
+				author_association: "NONE",
+				body: "### Findings\n- [P1] Clock not seeded: `src/scheduler/clock.ts` line 42",
+				created_at: "2026-08-26T02:00:00.000Z",
+				updated_at: "2026-08-26T02:00:00.000Z",
+				html_url: "https://github.com/openclaw/openclaw/pull/7#issuecomment-1",
+			},
+		]);
+	}
+
+	test("classifies the bot finding comment into durable review feedback through the tick", async () => {
+		const h = harness({ botGrammar: validateBotGrammar(openclawBotGrammar()) });
+		await linkPrWithBotComment(h);
+
+		const tick = await runTick(h.deps, h.campaignId);
+		const reconcileStage = requireStage(tick, "github_reconcile");
+		expect(reconcileStage.status).toBe("reconciled");
+		expect(detailOf(reconcileStage).feedbackCreated).toBeGreaterThan(0);
+
+		const feedback = h.store.events
+			.listFeedback(h.campaignId)
+			.filter((row) => row.category === "review_bot_findings");
+		expect(feedback).toHaveLength(1);
+		const fields = JSON.parse(feedback[0]?.fieldsJson ?? "{}") as {
+			findings: { value: { title: { value: string } }[] } | { title: { value: string } }[];
+		};
+		const list = Array.isArray(fields.findings) ? fields.findings : fields.findings.value;
+		expect(list[0]?.title.value).toBe("Clock not seeded");
+	});
+
+	test("without a configured grammar the tick still reconciles but classifies nothing", async () => {
+		const h = harness({});
+		await linkPrWithBotComment(h);
+
+		const tick = await runTick(h.deps, h.campaignId);
+		const reconcileStage = requireStage(tick, "github_reconcile");
+		expect(reconcileStage.status).toBe("reconciled");
+		expect(detailOf(reconcileStage).newEvents).toBeGreaterThan(0);
+		expect(detailOf(reconcileStage).feedbackCreated).toBe(0);
+		expect(h.store.events.listFeedback(h.campaignId)).toHaveLength(0);
 	});
 });
