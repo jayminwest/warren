@@ -179,4 +179,22 @@ CREATE INDEX idx_review_feedback_campaign ON review_feedback(campaign_id);
 ALTER TABLE work_items ADD COLUMN outcome TEXT;
 ALTER TABLE work_items ADD COLUMN outcome_at_ms INTEGER;`,
 	},
+	{
+		id: 5,
+		name: "005_follow_up_progress",
+		sql: `
+CREATE TABLE follow_up_progress (
+	work_item_id TEXT PRIMARY KEY REFERENCES work_items(id),
+	campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+	addressed_feedback_ids_json TEXT NOT NULL,
+	last_responded_fingerprint TEXT,
+	iteration INTEGER NOT NULL,
+	active_action_id TEXT REFERENCES actions(id),
+	run_id TEXT,
+	head_branch TEXT,
+	created_at_ms INTEGER NOT NULL,
+	updated_at_ms INTEGER NOT NULL
+);
+`,
+	},
 ];
