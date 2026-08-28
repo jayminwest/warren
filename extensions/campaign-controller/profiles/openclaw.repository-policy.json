@@ -16,6 +16,21 @@
 		"required": true,
 		"evidenceRequired": true
 	},
+	"prBodyContract": {
+		"version": 1,
+		"sections": [
+			{ "key": "closes", "heading": null, "required": true },
+			{ "key": "disclosure", "heading": "AI disclosure", "required": true },
+			{ "key": "problem", "heading": "What Problem This Solves", "required": true },
+			{ "key": "solution", "heading": "Solution", "required": true },
+			{ "key": "userImpact", "heading": "User impact", "required": true },
+			{ "key": "evidence", "heading": "Evidence", "required": true },
+			{ "key": "runReference", "heading": "Warren run reference", "required": true },
+			{ "key": "operatorNotes", "heading": "Operator review notes", "required": true }
+		],
+		"disclosureTemplate": "This contribution was prepared by an AI agent under the warren campaign `{campaignId}` (agent `{agent}` on `{provider}/{model}`), approved by {approvedBy}. It follows the repository's AI-assisted contribution policy: the work is disclosed here and carries validation evidence below.",
+		"footerTemplate": "Opened by the warren campaign controller from a journaled, owner-approved cross-fork intent (campaign `{campaignId}`). The exact request was journaled before any posting; when the campaign policy does not enable the create mutation, this body exists only as dry-run evidence and no pull request is opened."
+	},
 	"agentGuidance": {
 		"version": 1,
 		"norms": [
