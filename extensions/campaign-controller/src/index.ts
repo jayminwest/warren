@@ -189,6 +189,18 @@ export {
 	UPDATE_PULL_REQUEST_ACTION_TYPE,
 } from "./pr-execute/mutation-journal.ts";
 export {
+	COMMENT_RATE_CAPPED_REASON,
+	commentActionKey,
+	composeFindingResponseComment,
+	composeReReviewComment,
+	type PostCommentDeps,
+	type PostCommentInput,
+	type PostCommentOutcome,
+	type PostCommentOutcomeStatus,
+	postFindingResponseComment,
+	postReReviewCommandComment,
+} from "./pr-execute/post-comment.ts";
+export {
 	PR_INTENT_ACTION_TYPE,
 	PR_INTENT_PROTECTED_PATH_REASON,
 	type PrIntentInput,
@@ -243,18 +255,6 @@ export {
 	WORK_TYPES,
 	type WorkType,
 } from "./repository-policy.ts";
-export {
-	COMMENT_RATE_CAPPED_REASON,
-	commentActionKey,
-	composeFindingResponseComment,
-	composeReReviewComment,
-	postFindingResponseComment,
-	postReReviewCommandComment,
-	type PostCommentDeps,
-	type PostCommentInput,
-	type PostCommentOutcome,
-	type PostCommentOutcomeStatus,
-} from "./pr-execute/post-comment.ts";
 export { ActionStore, type SettleActionInput } from "./store/actions.ts";
 export { BudgetStore } from "./store/budget.ts";
 export { CampaignStore } from "./store/campaigns.ts";

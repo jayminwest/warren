@@ -32,8 +32,9 @@
  */
 
 import { canonicalJson } from "../digest.ts";
+import type { GithubCommentPosterTransport } from "../github/pr-mutations.ts";
+import { type PostCommentIntent, renderPostCommentIntent } from "../github/pr-mutations.ts";
 import type { ReviewBotGrammar } from "../reconcile/bot-grammar.ts";
-import { renderPostCommentIntent, type PostCommentIntent } from "../github/pr-mutations.ts";
 import type { CommentTemplatesPolicy, RepositoryPolicy } from "../repository-policy.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
 import {
@@ -42,7 +43,6 @@ import {
 	mutationRequestDigest,
 	POST_COMMENT_ACTION_TYPE,
 } from "./mutation-journal.ts";
-import type { GithubCommentPosterTransport } from "../github/pr-mutations.ts";
 
 /** Attention reason when the per-day per-campaign comment cap is exceeded. */
 export const COMMENT_RATE_CAPPED_REASON = "comment_rate_capped";
@@ -119,7 +119,14 @@ export function composeReReviewComment(
 function sanitizeLine(value: unknown, maxLength: number): string | null {
 	if (typeof value !== "string") return null;
 	const collapsed = value
-		.replace(/[\u0000-\u001f\u007f]+/g, " ")
+		// Strip all C0/C1 control characters before any text reaches upstream.
+		.replace(
+			new RegExp(
+				`[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}]+`,
+				"g",
+			),
+			" ",
+		)
 		.trim()
 		.replace(/\s+/g, " ");
 	if (collapsed.length === 0) return null;
@@ -166,11 +173,7 @@ function renderTemplate(template: string, values: TemplateValueMap): string {
 }
 
 /** Deterministic action key: one comment intent per campaign/work item/cycle. */
-export function commentActionKey(
-	campaignId: string,
-	workItemId: string,
-	cycleId: string,
-): string {
+export function commentActionKey(campaignId: string, workItemId: string, cycleId: string): string {
 	return `pr_comment:${campaignId}:${workItemId}:${cycleId}`;
 }
 
@@ -222,8 +225,13 @@ export async function postFindingResponseComment(
 	const actionKey = commentActionKey(input.campaignId, input.workItemId, input.cycleId);
 	const existing = deps.store.actions.getActionByKey(actionKey);
 	if (existing !== null && existing.state !== "planned") {
-		// Terminal or mid-flight row on this cycle: one comment per cycle.
-		return { status: "already_commented_this_cycle", commentId: null };
+		// One comment per cycle: a terminal row means the comment already went
+		// out (or failed terminally); an `executing` row is a crash mid-POST,
+		// whose outcome is unknown — blocked, never re-POSTed this cycle.
+		return {
+			status: existing.state === "executing" ? "uncertain_blocked" : "already_commented_this_cycle",
+			commentId: null,
+		};
 	}
 	const capOutcome = enforceDailyCap(deps, input, templates);
 	if (capOutcome !== null) return capOutcome;
@@ -256,7 +264,10 @@ export async function postReReviewCommandComment(
 	const actionKey = commentActionKey(input.campaignId, input.workItemId, input.cycleId);
 	const existing = deps.store.actions.getActionByKey(actionKey);
 	if (existing !== null && existing.state !== "planned") {
-		return { status: "already_commented_this_cycle", commentId: null };
+		return {
+			status: existing.state === "executing" ? "uncertain_blocked" : "already_commented_this_cycle",
+			commentId: null,
+		};
 	}
 	const capOutcome = enforceDailyCap(deps, input, templates);
 	if (capOutcome !== null) return capOutcome;
@@ -320,13 +331,13 @@ async function journalAndPost(
 	// mismatch: a re-drive with the same composed body replans onto the same
 	// row, and a different body for the same cycle can never slip through.
 	const action = deps.store.actions.beginAction({
-			actionKey,
-			campaignId: input.campaignId,
-			workItemId: input.workItemId,
-			actionType: POST_COMMENT_ACTION_TYPE,
-			requestDigest: mutationRequestDigest(intent),
-			policyDigest: input.policyDigest,
-		});
+		actionKey,
+		campaignId: input.campaignId,
+		workItemId: input.workItemId,
+		actionType: POST_COMMENT_ACTION_TYPE,
+		requestDigest: mutationRequestDigest(intent),
+		policyDigest: input.policyDigest,
+	});
 	let postedCommentId: number | null = null;
 	const outcome = await executeJournaledMutation(
 		deps.store,
