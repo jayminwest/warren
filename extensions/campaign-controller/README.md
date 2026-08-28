@@ -187,7 +187,11 @@ operator CLI —
 - [`src/cli/`](src/cli/) — the operator CLI
   ([`src/cli/main.ts`](src/cli/main.ts), testable seam
   [`runCli`](src/cli/run.ts)): `manifest validate` / `manifest import`,
-  `approve`, `tick`, `status`, `journal`, and `attention list` / `ack`.
+  `amendment validate` / `amendment apply` (warren-35c4: digest-bound,
+  owner-approved manifest amendments applied in place — append issues,
+  adjust budget, update prompt — with no superseded campaign row and no
+  superseded attention item), `approve`, `tick`, `status`, `journal`, and
+  `attention list` / `ack`.
   NDJSON is the default output (`--format human` for readable text), and
   the exit-code table in [`src/cli/exit-codes.ts`](src/cli/exit-codes.ts)
   is stable: 0 ok, 1 usage, 2 invalid input, 3 invalid config, 4 refused
@@ -249,6 +253,8 @@ bun run src/cli/main.ts <command> [flags]   # NDJSON by default
 
 manifest validate [--manifest <p>] [--policy <p>]   validate a manifest (+ policy)
 manifest import --manifest <p> --policy <p>         import the immutable campaign
+amendment validate --amendment <p>                  validate a manifest amendment
+amendment apply --amendment <p>                     apply an approved amendment in place
 approve --campaign <id> --digest <sha256> --by <n>  approve a manifest digest
 tick --campaign <id> [--dry-run]                    one dry-run reconciliation tick
 status [--campaign <id>] [--work-item <id>]         campaign / work-item status

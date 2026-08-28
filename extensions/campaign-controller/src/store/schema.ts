@@ -141,10 +141,26 @@ CREATE TABLE leases (
 	},
 	{
 		id: 2,
-		name: "002_work_item_terminal_outcome",
+		name: "002_campaign_amendments",
+		sql: `
+CREATE TABLE campaign_amendments (
+	id TEXT PRIMARY KEY,
+	campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+	amendment_id TEXT NOT NULL,
+	amendment_digest TEXT NOT NULL UNIQUE,
+	previous_manifest_digest TEXT NOT NULL,
+	new_manifest_digest TEXT NOT NULL,
+	amendment_json TEXT NOT NULL,
+	applied_at_ms INTEGER NOT NULL
+);
+CREATE INDEX idx_campaign_amendments_campaign ON campaign_amendments(campaign_id);
+`,
+	},
+	{
+		id: 3,
+		name: "003_work_item_terminal_outcome",
 		sql: `
 ALTER TABLE work_items ADD COLUMN outcome TEXT;
-ALTER TABLE work_items ADD COLUMN outcome_at_ms INTEGER;
-`,
+ALTER TABLE work_items ADD COLUMN outcome_at_ms INTEGER;`,
 	},
 ];

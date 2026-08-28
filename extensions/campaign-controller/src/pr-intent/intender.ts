@@ -46,6 +46,7 @@ import type {
 	PrIdentityRow,
 	WorkItemRow,
 } from "../store/types.ts";
+import { loadDefaultPrBodyContract, type PrBodyFacts, renderPrBody } from "./pr-body.ts";
 
 /** Action type persisted for every rendered cross-fork PR intent. */
 export const PR_INTENT_ACTION_TYPE = "pr_intent";
@@ -218,7 +219,7 @@ export function renderAndJournalPrIntent(
 	requireHeadDiffersFromBase(branch, baseBranch, workItem);
 
 	const title = renderTitle(input);
-	const body = renderBody(manifest, input, run, branch);
+	const body = renderBody(manifest, input, run, branch, policy);
 	const intent = renderCrossForkPullRequestIntent({
 		upstreamOwner: manifest.upstream.owner,
 		upstreamRepo: manifest.upstream.repo,
@@ -576,52 +577,34 @@ function renderTitle(input: PrIntentInput): string {
 	return `${input.issue.title} (#${input.issue.number})`;
 }
 
-/** The repository-policy-compliant PR body: fully deterministic. */
+/**
+ * The repository-policy-compliant PR body: fully deterministic. The section
+ * headings, disclosure paragraph, and footer come from the profile's
+ * `prBodyContract` (warren-e361); this file declares none of them.
+ */
 function renderBody(
 	manifest: CampaignManifest,
 	input: PrIntentInput,
 	run: ActionRow,
 	branch: string,
+	policy: RepositoryPolicy,
 ): string {
-	const evidence = input.summary.evidence
-		.filter((line) => line.trim().length > 0)
-		.map((line) => `- ${line}`);
-	const lines = [
-		`Closes #${input.issue.number}`,
-		"",
-		"## AI disclosure",
-		"",
-		`This contribution was prepared by an AI agent under the warren campaign \`${manifest.campaignId}\` (agent \`${manifest.warren.agent}\` on \`${manifest.warren.provider}/${manifest.warren.model}\`), approved by ${manifest.approval.approvedBy}. It follows the repository's AI-assisted contribution policy: the work is disclosed here and carries validation evidence below.`,
-		"",
-		"## What Problem This Solves",
-		"",
-		input.summary.problem,
-		"",
-		"## Solution",
-		"",
-		input.summary.solution,
-		"",
-		"## User impact",
-		"",
-		input.summary.userImpact,
-		"",
-		"## Evidence",
-		"",
-		...evidence,
-		"",
-		"## Warren run reference",
-		"",
-		`- Warren run \`${run.resultRunId}\` (state: succeeded)`,
-		`- Fork branch \`${manifest.fork.owner}:${branch}\` — maintainers may push edits to this branch (maintainer_can_modify)`,
-		`- Issue: #${input.issue.number}`,
-		"",
-		"## Operator review notes",
-		"",
-		input.summary.operatorNotes,
-		"",
-		"---",
-		"",
-		`Opened by the warren campaign controller from a journaled, owner-approved cross-fork intent (campaign \`${manifest.campaignId}\`). The exact request was journaled before any posting; when the campaign policy does not enable the create mutation, this body exists only as dry-run evidence and no pull request is opened.`,
-	];
-	return lines.join("\n");
+	const facts: PrBodyFacts = {
+		campaignId: manifest.campaignId,
+		agent: manifest.warren.agent,
+		provider: manifest.warren.provider,
+		model: manifest.warren.model,
+		approvedBy: manifest.approval.approvedBy,
+		runId: run.resultRunId as string,
+		branch,
+		forkOwner: manifest.fork.owner,
+		issueNumber: input.issue.number,
+		problem: input.summary.problem,
+		solution: input.summary.solution,
+		userImpact: input.summary.userImpact,
+		evidence: input.summary.evidence.filter((line) => line.trim().length > 0),
+		operatorNotes: input.summary.operatorNotes,
+	};
+	const contract = policy.prBodyContract ?? loadDefaultPrBodyContract();
+	return renderPrBody(contract, facts);
 }

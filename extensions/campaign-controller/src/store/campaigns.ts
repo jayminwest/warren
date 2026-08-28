@@ -162,6 +162,32 @@ export class CampaignStore {
 			.run(nowMs(this.#ctx), id);
 	}
 
+	/**
+	 * The amendment flow (warren-35c4): apply a digest-bound, approved
+	 * amendment as a new campaign version IN PLACE. The row id, status,
+	 * and history survive; only the bound manifest content and the derived
+	 * budget cap change. No superseded attention row is emitted here.
+	 */
+	updateManifestInPlace(
+		id: string,
+		input: { manifestDigest: string; manifestJson: string; budgetCapUsdCents: number },
+	): void {
+		this.#ctx.db
+			.query(
+				"UPDATE campaigns SET manifest_digest = ?, manifest_json = ?, budget_cap_usd_cents = ?, updated_at_ms = ? WHERE id = ?",
+			)
+			.run(input.manifestDigest, input.manifestJson, input.budgetCapUsdCents, nowMs(this.#ctx), id);
+	}
+
+	/** Stamp approval at an explicit time (the amendment's approval time). */
+	stampApproval(id: string, approvedAtMs: number): void {
+		this.#ctx.db
+			.query(
+				"UPDATE campaigns SET approved_at_ms = COALESCE(approved_at_ms, ?), updated_at_ms = ? WHERE id = ?",
+			)
+			.run(approvedAtMs, nowMs(this.#ctx), id);
+	}
+
 	addWorkItem(input: {
 		campaignId: string;
 		position: number;

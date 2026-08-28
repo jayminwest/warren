@@ -241,7 +241,40 @@ export function approveCampaign(
 	}
 	const approved = store.campaigns.approveCampaign(campaign.id);
 	store.campaigns.setCampaignStatus(campaign.id, "approved");
+	resolveSupersededAttention(store, input.manifestDigest, input.approvedBy);
 	return approvalResult(store, approved, manifest);
+}
+
+/**
+ * Attention hygiene (warren-b853): a `superseded_by_new_manifest_version`
+ * item auto-resolves when the superseding manifest version is approved.
+ * Monotonic and journal-free: the resolved detail is stamped with the
+ * approving digest and approver as the resolving evidence.
+ */
+function resolveSupersededAttention(
+	store: CampaignStateStore,
+	approvedDigest: string,
+	approvedBy: string,
+): void {
+	for (const campaign of store.campaigns.listCampaigns()) {
+		for (const item of store.events.listOpenAttention(campaign.id)) {
+			if (item.reason !== "superseded_by_new_manifest_version" || item.detailJson === null) {
+				continue;
+			}
+			let detail: { newDigest?: unknown };
+			try {
+				detail = JSON.parse(item.detailJson) as typeof detail;
+			} catch {
+				continue;
+			}
+			if (detail.newDigest !== approvedDigest) continue;
+			store.events.resolveAttentionAuto(item.id, {
+				resolvedByRule: "superseding_manifest_approved",
+				resolvingManifestDigest: approvedDigest,
+				approvedBy,
+			});
+		}
+	}
 }
 
 function approvalResult(
