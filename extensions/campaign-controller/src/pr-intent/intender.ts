@@ -37,7 +37,13 @@ import {
 } from "../github/pr-request.ts";
 import { isValidRefName } from "../github-grammar.ts";
 import type { CampaignManifest } from "../manifest.ts";
-import { type RepositoryPolicy, validateRepositoryPolicy } from "../repository-policy.ts";
+import {
+	DEFAULT_EVIDENCE_TIER,
+	EVIDENCE_TIERS,
+	type EvidenceTier,
+	type RepositoryPolicy,
+	validateRepositoryPolicy,
+} from "../repository-policy.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
 import type {
 	ActionRow,
@@ -76,6 +82,8 @@ export type PrIntentInvariant =
 	| "policy_upstream_mismatch"
 	| "summary_incomplete"
 	| "evidence_absent"
+	| "known_gap_absent"
+	| "evidence_tier_unknown"
 	| "protected_path"
 	| "open_pr_cap_breach"
 	| "daily_pr_cap_breach"
@@ -116,6 +124,11 @@ export interface PrIntentSummaryFacts {
 	readonly userImpact: string;
 	/** Validation evidence lines; at least one non-empty entry is required. */
 	readonly evidence: readonly string[];
+	/**
+	 * The declared known gap (what external proof is outstanding, warren-4dc1);
+	 * required when the manifest tags this issue `external-proof-required`.
+	 */
+	readonly knownGap?: string;
 	/** Paths the succeeded run changed; checked against protected/forbidden. */
 	readonly changedPaths: readonly string[];
 	readonly operatorNotes: string;
@@ -211,6 +224,7 @@ export function renderAndJournalPrIntent(
 	const workItem = requireWorkItem(store, input, manifest);
 	requireIssueOpen(input);
 	requireSummary(input);
+	const evidenceTier = requireEvidenceTier(manifest, input, policy);
 	const run = requireSucceededRun(store, workItem);
 	const branch = requireRunBranch(run, workItem);
 	verifyProtectedPaths(store, campaign, workItem, policy, input);
@@ -219,7 +233,7 @@ export function renderAndJournalPrIntent(
 	requireHeadDiffersFromBase(branch, baseBranch, workItem);
 
 	const title = renderTitle(input);
-	const body = renderBody(manifest, input, run, branch, policy);
+	const body = renderBody(manifest, input, run, branch, policy, evidenceTier);
 	const intent = renderCrossForkPullRequestIntent({
 		upstreamOwner: manifest.upstream.owner,
 		upstreamRepo: manifest.upstream.repo,
@@ -403,6 +417,14 @@ function requireIssueOpen(input: PrIntentInput): void {
 	}
 }
 
+/** The evidence tier this issue renders under (manifest tag or default). */
+export function issueEvidenceTier(manifest: CampaignManifest, issueNumber: number): EvidenceTier {
+	const tagged = manifest.issueEvidenceTiers?.[String(issueNumber)];
+	return tagged === undefined || tagged === DEFAULT_EVIDENCE_TIER
+		? DEFAULT_EVIDENCE_TIER
+		: (tagged as EvidenceTier);
+}
+
 function requireSummary(input: PrIntentInput): void {
 	const fields: ReadonlyArray<[string, string]> = [
 		["problem", input.summary.problem],
@@ -425,6 +447,35 @@ function requireSummary(input: PrIntentInput): void {
 			"no validation evidence collected — the repository policy requires AI-assisted contributions to carry evidence, so the intent is refused",
 		);
 	}
+}
+
+/**
+ * The manifest's per-issue evidence tier (warren-4dc1) must be one the
+ * repository policy recognizes, and an external-proof-required issue must
+ * carry a declared known gap — the proof no sandbox can produce is named,
+ * never silently omitted. Untagged issues render as `local-provable`.
+ */
+function requireEvidenceTier(
+	manifest: CampaignManifest,
+	input: PrIntentInput,
+	policy: RepositoryPolicy,
+): EvidenceTier {
+	const tier = issueEvidenceTier(manifest, input.issue.number);
+	if (tier === DEFAULT_EVIDENCE_TIER) return tier;
+	const recognized = policy.evidenceTiers ?? EVIDENCE_TIERS;
+	if (!recognized.includes(tier)) {
+		throw new PrIntentRefusal(
+			"evidence_tier_unknown",
+			`evidence tier '${tier}' is not recognized by the repository policy (recognizes: ${recognized.join(", ")})`,
+		);
+	}
+	if (typeof input.summary.knownGap !== "string" || input.summary.knownGap.trim().length === 0) {
+		throw new PrIntentRefusal(
+			"known_gap_absent",
+			"a declared known gap naming the outstanding external proof is required when the evidence tier is 'external-proof-required' — unprovable claims are declared, never omitted",
+		);
+	}
+	return tier;
 }
 
 /** The succeeded warren dispatch action carrying the terminal branch fact. */
@@ -588,6 +639,7 @@ function renderBody(
 	run: ActionRow,
 	branch: string,
 	policy: RepositoryPolicy,
+	evidenceTier: EvidenceTier,
 ): string {
 	const facts: PrBodyFacts = {
 		campaignId: manifest.campaignId,
@@ -603,6 +655,8 @@ function renderBody(
 		solution: input.summary.solution,
 		userImpact: input.summary.userImpact,
 		evidence: input.summary.evidence.filter((line) => line.trim().length > 0),
+		evidenceTier,
+		knownGap: input.summary.knownGap,
 		operatorNotes: input.summary.operatorNotes,
 	};
 	const contract = policy.prBodyContract ?? loadDefaultPrBodyContract();

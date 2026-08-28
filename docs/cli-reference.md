@@ -69,6 +69,7 @@ warren run [options] <agent> <project>
 | `--max-cost-usd <usd>` |  |  | per-run USD spend cap; wins over the agent's own and the project default |
 | `--seed <id>` |  |  | link the run to a seeds issue (POST /runs seedId) |
 | `--base-commit <sha>` |  |  | pin the workspace cut to a 40-hex commit SHA |
+| `--existing-branch <branch>` |  |  | run on an existing push-remote branch and push back to it; no PR |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 

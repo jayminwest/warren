@@ -31,6 +31,15 @@ import {
 	requireString,
 } from "./validate-utils.ts";
 
+/**
+ * Per-issue evidence tiers (warren-4dc1): an optional manifest field mapping
+ * an issue number (as a string key) to a declared evidence tier. Issues not
+ * listed render as `local-provable`. Membership against the profile's
+ * recognized tiers is cross-checked at import (admission), not here — the
+ * manifest schema is profile-independent.
+ */
+export type IssueEvidenceTiers = Record<string, string>;
+
 /** Grammar: `camp-` followed by 3–48 lowercase kebab-case characters. */
 const CAMPAIGN_ID = /^camp-[a-z0-9](-?[a-z0-9]){2,47}$/;
 
@@ -80,6 +89,8 @@ export interface CampaignManifest {
 	fork: RepoCoordinates;
 	defaultBranch: string;
 	issues: IssueId[];
+	/** Optional per-issue evidence-tier tags (warren-4dc1); unlisted issues are local-provable. */
+	issueEvidenceTiers: IssueEvidenceTiers | undefined;
 	warren: WarrenTarget;
 	prompt: string | undefined;
 	promptDigest: string | undefined;
@@ -109,6 +120,7 @@ const TOP_LEVEL_FIELDS = [
 	"fork",
 	"defaultBranch",
 	"issues",
+	"issueEvidenceTiers",
 	"warren",
 	"prompt",
 	"promptDigest",
@@ -158,6 +170,7 @@ export function validateCampaignManifest(
 	}
 	const defaultBranch = requireBranch(root);
 	const issues = requireIssues(root);
+	const issueEvidenceTiers = requireIssueEvidenceTiers(root, issues);
 	const warren = requireWarren(root);
 	const { prompt, promptDigest } = requirePrompt(root);
 	const budget = requireBudget(root);
@@ -181,6 +194,7 @@ export function validateCampaignManifest(
 		fork,
 		defaultBranch,
 		issues,
+		issueEvidenceTiers,
 		warren,
 		prompt,
 		promptDigest,
@@ -255,6 +269,31 @@ function requireIssues(root: ReturnType<typeof asObject>): IssueId[] {
 		issues.push(item);
 	}
 	return issues;
+}
+
+function requireIssueEvidenceTiers(
+	root: ReturnType<typeof asObject>,
+	issues: readonly IssueId[],
+): IssueEvidenceTiers | undefined {
+	const raw = root.issueEvidenceTiers;
+	if (raw === undefined) return undefined;
+	const obj = asObject(raw, "campaign manifest.issueEvidenceTiers");
+	const tiers: IssueEvidenceTiers = {};
+	for (const [key, value] of Object.entries(obj)) {
+		const issue = Number(key);
+		if (!Number.isInteger(issue) || !issues.includes(issue)) {
+			throw new ValidationError(
+				`evidence-tier key "${key}" at 'campaign manifest.issueEvidenceTiers' is not an issue in the manifest's issue list`,
+			);
+		}
+		if (typeof value !== "string" || value.length < 1 || value.length > 64) {
+			throw new ValidationError(
+				`expected a 1–64 character evidence-tier name at 'campaign manifest.issueEvidenceTiers.${key}'`,
+			);
+		}
+		tiers[key] = value;
+	}
+	return Object.keys(tiers).length > 0 ? tiers : undefined;
 }
 
 function requireWarren(root: ReturnType<typeof asObject>): WarrenTarget {

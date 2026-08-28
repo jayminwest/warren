@@ -511,6 +511,61 @@ describe("UpstreamPrReconciler", () => {
 		expect(openReasons(harness)).toEqual(["maintainer_comment"]);
 	});
 
+	test("classifies newly stored events through the profile-declared bot grammar (warren-2ec3)", async () => {
+		seedQuietUpstream(harness);
+		harness.server.setPaginatedCollection(`/repos/${REPO_FULL}/issues/${PR_NUMBER}/comments`, [
+			issueCommentBody(
+				"IC_BOT",
+				"lintbot",
+				"2026-08-03T00:00:00Z",
+				"### Findings\n- Fix unused import: src/index.ts:42 [high]\n",
+			),
+			issueCommentBody(
+				"IC_MAINT",
+				"maintainer",
+				"2026-08-04T00:00:00Z",
+				"Why does this skip the shared dispatch helper?",
+			),
+		]);
+		const result = await harness.reconciler.reconcile(
+			harness.target({
+				botGrammar: {
+					knownBotLogins: ["lintbot"],
+					findingMarker: "### Findings",
+					findingLinePattern:
+						"^-\\s*(?<title>[^:]+):\\s*(?<file>[^:\\[]+):(?<line>\\d+)(?:\\s*\\[(?<priority>[^\\]]+)\\])?\\s*$",
+					reReviewCommands: ["/bot re-review"],
+				},
+			}),
+		);
+		expect(result.feedbackCreated).toBe(2);
+		const rows = harness.store.events.listFeedback(harness.campaignId);
+		expect(rows.map((r) => r.category).sort()).toEqual([
+			"maintainer_question",
+			"review_bot_findings",
+		]);
+		expect(rows.map((r) => r.sourceEventNodeId).join(" ")).toContain("IC_MAINT");
+		expect(rows.map((r) => r.sourceEventNodeId).join(" ")).toContain("IC_BOT");
+		// Structured fields only: the maintainer row names no comment text.
+		const maintainer = rows.find((r) => r.category === "maintainer_question");
+		expect(maintainer?.fieldsJson).not.toContain("shared dispatch helper");
+
+		// Reconciling the identical upstream world classifies nothing new.
+		const again = await harness.reconciler.reconcile(
+			harness.target({
+				botGrammar: {
+					knownBotLogins: ["lintbot"],
+					findingMarker: "### Findings",
+					findingLinePattern:
+						"^-\\s*(?<title>[^:]+):\\s*(?<file>[^:\\[]+):(?<line>\\d+)(?:\\s*\\[(?<priority>[^\\]]+)\\])?\\s*$",
+					reReviewCommands: ["/bot re-review"],
+				},
+			}),
+		);
+		expect(again.feedbackCreated).toBe(0);
+		expect(harness.store.events.listFeedback(harness.campaignId)).toHaveLength(2);
+	});
+
 	test("every request the reconciler issues is GET or HEAD", async () => {
 		seedQuietUpstream(harness);
 		harness.server.setPaginatedCollection("/notifications", [notificationBody("NT_1", "wake up")]);

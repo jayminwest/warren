@@ -208,6 +208,8 @@ export interface CreateRunInput {
 	baseCommit?: string;
 	/** Existing branch to push the workspace back to at reap (warren-05ea / #419). */
 	targetBranch?: string;
+	/** Opt-in dispatch onto an existing push-remote branch (warren-326f); fail-closed at the server. */
+	existingBranch?: string;
 	providerOverride?: string;
 	modelOverride?: string;
 	/** Run trigger label (warren-97a2); defaults to the server's own default when omitted. */
@@ -234,6 +236,8 @@ export interface DispatchRunInput {
 	baseCommit?: string;
 	/** Maps to CreateRunInput.targetBranch — branch reap pushes back to (#419). */
 	targetBranch?: string;
+	/** Maps to CreateRunInput.existingBranch — opt-in existing-branch dispatch (warren-326f). */
+	existingBranch?: string;
 	/** Maps to CreateRunInput.modelOverride. */
 	model?: string;
 	/** Maps to CreateRunInput.providerOverride. */

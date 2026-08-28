@@ -158,7 +158,23 @@ CREATE INDEX idx_campaign_amendments_campaign ON campaign_amendments(campaign_id
 	},
 	{
 		id: 3,
-		name: "003_work_item_terminal_outcome",
+		name: "003_review_feedback",
+		sql: `
+CREATE TABLE review_feedback (
+	id TEXT PRIMARY KEY,
+	campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+	work_item_id TEXT,
+	category TEXT NOT NULL,
+	source_event_node_id TEXT NOT NULL,
+	fields_json TEXT NOT NULL,
+	created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX idx_review_feedback_campaign ON review_feedback(campaign_id);
+`,
+	},
+	{
+		id: 4,
+		name: "004_work_item_terminal_outcome",
 		sql: `
 ALTER TABLE work_items ADD COLUMN outcome TEXT;
 ALTER TABLE work_items ADD COLUMN outcome_at_ms INTEGER;`,

@@ -90,6 +90,8 @@ function basePolicy(
 		requiredChecks: ["ci", "typecheck", "lint"],
 		mutations: {
 			createPullRequest: false,
+			followUpPush: false,
+			updatePullRequest: false,
 			pushCommits: false,
 			updateBranch: false,
 			postComment: false,
@@ -193,6 +195,7 @@ async function harness(options: {
 	approve?: boolean;
 	runPatch?: Record<string, unknown>;
 	policy?: Record<string, unknown>;
+	manifest?: Record<string, unknown>;
 }): Promise<Harness> {
 	const clock = new FixedClock(NOW);
 	const store =
@@ -208,7 +211,7 @@ async function harness(options: {
 	});
 	const dispatcher = new WarrenDispatcher({ store, client, ids: new SequentialIdGenerator() });
 	const imported = importCampaign(store, {
-		manifest: signedManifest(),
+		manifest: options.manifest ?? signedManifest(),
 		policy: options.policy ?? basePolicy(),
 		nowMs: NOW,
 	});
@@ -310,13 +313,13 @@ describe("renderAndJournalPrIntent", () => {
 		const body = result.intent.body.body;
 		// Headings and wording come from the openclaw profile contract, not source:
 		const contract = OPENCLAW_PR_BODY_CONTRACT as {
-			sections: { key: string; heading: string | null }[];
+			sections: { key: string; heading: string | null; required: boolean }[];
 			disclosureTemplate: string;
 			footerTemplate: string;
 		};
 		expect(body).toContain("Closes #812");
 		for (const section of contract.sections) {
-			if (section.heading !== null) {
+			if (section.heading !== null && section.required) {
 				expect(body).toContain(`## ${section.heading}`);
 			}
 		}
@@ -350,10 +353,10 @@ describe("renderAndJournalPrIntent", () => {
 		const machine = prIntentMachineJson(result);
 		const snapshot = { requestDigest: machine.requestDigest, request: machine.request };
 		const contract = DEFAULT_PR_BODY_CONTRACT as {
-			sections: { key: string; heading: string | null }[];
+			sections: { key: string; heading: string | null; required: boolean }[];
 		};
 		for (const section of contract.sections) {
-			if (section.heading !== null) {
+			if (section.heading !== null && section.required) {
 				expect(machine.request.body.body).toContain(`## ${section.heading}`);
 			}
 		}
@@ -672,5 +675,104 @@ describe("no production GitHub method can post the rendered intent", () => {
 		expect(intenderSource.includes("GithubTransport")).toBe(false);
 		expect(intenderSource.includes("http-transport")).toBe(false);
 		expect(intenderSource.includes("fetch(")).toBe(false);
+	});
+});
+
+describe("evidence tiers (warren-4dc1)", () => {
+	const GOLDEN_KNOWN_GAP_PATH = join(
+		import.meta.dir,
+		"__golden__",
+		"openclaw-pr-intent-known-gap.json",
+	);
+	const KNOWN_GAP =
+		"A real-provider trace against the live gateway, which no network-restricted run pod can ever produce.";
+
+	/** A manifest whose sole issue is tagged with an evidence tier. */
+	function signedManifestWithTiers(tiers: Record<string, string>): Record<string, unknown> {
+		const input = signedManifest() as Record<string, unknown>;
+		const { approval, ...rest } = input;
+		const bound = { ...rest, issueEvidenceTiers: tiers };
+		const approvalRecord = approval as Record<string, unknown>;
+		return { ...bound, approval: { ...approvalRecord, manifestDigest: digestOf(bound) } };
+	}
+
+	function externalInput(overrides: Partial<PrIntentInput> = {}): PrIntentInput {
+		const base = intentInput();
+		return {
+			...base,
+			summary: { ...base.summary, knownGap: KNOWN_GAP },
+			...overrides,
+		};
+	}
+
+	test("an external-proof-required issue renders the declared known-gap slot (golden)", async () => {
+		const policy = {
+			...basePolicy(),
+			evidenceTiers: ["local-provable", "external-proof-required"],
+		};
+		const h = await harness({
+			manifest: signedManifestWithTiers({ "812": "external-proof-required" }),
+			policy,
+		});
+		const result = renderAndJournalPrIntent(
+			h.store,
+			externalInput({
+				campaignId: h.campaign.id,
+				workItemId: h.workItem.id,
+				policy,
+			}),
+		);
+		const machine = prIntentMachineJson(result);
+		const snapshot = { requestDigest: machine.requestDigest, request: machine.request };
+		const body = machine.request.body.body;
+
+		const contract = OPENCLAW_PR_BODY_CONTRACT as {
+			sections: { key: string; heading: string | null }[];
+		};
+		const knownGapHeading = contract.sections.find((section) => section.key === "knownGap");
+		expect(knownGapHeading?.heading).toBeDefined();
+		expect(body).toContain(`## ${knownGapHeading?.heading}`);
+		expect(body).toContain(`- ${KNOWN_GAP}`);
+		expect(body).toContain("an operator will attach it to this pull request before merge");
+		// The known-gap slot does not displace any required section.
+		for (const section of contract.sections) {
+			if (section.heading !== null && section.key !== "knownGap") {
+				expect(body).toContain(`## ${section.heading}`);
+			}
+		}
+
+		if (UPDATE) {
+			mkdirSync(join(import.meta.dir, "__golden__"), { recursive: true });
+			writeFileSync(GOLDEN_KNOWN_GAP_PATH, `${JSON.stringify(snapshot, null, "\t")}\n`);
+		}
+		expect(existsSync(GOLDEN_KNOWN_GAP_PATH)).toBe(true);
+		const golden = JSON.parse(readFileSync(GOLDEN_KNOWN_GAP_PATH, "utf8")) as typeof snapshot;
+		expect(snapshot).toEqual(golden);
+	});
+
+	test("an untagged issue renders as local-provable with an unchanged body", async () => {
+		const h = await harness({});
+		const result = renderAndJournalPrIntent(h.store, {
+			...intentInput(),
+			campaignId: h.campaign.id,
+			workItemId: h.workItem.id,
+		});
+		const untaggedDigest = prIntentMachineJson(result).requestDigest;
+		// Identical to the pinned local-provable golden: default tier adds nothing.
+		const pinned = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as { requestDigest: string };
+		expect(untaggedDigest).toBe(pinned.requestDigest);
+		const contract = OPENCLAW_PR_BODY_CONTRACT as {
+			sections: { key: string; heading: string | null }[];
+		};
+		const knownGapHeading = contract.sections.find((section) => section.key === "knownGap");
+		expect(result.intent.body.body).not.toContain(knownGapHeading?.heading as string);
+	});
+
+	test("refuses an external-proof-required issue without a declared known gap", async () => {
+		const h = await harness({
+			manifest: signedManifestWithTiers({ "812": "external-proof-required" }),
+		});
+		const refusal = refuse(h, {});
+		expect(refusal.invariant).toBe("known_gap_absent");
 	});
 });

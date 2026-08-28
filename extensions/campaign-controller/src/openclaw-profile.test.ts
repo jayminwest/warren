@@ -97,10 +97,11 @@ describe("openclaw campaign-manifest golden", () => {
 		>;
 		const rawKeys = Object.keys(raw).sort();
 		const { manifest } = validateCampaignManifest(raw, { nowMs: PINNED_NOW });
-		// Normalization adds the optional-but-present `prompt: undefined` slot
-		// and nothing else; every input key survives, no extra key appears.
+		// Normalization adds the optional-but-present `prompt: undefined` and
+		// `issueEvidenceTiers: undefined` slots (warren-4dc1) and nothing else;
+		// every input key survives, no extra key appears.
 		expect(Object.keys(manifest).sort()).toEqual(
-			Array.from(new Set([...rawKeys, "prompt"])).sort(),
+			Array.from(new Set([...rawKeys, "prompt", "issueEvidenceTiers"])).sort(),
 		);
 		// Secret-free by construction: no normalized value is a credential.
 		expect(canonicalJson(manifest)).not.toMatch(/ghp_|github_pat_|token/i);

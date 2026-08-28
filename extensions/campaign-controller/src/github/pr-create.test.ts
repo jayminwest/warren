@@ -41,6 +41,8 @@ function policyJson(createPullRequest: boolean): Record<string, unknown> {
 		requiredChecks: ["ci"],
 		mutations: {
 			createPullRequest,
+			followUpPush: false,
+			updatePullRequest: false,
 			pushCommits: false,
 			updateBranch: false,
 			postComment: false,

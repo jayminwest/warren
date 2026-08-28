@@ -14,6 +14,7 @@ import type {
 	AttentionItemRow,
 	GithubEventRow,
 	PrIdentityRow,
+	ReviewFeedbackRow,
 	RunLinkRow,
 } from "./types.ts";
 
@@ -83,6 +84,16 @@ type AttentionDbRow = {
 	detail_json: string | null;
 	created_at_ms: number;
 	resolved_at_ms: number | null;
+};
+
+type ReviewFeedbackDbRow = {
+	id: string;
+	campaign_id: string;
+	work_item_id: string | null;
+	category: string;
+	source_event_node_id: string;
+	fields_json: string;
+	created_at_ms: number;
 };
 
 export class EventStore {
@@ -460,5 +471,61 @@ export class EventStore {
 		if (result.changes === 0) {
 			throw new StateError(`attention item ${id} is missing or already resolved`);
 		}
+	}
+
+	/**
+	 * Insert a classified feedback row only when no row with the same id
+	 * (source event node id + category) exists — reclassification of the
+	 * same source event is a no-op.
+	 */
+	addFeedbackOnce(input: {
+		id: string;
+		campaignId: string;
+		workItemId?: string | null;
+		category: string;
+		sourceEventNodeId: string;
+		fieldsJson: string;
+	}): { created: boolean } {
+		const result = this.#ctx.db
+			.query(
+				`INSERT INTO review_feedback (id, campaign_id, work_item_id, category, source_event_node_id, fields_json, created_at_ms)
+				 VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+			)
+			.run(
+				input.id,
+				input.campaignId,
+				input.workItemId ?? null,
+				input.category,
+				input.sourceEventNodeId,
+				input.fieldsJson,
+				nowMs(this.#ctx),
+			);
+		return { created: result.changes === 1 };
+	}
+
+	getFeedback(id: string): ReviewFeedbackRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM review_feedback WHERE id = ?")
+			.get(id) as ReviewFeedbackDbRow | null;
+		return row === null ? null : this.#toFeedbackRow(row);
+	}
+
+	listFeedback(campaignId: string): ReviewFeedbackRow[] {
+		const rows = this.#ctx.db
+			.query("SELECT * FROM review_feedback WHERE campaign_id = ? ORDER BY created_at_ms, id")
+			.all(campaignId) as ReviewFeedbackDbRow[];
+		return rows.map((row) => this.#toFeedbackRow(row));
+	}
+
+	#toFeedbackRow(row: ReviewFeedbackDbRow): ReviewFeedbackRow {
+		return {
+			id: row.id,
+			campaignId: row.campaign_id,
+			workItemId: row.work_item_id,
+			category: row.category,
+			sourceEventNodeId: row.source_event_node_id,
+			fieldsJson: row.fields_json,
+			createdAtMs: row.created_at_ms,
+		};
 	}
 }

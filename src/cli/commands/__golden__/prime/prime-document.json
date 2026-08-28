@@ -53,6 +53,10 @@
           "description": "pin the workspace cut to a 40-hex commit SHA"
         },
         {
+          "flags": "--existing-branch <branch>",
+          "description": "run on an existing push-remote branch and push back to it; no PR"
+        },
+        {
           "flags": "--url <url>",
           "description": "warren server base URL (env WARREN_BASE_URL)"
         },

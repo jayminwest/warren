@@ -68,6 +68,8 @@ export interface RunArgs {
 	readonly seedId?: string;
 	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace is cut at. */
 	readonly baseCommit?: string;
+	/** Opt-in existing-branch dispatch (warren-326f), forwarded to `POST /runs`. */
+	readonly existingBranch?: string;
 }
 
 export interface RunDeps extends RemoteTailDeps {
@@ -112,6 +114,7 @@ export async function runRun(
 			...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
 			...(args.seedId !== undefined ? { seedId: args.seedId } : {}),
 			...(args.baseCommit !== undefined ? { baseCommit: args.baseCommit } : {}),
+			...(args.existingBranch !== undefined ? { existingBranch: args.existingBranch } : {}),
 		});
 		runId = spawned.run.id;
 		if (mode === "ndjson") {
@@ -277,4 +280,74 @@ async function emitStreamEnded(
 		context.stdio.stderr.write(`warren: ${err.message}\n`);
 	}
 	return { exitCode: EXIT_RUN_FAILED, runId };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Command registration (extracted from main.ts, warren-326f size budget)     */
+/* -------------------------------------------------------------------------- */
+
+import type { Command } from "commander";
+import { addClientFlags, type RemoteOpts, resolveCommandClient } from "../client.ts";
+import { parseMaxCostUsd } from "../flags.ts";
+
+/** Register the `warren run` command on the built program. */
+export function registerRunCommand(program: Command, context: CliContext): void {
+	addClientFlags(
+		program
+			.command("run")
+			.description(
+				"dispatch a one-shot run against the warren server, tail events as NDJSON, and exit",
+			)
+			.argument("<agent>", "registered agent name")
+			.argument("<project>", "project id (prj_xxx)")
+			.requiredOption("-p, --prompt <text>", "prompt text the agent receives")
+			.option("--trigger <label>", "run trigger label", "cli")
+			.option("--provider <name>", "per-run override of agent frontmatter.provider")
+			.option("--model <name>", "per-run override of agent frontmatter.model")
+			.option(
+				"--max-cost-usd <usd>",
+				"per-run USD spend cap; wins over the agent's own and the project default",
+				parseMaxCostUsd,
+			)
+			.option("--seed <id>", "link the run to a seeds issue (POST /runs seedId)")
+			.option("--base-commit <sha>", "pin the workspace cut to a 40-hex commit SHA")
+			.option(
+				"--existing-branch <branch>",
+				"run on an existing push-remote branch and push back to it; no PR",
+			),
+	).action(
+		async (
+			agent: string,
+			project: string,
+			opts: {
+				prompt: string;
+				trigger?: string;
+				provider?: string;
+				model?: string;
+				maxCostUsd?: number;
+				seed?: string;
+				baseCommit?: string;
+				existingBranch?: string;
+			} & RemoteOpts,
+		) => {
+			const { client, context: ctx } = resolveCommandClient(context, opts);
+			const result = await runRun(
+				ctx,
+				{ client },
+				{
+					agent,
+					project,
+					prompt: opts.prompt,
+					...(opts.trigger !== undefined ? { trigger: opts.trigger } : {}),
+					...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
+					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
+					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
+					...(opts.seed !== undefined ? { seedId: opts.seed } : {}),
+					...(opts.baseCommit !== undefined ? { baseCommit: opts.baseCommit } : {}),
+					...(opts.existingBranch !== undefined ? { existingBranch: opts.existingBranch } : {}),
+				},
+			);
+			process.exit(result.exitCode);
+		},
+	);
 }

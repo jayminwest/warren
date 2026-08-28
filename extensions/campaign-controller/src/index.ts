@@ -100,6 +100,27 @@ export {
 	BunFetchGithubTransport,
 } from "./github/http-transport.ts";
 export {
+	BunFetchGithubBranchUpdater,
+	BunFetchGithubCommentPoster,
+	BunFetchGithubPrUpdater,
+	type FollowUpPushIntent,
+	type GithubBranchUpdaterTransport,
+	type GithubCommentPosterTransport,
+	type GithubFollowUpPushTransport,
+	GithubMutationUncertainError,
+	type GitPushFn,
+	GitPushFollowUpPusher,
+	type MutationIntent,
+	type MutationTransportOptions,
+	type PostCommentIntent,
+	renderFollowUpPushIntent,
+	renderPostCommentIntent,
+	renderUpdateBranchIntent,
+	renderUpdatePullRequestIntent,
+	type UpdateBranchIntent,
+	type UpdatePullRequestIntent,
+} from "./github/pr-mutations.ts";
+export {
 	type CrossForkPullRequestIntent,
 	type CrossForkPullRequestIntentInput,
 	renderCrossForkPullRequestIntent,
@@ -151,6 +172,22 @@ export {
 	type Mutations,
 	NO_MUTATIONS,
 } from "./mutations.ts";
+export {
+	type ExecuteMutationInput,
+	executeJournaledMutation,
+	FOLLOW_UP_PUSH_ACTION_TYPE,
+	type JournalMutationIntentInput,
+	type JournalMutationIntentResult,
+	journalMutationIntent,
+	MUTATION_FAILED_REASON,
+	MUTATION_UNCERTAIN_REASON,
+	type MutationExecuteOutcome,
+	type MutationIoResult,
+	mutationRequestDigest,
+	POST_COMMENT_ACTION_TYPE,
+	UPDATE_BRANCH_ACTION_TYPE,
+	UPDATE_PULL_REQUEST_ACTION_TYPE,
+} from "./pr-execute/mutation-journal.ts";
 export {
 	PR_INTENT_ACTION_TYPE,
 	PR_INTENT_PROTECTED_PATH_REASON,

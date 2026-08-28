@@ -83,7 +83,7 @@ describe("pr-body contract as data", () => {
 			JSON.parse(readFileSync(join(PROFILES, "default.pr-body-contract.json"), "utf8")),
 			"default pr-body contract",
 		);
-		expect(contract.version).toBe(1);
+		expect(contract.version).toBe(2);
 		expect(contract.sections.length).toBeGreaterThan(0);
 	});
 
@@ -118,7 +118,9 @@ describe("pr-body contract as data", () => {
 		) as { request: { body: { body: string } } };
 		const goldenBody = golden.request.body.body;
 		for (const section of contract.sections) {
-			if (section.heading !== null) {
+			// Required sections always render; the optional known-gap slot renders
+			// only for external-proof-required issues (warren-4dc1).
+			if (section.heading !== null && section.required) {
 				expect(goldenBody).toContain(`## ${section.heading}`);
 			}
 		}

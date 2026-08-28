@@ -5,12 +5,17 @@
  * boundary is enforced by the schema, not by convention (design record
  * §7.1, risk 1): only flags in `EXECUTABLE_MUTATION_FLAGS` may be `true`,
  * and each addition there is its own reviewable schema+code event. Phase 2
- * (warren-84da) opened exactly one — `createPullRequest`.
+ * (warren-84da) opened `createPullRequest`; Phase 3 (warren-094b) opened the
+ * response-loop mutations `updatePullRequest`, `postComment`, `updateBranch`,
+ * and `followUpPush` — each still individually policy-gated and
+ * digest-covered.
  */
 
 /** Every GitHub mutation the controller could ever represent. */
 export const MUTATION_FLAGS = [
 	"createPullRequest",
+	"followUpPush",
+	"updatePullRequest",
 	"pushCommits",
 	"updateBranch",
 	"postComment",
@@ -36,10 +41,15 @@ export const NO_MUTATIONS: Mutations = Object.freeze(
 );
 
 /**
- * The flags an executable code path exists for (Phase 2, warren-84da).
- * Everything outside this list is still refused by the policy schema:
- * widening it is a reviewable code change, never a config change.
+ * The flags an executable code path exists for. Phase 2 (warren-84da) opened
+ * `createPullRequest`; Phase 3 (warren-094b) opened the response-loop
+ * vocabulary. Everything outside this list is still refused by the policy
+ * schema: widening it is a reviewable code change, never a config change.
  */
 export const EXECUTABLE_MUTATION_FLAGS: readonly MutationFlag[] = Object.freeze([
 	"createPullRequest",
+	"updatePullRequest",
+	"postComment",
+	"updateBranch",
+	"followUpPush",
 ]);

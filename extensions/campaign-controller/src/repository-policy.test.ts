@@ -117,12 +117,12 @@ describe("validateRepositoryPolicy", () => {
 
 	test("rejects every enabled mutation flag without an executable code path", () => {
 		const merge = basePolicy() as { mutations: Record<string, unknown> };
-		merge.mutations = { ...NO_MUTATIONS, mergePullRequest: true, postComment: true };
-		expectInvalid(merge, "postComment, mergePullRequest");
+		merge.mutations = { ...NO_MUTATIONS, mergePullRequest: true, pushCommits: true };
+		expectInvalid(merge, "pushCommits, mergePullRequest");
 		// createPullRequest riding along does not launder the others in.
 		const mixed = basePolicy() as { mutations: Record<string, unknown> };
-		mixed.mutations = { ...NO_MUTATIONS, createPullRequest: true, pushCommits: true };
-		expectInvalid(mixed, "pushCommits");
+		mixed.mutations = { ...NO_MUTATIONS, createPullRequest: true, editComment: true };
+		expectInvalid(mixed, "editComment");
 	});
 
 	test("rejects missing mutation flags", () => {
@@ -142,6 +142,51 @@ describe("validateRepositoryPolicy", () => {
 	test("the mutation vocabulary is complete and frozen", () => {
 		expect(MUTATION_FLAGS).toContain("createPullRequest");
 		expect(Object.keys(NO_MUTATIONS).sort()).toEqual([...MUTATION_FLAGS].sort());
+		// Phase 3 (warren-094b) flags are part of the bound-every-flag schema.
+		expect(MUTATION_FLAGS).toContain("followUpPush");
+		expect(Object.keys(NO_MUTATIONS)).toContain("followUpPush");
+	});
+
+	test("admits each phase-3 mutation flag individually, digest-covered (warren-094b)", () => {
+		const dryRun = validateRepositoryPolicy(basePolicy(), { nowMs: NOW });
+		for (const flag of ["updatePullRequest", "postComment", "updateBranch", "followUpPush"]) {
+			const enabled = basePolicy() as { mutations: Record<string, unknown> };
+			enabled.mutations = { ...NO_MUTATIONS, [flag]: true };
+			const validated = validateRepositoryPolicy(enabled, { nowMs: NOW });
+			expect(validated.policy.mutations[flag as keyof typeof validated.policy.mutations]).toBe(
+				true,
+			);
+			// Every other flag stays off: the gate is per mutation, not a posture.
+			for (const other of MUTATION_FLAGS) {
+				if (other === flag) continue;
+				expect(validated.policy.mutations[other]).toBe(false);
+			}
+			// Enabling any one flag changes the digest: fresh owner approval.
+			expect(validated.digest).not.toBe(dryRun.digest);
+		}
+		// Different flags produce different digests of their own.
+		const a = basePolicy() as { mutations: Record<string, unknown> };
+		a.mutations = { ...NO_MUTATIONS, postComment: true };
+		const b = basePolicy() as { mutations: Record<string, unknown> };
+		b.mutations = { ...NO_MUTATIONS, updateBranch: true };
+		expect(validateRepositoryPolicy(a, { nowMs: NOW }).digest).not.toBe(
+			validateRepositoryPolicy(b, { nowMs: NOW }).digest,
+		);
+	});
+
+	test("admits combinations of executable flags without laundering non-executable ones", () => {
+		const combo = basePolicy() as { mutations: Record<string, unknown> };
+		combo.mutations = {
+			...NO_MUTATIONS,
+			createPullRequest: true,
+			updatePullRequest: true,
+			postComment: true,
+		};
+		const validated = validateRepositoryPolicy(combo, { nowMs: NOW });
+		expect(validated.policy.mutations.updatePullRequest).toBe(true);
+		expect(validated.policy.mutations.postComment).toBe(true);
+		expect(validated.policy.mutations.mergePullRequest).toBe(false);
+		expect(validated.policy.mutations.pushCommits).toBe(false);
 	});
 
 	test("rejects malformed upstream coordinates and versions", () => {

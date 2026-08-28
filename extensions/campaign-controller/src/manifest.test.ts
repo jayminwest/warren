@@ -199,3 +199,43 @@ describe("validateCampaignManifest", () => {
 		expectInvalid("manifest", "expected an object");
 	});
 });
+
+describe("validateCampaignManifest evidence tiers", () => {
+	/** A manifest re-signed with an optional `issueEvidenceTiers` field. */
+	function withTiers(tiers: Record<string, string> | undefined): Record<string, unknown> {
+		const input = baseManifest() as Record<string, unknown>;
+		const { approval, ...rest } = input;
+		const bound = { ...rest, issueEvidenceTiers: tiers };
+		const approvalRecord = approval as Record<string, unknown>;
+		return {
+			...bound,
+			approval: { ...approvalRecord, manifestDigest: digestOf(bound) },
+		};
+	}
+
+	test("accepts per-issue evidence tiers and binds them into the approval digest", () => {
+		const { manifest, digest } = validate(withTiers({ "815": "external-proof-required" }));
+		expect(manifest.issueEvidenceTiers).toEqual({ "815": "external-proof-required" });
+		expect(digest).toBe((manifest.approval as { manifestDigest: string }).manifestDigest);
+		// A tagged manifest digests differently from the same campaign untagged:
+		// approval covers the tier declaration too.
+		const untagged = validate(baseManifest());
+		expect(digest).not.toBe(untagged.digest);
+	});
+
+	test("an untagged manifest carries no tier map (defaulting to local-provable)", () => {
+		const { manifest } = validate(baseManifest());
+		expect(manifest.issueEvidenceTiers).toBeUndefined();
+	});
+
+	test("rejects a tier key that is not an issue in the manifest's list", () => {
+		expectInvalid(
+			withTiers({ "999": "external-proof-required" }),
+			"not an issue in the manifest's issue list",
+		);
+	});
+
+	test("rejects a malformed tier value", () => {
+		expectInvalid(withTiers({ "812": "" }), "1–64 character evidence-tier name");
+	});
+});
