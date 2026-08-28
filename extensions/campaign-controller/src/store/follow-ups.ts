@@ -152,9 +152,7 @@ export class FollowUpStore {
 		const sets = keys.map((key) => `${key} = ?`).join(", ");
 		const values = keys.map((key) => patch[key]);
 		const result = this.#ctx.db
-			.query(
-				`UPDATE follow_up_progress SET ${sets}, updated_at_ms = ? WHERE work_item_id = ?`,
-			)
+			.query(`UPDATE follow_up_progress SET ${sets}, updated_at_ms = ? WHERE work_item_id = ?`)
 			.run(...values, nowMs(this.#ctx), workItemId);
 		if (result.changes === 0) {
 			throw new StateError(`no follow-up progress row for work item ${workItemId}`);

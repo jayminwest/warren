@@ -274,10 +274,7 @@ export class FollowUpCoordinator {
 	 * Refuses closed per the invariants above; every stop opens an
 	 * attention item so an operator sees the loop halt.
 	 */
-	async coordinate(
-		ctx: FollowUpWorkItemContext,
-		policy: FollowUpPolicy,
-	): Promise<FollowUpOutcome> {
+	async coordinate(ctx: FollowUpWorkItemContext, policy: FollowUpPolicy): Promise<FollowUpOutcome> {
 		// Invariant 1: disabled flag = structurally impossible. Checked
 		// before any store or client access — with the flag off, nothing
 		// below can run at all.
@@ -366,10 +363,7 @@ export class FollowUpCoordinator {
 			);
 		}
 		if (!isValidRefName(headBranch)) {
-			throw new FollowUpRefusal(
-				"head_branch_invalid",
-				`invalid head branch ref: ${headBranch}`,
-			);
+			throw new FollowUpRefusal("head_branch_invalid", `invalid head branch ref: ${headBranch}`);
 		}
 
 		// Invariants 2/3: compose the intent payload — classified fields
@@ -477,9 +471,7 @@ export class FollowUpCoordinator {
 		return this.#store.followUps.recordResponded({
 			workItemId: input.workItemId,
 			feedbackIds: this.#pendingFeedbackIds(input.workItemId),
-			fingerprint: findingsFingerprint(
-				this.#pendingFeedback(input.workItemId).map(toFinding),
-			),
+			fingerprint: findingsFingerprint(this.#pendingFeedback(input.workItemId).map(toFinding)),
 		});
 	}
 

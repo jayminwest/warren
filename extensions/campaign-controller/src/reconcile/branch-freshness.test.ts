@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FixedClock, SequentialIdGenerator } from "../clock.ts";
-import type { GithubPullRequestSnapshot } from "../github/types.ts";
 import { renderUpdateBranchIntent, type UpdateBranchIntent } from "../github/pr-mutations.ts";
+import type { GithubPullRequestSnapshot } from "../github/types.ts";
 import { CampaignStateStore } from "../store/state-store.ts";
 import {
-	branchUpdateActionKey,
 	BRANCH_UPDATE_POLICY_BLOCKED_REASON,
 	type BranchFreshnessDeps,
+	branchUpdateActionKey,
 	classifyBranchFreshness,
 	conflictRepairActionKey,
 	handleBranchFreshness,
@@ -186,7 +186,9 @@ describe("handleBranchFreshness", () => {
 			`/repos/${UPSTREAM.owner}/${UPSTREAM.repo}/pulls/7/update-branch`,
 		);
 		expect(updater.calls[0]?.body).toEqual({ update_method: "merge" });
-		const action = store.actions.getActionByKey(branchUpdateActionKey(campaignId, snapshot("behind")));
+		const action = store.actions.getActionByKey(
+			branchUpdateActionKey(campaignId, snapshot("behind")),
+		);
 		if (action?.state !== "succeeded") console.error("ACTION", action);
 		expect(action?.state).toBe("succeeded");
 		expect(action?.actionType).toBe("pr_update_branch");
@@ -229,7 +231,12 @@ describe("handleBranchFreshness", () => {
 	test("conflicted with the followUpPush gate closed opens attention, no dispatch", async () => {
 		const dispatchCalls: { existingBranch: string; prompt: string }[] = [];
 		const outcome = await handleBranchFreshness(
-			{ store, branchUpdater: null, dispatch: fakeDispatch(dispatchCalls), followUpPushEnabled: false },
+			{
+				store,
+				branchUpdater: null,
+				dispatch: fakeDispatch(dispatchCalls),
+				followUpPushEnabled: false,
+			},
 			baseInput("dirty"),
 		);
 		expect(outcome.status).toBe("conflict_repair_gate_blocked");

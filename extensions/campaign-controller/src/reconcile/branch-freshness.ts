@@ -26,12 +26,12 @@
  */
 
 import { canonicalJson, sha256Hex } from "../digest.ts";
-import type { GithubPullRequestSnapshot } from "../github/types.ts";
+import { UNTRUSTED_FINDINGS_BANNER } from "../follow-up/coordinator.ts";
 import {
 	type GithubBranchUpdaterTransport,
 	renderUpdateBranchIntent,
 } from "../github/pr-mutations.ts";
-import { UNTRUSTED_FINDINGS_BANNER } from "../follow-up/coordinator.ts";
+import type { GithubPullRequestSnapshot } from "../github/types.ts";
 import {
 	executeJournaledMutation,
 	journalMutationIntent,
@@ -69,10 +69,7 @@ export function branchUpdateActionKey(campaignId: string, pr: GithubPullRequestS
 }
 
 /** Deterministic action key for one conflict-repair follow-up run. */
-export function conflictRepairActionKey(
-	campaignId: string,
-	pr: GithubPullRequestSnapshot,
-): string {
+export function conflictRepairActionKey(campaignId: string, pr: GithubPullRequestSnapshot): string {
 	return `conflict-repair:${campaignId}:${pr.number}:${pr.baseSha}`;
 }
 
@@ -208,11 +205,14 @@ async function handleBehindBase(
 				key: `branch-update-blocked:${input.campaignId}:${input.pr.number}:${input.pr.baseSha}`,
 				prNumber: input.pr.number,
 				headBranch: input.pr.headRef,
-				detail:
-					"pull request is behind base but the policy does not enable mutations.updateBranch",
+				detail: "pull request is behind base but the policy does not enable mutations.updateBranch",
 			}),
 		});
-		return { status: "attention_opened", reason: BRANCH_UPDATE_POLICY_BLOCKED_REASON, actionId: null };
+		return {
+			status: "attention_opened",
+			reason: BRANCH_UPDATE_POLICY_BLOCKED_REASON,
+			actionId: null,
+		};
 	}
 
 	// Idempotent pre-check: same base SHA replans onto the same row — a
@@ -235,9 +235,10 @@ async function handleBehindBase(
 		policyDigest: input.policyDigest ?? null,
 	});
 
-
-	const outcome = await executeJournaledMutation(deps.store, { campaignId: input.campaignId, action }, () =>
-		deps.branchUpdater.updateBranch(intent),
+	const outcome = await executeJournaledMutation(
+		deps.store,
+		{ campaignId: input.campaignId, action },
+		() => deps.branchUpdater.updateBranch(intent),
 	);
 	switch (outcome.status) {
 		case "succeeded":
