@@ -26,7 +26,7 @@ import { buildSeedFiles } from "../seed.ts";
 import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { injectWarrenCallbackEnv } from "./callback-env.ts";
-import { resolveContinuationRef } from "./continuation.ts";
+import { resolveContinuationRef, resolveExistingBranch } from "./continuation.ts";
 import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
 import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
@@ -76,6 +76,15 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// clone refresh, no run row). Repair runs targeting an existing PR head
 	// branch are unaffected.
 	const targetBranch = validateTargetBranch(input.targetBranch, project.defaultBranch);
+	// warren-326f: the explicit opt-in to run on an EXISTING branch. Shape-validated
+	// and fail-closed against the push remote BEFORE any side effect, then folded
+	// into the repair-run pattern (branch = base ref = push target); see
+	// resolveExistingBranch. Downstream keeps reading `ref`/`targetBranch`, so
+	// providers and reap need no special-casing and default dispatches are
+	// byte-identical.
+	const existingBranch = await resolveExistingBranch(input, project);
+	const baseRefField = existingBranch ?? input.ref;
+	const pushTarget = existingBranch ?? targetBranch;
 
 	const baseAgent = readCachedAgent(agentRow.renderedJson, agentRow.name);
 	const burrowConfig = parseBurrowConfig(baseAgent.sections.burrow_config);
@@ -87,7 +96,7 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// before burrow forks the new run branch off it. The parent link is also
 	// recorded on the new run row below so the UI can render a chain indicator
 	// and chain cost/token totals are derivable by walking the link.
-	const baseRef = input.baseCommit ?? (await resolveContinuationRef(input, project, targetBranch));
+	const baseRef = input.baseCommit ?? (await resolveContinuationRef(input, project, pushTarget));
 
 	// warren-232d: a baseCommit dispatch NEVER moves the host clone's HEAD.
 	// The refresh runs in fetch-only mode (the pinned SHA's objects come
@@ -194,10 +203,10 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			? { parentRunId: input.parentRunId, cloneKind: input.cloneKind ?? "continue" }
 			: {}),
 		...(input.retryOf !== undefined && input.retryOf !== "" ? { retryOf: input.retryOf } : {}),
-		...(targetBranch !== undefined ? { targetBranch } : {}),
+		...(pushTarget !== undefined ? { targetBranch: pushTarget } : {}),
 		// warren-afeb: freeze the explicit dispatch-supplied clone ref onto the
 		// row so POST /runs and GET /runs/:id can echo that it took.
-		...(input.ref !== undefined ? { ref: input.ref } : {}),
+		...(baseRefField !== undefined ? { ref: baseRefField } : {}),
 		// warren-aaf7: freeze the base-commit pin so the projections can echo
 		// it; the PR base resolution (reap) reads `ref` only, never this.
 		...(input.baseCommit !== undefined ? { baseCommit: input.baseCommit } : {}),
@@ -229,7 +238,7 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			envDefault: input.runBranchPrefixDefault,
 		}),
 		run.id,
-		targetBranch,
+		pushTarget,
 	);
 
 	const runEnv = composeRunEnv(run.id, projectDefaults?.qualityGate, input.serverEnv);

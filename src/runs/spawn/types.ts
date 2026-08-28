@@ -184,6 +184,17 @@ export interface SpawnRunInput {
 	 * workspace also forks from that same branch tip.
 	 */
 	readonly targetBranch?: string;
+	/**
+	 * Opt-in dispatch onto an EXISTING branch (warren-326f). When set, the
+	 * branch must already exist on the push remote (verified before any side
+	 * effect; a missing branch is a fail-closed 400), the workspace is cut
+	 * from its remote tip, and reap pushes back to the same branch with no
+	 * PR. Formalized as ref + targetBranch on the run row, so providers and
+	 * reap need no special-casing. Mutually exclusive with `ref`,
+	 * `targetBranch`, and `parentRunId`. Default dispatches (field absent)
+	 * are byte-identical to the composed `${prefix}/${runId}` path.
+	 */
+	readonly existingBranch?: string;
 	/** Override the project refresher; defaults to `refreshProject`. */
 	readonly refreshProjectFn?: typeof refreshProject;
 	/**

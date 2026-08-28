@@ -192,6 +192,17 @@ export interface AttentionItemRow {
 	readonly resolvedAtMs: number | null;
 }
 
+/** One classified review-feedback row, deduplicated by its source event. */
+export interface ReviewFeedbackRow {
+	readonly id: string;
+	readonly campaignId: string;
+	readonly workItemId: string | null;
+	readonly category: string;
+	readonly sourceEventNodeId: string;
+	readonly fieldsJson: string;
+	readonly createdAtMs: number;
+}
+
 /** A budget reservation in the campaign ledger. */
 export interface ReservationRow {
 	readonly id: string;
