@@ -63,6 +63,8 @@ export interface WarrenDispatchRequestSpec {
 	readonly provider?: string;
 	readonly model?: string;
 	readonly maxCostUsd?: number;
+	/** Dispatch onto this existing branch instead of a fresh workspace branch (warren-326f). */
+	readonly existingBranch?: string;
 }
 
 export interface WarrenDispatcherDeps {
@@ -134,6 +136,7 @@ function dispatchBody(request: WarrenDispatchRequestSpec): Record<string, unknow
 		...(request.provider !== undefined ? { providerOverride: request.provider } : {}),
 		...(request.model !== undefined ? { modelOverride: request.model } : {}),
 		...(request.maxCostUsd !== undefined ? { maxCostUsd: request.maxCostUsd } : {}),
+		...(request.existingBranch !== undefined ? { existingBranch: request.existingBranch } : {}),
 	};
 }
 
@@ -253,6 +256,7 @@ export class WarrenDispatcher {
 				provider: input.request.provider,
 				model: input.request.model,
 				maxCostUsd: input.request.maxCostUsd,
+				existingBranch: input.request.existingBranch,
 				idempotencyKey: actionKey,
 			});
 			return this.#confirmRun(action, run);

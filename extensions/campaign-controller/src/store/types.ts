@@ -209,6 +209,24 @@ export interface ReviewFeedbackRow {
 	readonly createdAtMs: number;
 }
 
+/** Follow-up loop progress for one work item (warren-0ad3). */
+export interface FollowUpProgressRow {
+	readonly workItemId: string;
+	readonly campaignId: string;
+	/** Feedback row ids the loop already responded to. */
+	readonly addressedFeedbackIds: readonly string[];
+	/** Fingerprint of the findings the last response covered. */
+	readonly lastRespondedFingerprint: string | null;
+	/** How many follow-up runs already responded. */
+	readonly iteration: number;
+	/** The journaled follow-up action currently in flight, if any. */
+	readonly activeActionId: string | null;
+	readonly runId: string | null;
+	readonly headBranch: string | null;
+	readonly createdAtMs: number;
+	readonly updatedAtMs: number;
+}
+
 /** A budget reservation in the campaign ledger. */
 export interface ReservationRow {
 	readonly id: string;

@@ -18,6 +18,7 @@ import { ActionStore } from "./actions.ts";
 import { BudgetStore } from "./budget.ts";
 import { CampaignStore } from "./campaigns.ts";
 import { EventStore } from "./events.ts";
+import { FollowUpStore } from "./follow-ups.ts";
 import { LeaseStore } from "./leases.ts";
 import { MIGRATIONS } from "./schema.ts";
 
@@ -42,6 +43,7 @@ export class CampaignStateStore {
 	readonly events: EventStore;
 	readonly leases: LeaseStore;
 	readonly budget: BudgetStore;
+	readonly followUps: FollowUpStore;
 
 	/**
 	 * Open (and migrate) the store. `path` may be `":memory:"` for tests.
@@ -59,6 +61,7 @@ export class CampaignStateStore {
 		this.events = new EventStore(ctx);
 		this.leases = new LeaseStore(ctx);
 		this.budget = new BudgetStore(ctx);
+		this.followUps = new FollowUpStore(ctx);
 		this.migrate();
 	}
 

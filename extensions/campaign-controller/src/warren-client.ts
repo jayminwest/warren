@@ -84,6 +84,8 @@ export interface WarrenDispatchInput {
 	provider?: string;
 	model?: string;
 	maxCostUsd?: number;
+	/** Dispatch onto this existing branch instead of a fresh workspace branch (warren-326f). */
+	existingBranch?: string;
 	/** Required, stable, and caller-owned; a repeat delivery must reuse it. */
 	idempotencyKey: string;
 }
@@ -331,6 +333,7 @@ export class WarrenClient {
 			...(input.provider !== undefined ? { providerOverride: input.provider } : {}),
 			...(input.model !== undefined ? { modelOverride: input.model } : {}),
 			...(input.maxCostUsd !== undefined ? { maxCostUsd: input.maxCostUsd } : {}),
+			...(input.existingBranch !== undefined ? { existingBranch: input.existingBranch } : {}),
 		});
 		let res: Response;
 		try {
