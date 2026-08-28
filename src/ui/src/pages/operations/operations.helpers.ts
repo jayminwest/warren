@@ -116,3 +116,17 @@ export function activityLine(prompt: string): string {
 	const line = prompt.trim().split("\n", 1)[0] ?? "";
 	return line.length > 80 ? `${line.slice(0, 79)}…` : line;
 }
+
+/**
+ * Age label for the mobile workloads footer (warren-10d3,
+ * mobile/operations.jsx:284): "2S AGO", "4M AGO", "3H AGO". A negative or
+ * non-finite age renders as "JUST NOW" — clocks disagree, never lie.
+ */
+export function refreshedAgeLabel(ms: number | null | undefined): string {
+	if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "JUST NOW";
+	const s = Math.floor(ms / 1000);
+	if (s < 60) return `${s}S AGO`;
+	const m = Math.floor(s / 60);
+	if (m < 60) return `${m}M AGO`;
+	return `${Math.floor(m / 60)}H AGO`;
+}

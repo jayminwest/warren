@@ -9,6 +9,7 @@ import {
 	phaseElapsedMs,
 	phaseInstant,
 	priorityEntries,
+	refreshedAgeLabel,
 	shortRepo,
 } from "./operations.helpers.ts";
 
@@ -149,5 +150,22 @@ describe("activityLine", () => {
 		const long = `${"x".repeat(100)}`;
 		expect(activityLine(long)).toHaveLength(80);
 		expect(activityLine(long).endsWith("…")).toBe(true);
+	});
+});
+
+describe("refreshedAgeLabel", () => {
+	test("renders seconds under a minute", () => {
+		expect(refreshedAgeLabel(2_000)).toBe("2S AGO");
+		expect(refreshedAgeLabel(59_999)).toBe("59S AGO");
+	});
+	test("rolls to minutes and hours", () => {
+		expect(refreshedAgeLabel(240_000)).toBe("4M AGO");
+		expect(refreshedAgeLabel(3 * 3_600_000)).toBe("3H AGO");
+	});
+	test("treats null, negative, and non-finite ages as just-now", () => {
+		expect(refreshedAgeLabel(null)).toBe("JUST NOW");
+		expect(refreshedAgeLabel(undefined)).toBe("JUST NOW");
+		expect(refreshedAgeLabel(-5_000)).toBe("JUST NOW");
+		expect(refreshedAgeLabel(Number.NaN)).toBe("JUST NOW");
 	});
 });
