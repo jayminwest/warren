@@ -187,6 +187,7 @@ function parsePullRequest(raw: Raw): GithubPullRequestSnapshot {
 		createdAt: requiredString(raw, "created_at"),
 		updatedAt: requiredString(raw, "updated_at"),
 		htmlUrl: requiredString(raw, "html_url"),
+		mergeableState: optionalString(raw, "mergeable_state"),
 	};
 }
 

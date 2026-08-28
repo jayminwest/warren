@@ -135,6 +135,12 @@ export interface GithubPullRequestSnapshot {
 	createdAt: string;
 	updatedAt: string;
 	htmlUrl: string;
+	/**
+	 * GitHub's `mergeable_state` rollup (`clean`, `dirty`, `behind`, …),
+	 * when the API served it (warren-3d92). `null` means unknown — the
+	 * freshness classifier treats unknown as fresh.
+	 */
+	mergeableState?: string | null;
 }
 
 /** Narrowed participating notification (a wake-up, never a command). */
