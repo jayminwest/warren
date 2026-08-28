@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { AgentRow, ProjectRow } from "@/api/types.ts";
 import {
 	responsiveFooterActions,
@@ -7,61 +6,23 @@ import {
 } from "@/components/ui/responsive.ts";
 import { cn } from "@/lib/utils.ts";
 import type { WalkDraft, WalkSourceMode } from "./walk-draft.ts";
+import { Field, hintClass, labelClass, MobileCard, Section } from "./walk-sections.tsx";
 
 /**
  * Left rail of the Direction C Dispatch plan page (warren-02bb): the
  * walk-definition form, translated from
  * `docs/ui-revamp/screens/dispatch-plan.jsx`. Token variables only —
  * dark and light themes both render off `src/ui/src/tokens.css`.
+ *
+ * Mobile arm (pl-4ab6 / warren-9e94): below md the single form card splits
+ * into one `--color-thead`-headed card per section, ported from the settled
+ * dispatch treatment (warren-5cf7); desktop is unchanged.
  */
 
 const controlClass = cn(
 	responsiveFormControl,
 	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 leading-[17px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-60 sm:h-8 sm:text-[11px] sm:leading-[14px]",
 );
-
-const labelClass = "text-[10px] font-medium leading-3 text-(--color-text-2)";
-const hintClass = "font-mono text-[9px] leading-3 text-(--color-text-3)";
-
-export function Section({
-	title,
-	description,
-	children,
-	last = false,
-}: {
-	title: string;
-	description: string;
-	children: ReactNode;
-	last?: boolean;
-}) {
-	return (
-		<section className={`flex flex-col p-[15px] ${last ? "" : "border-b border-(--color-border)"}`}>
-			<div className="flex flex-col gap-[3px] pb-[13px]">
-				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">{title}</h2>
-				<p className="text-[10px] leading-3 text-(--color-text-3)">{description}</p>
-			</div>
-			{children}
-		</section>
-	);
-}
-
-export function Field({
-	label,
-	hint,
-	children,
-}: {
-	label: string;
-	hint?: ReactNode;
-	children: ReactNode;
-}) {
-	return (
-		<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
-			<span className={labelClass}>{label}</span>
-			{children}
-			{hint ? <p className={hintClass}>{hint}</p> : null}
-		</div>
-	);
-}
 
 function ModeButton({
 	active,
@@ -127,7 +88,7 @@ export interface WalkFormProps {
 export function WalkForm(props: WalkFormProps) {
 	return (
 		<form
-			className="flex min-w-0 max-w-[760px] flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)"
+			className="flex min-w-0 max-w-[760px] flex-1 flex-col gap-3.5 md:gap-0 md:overflow-clip md:rounded-(--radius-md) md:border md:border-(--color-border) md:bg-(--color-surface)"
 			onSubmit={(e) => {
 				e.preventDefault();
 				if (props.canSubmit) props.onSubmit();
@@ -148,59 +109,65 @@ type SectionProps = WalkFormProps;
 function TargetSection(p: SectionProps) {
 	const d = p.draft;
 	return (
-		<Section
-			title="Target"
-			description="Every child run materializes this repository in its own isolated workspace."
-		>
-			<div className="flex flex-col gap-[5px] pb-[12px]">
-				<Field label="Project" hint={d.project.length > 0 ? `PROJECT ID ${d.project}` : undefined}>
-					<select
-						className={controlClass}
-						value={d.project}
-						onChange={(e) => p.onProject(e.target.value)}
+		<MobileCard title="Target">
+			<Section
+				title="Target"
+				description="Every child run materializes this repository in its own isolated workspace."
+			>
+				<div className="flex flex-col gap-[5px] pb-[12px]">
+					<Field
+						label="Project"
+						hint={d.project.length > 0 ? `PROJECT ID ${d.project}` : undefined}
 					>
-						<option value="" disabled>
-							Pick a project…
-						</option>
-						{p.projects.map((proj) => (
-							<option key={proj.id} value={proj.id}>
-								{proj.gitUrl} ({proj.id}){proj.hasSeeds ? "" : " — no .seeds/"}
+						<select
+							className={controlClass}
+							value={d.project}
+							onChange={(e) => p.onProject(e.target.value)}
+						>
+							<option value="" disabled>
+								Pick a project…
 							</option>
-						))}
-					</select>
-				</Field>
-			</div>
-			<div className="flex gap-[12px]">
-				<Field
-					label="Git ref"
-					hint={p.selectedProject ? `DEFAULT ${p.selectedProject.defaultBranch}` : undefined}
-				>
-					<input
-						className={controlClass}
-						value={d.ref}
-						onChange={(e) => p.onRef(e.target.value)}
-						placeholder={p.selectedProject?.defaultBranch ?? "default branch"}
-						disabled={!p.hasSeeds}
-						autoComplete="off"
-						spellCheck={false}
-					/>
-				</Field>
-				<Field label="Source plan" hint={sourcePlanHint(p)}>
-					{d.sourceMode === "issues" ? (
-						<input className={controlClass} value="" disabled placeholder="issues listed below" />
-					) : (
-						<SourcePlanControl p={p} />
-					)}
-				</Field>
-			</div>
-			{p.planSelectorUnavailable && d.sourceMode === "plan" ? (
-				<p className={hintClass}>
-					{p.selectedProject
-						? "PLAN LIST UNAVAILABLE — ENTER THE PLAN ID MANUALLY"
-						: "PICK A PROJECT FIRST"}
-				</p>
-			) : null}
-		</Section>
+							{p.projects.map((proj) => (
+								<option key={proj.id} value={proj.id}>
+									{proj.gitUrl} ({proj.id}){proj.hasSeeds ? "" : " — no .seeds/"}
+								</option>
+							))}
+						</select>
+					</Field>
+				</div>
+				{/* Two-up only at md+ — the pair doesn't fit below md (warren-9e94). */}
+				<div className="flex flex-col gap-[12px] md:flex-row md:gap-[12px]">
+					<Field
+						label="Git ref"
+						hint={p.selectedProject ? `DEFAULT ${p.selectedProject.defaultBranch}` : undefined}
+					>
+						<input
+							className={controlClass}
+							value={d.ref}
+							onChange={(e) => p.onRef(e.target.value)}
+							placeholder={p.selectedProject?.defaultBranch ?? "default branch"}
+							disabled={!p.hasSeeds}
+							autoComplete="off"
+							spellCheck={false}
+						/>
+					</Field>
+					<Field label="Source plan" hint={sourcePlanHint(p)}>
+						{d.sourceMode === "issues" ? (
+							<input className={controlClass} value="" disabled placeholder="issues listed below" />
+						) : (
+							<SourcePlanControl p={p} />
+						)}
+					</Field>
+				</div>
+				{p.planSelectorUnavailable && d.sourceMode === "plan" ? (
+					<p className={hintClass}>
+						{p.selectedProject
+							? "PLAN LIST UNAVAILABLE — ENTER THE PLAN ID MANUALLY"
+							: "PICK A PROJECT FIRST"}
+					</p>
+				) : null}
+			</Section>
+		</MobileCard>
 	);
 }
 
@@ -258,57 +225,60 @@ function SourcePlanControl({ p }: { p: SectionProps }) {
 function RuntimeSection(p: SectionProps) {
 	const d = p.draft;
 	return (
-		<Section title="Agent runtime" description="Applies to every child run in the walk.">
-			<div className="flex flex-col gap-[5px] pb-[12px]">
-				<Field
-					label="Agent"
-					hint={
-						p.agentDefaultFrom ? `PROJECT DEFAULT · ${p.agentDefaultFrom.sourceFile}` : undefined
-					}
-				>
-					<select
-						className={controlClass}
-						value={d.agent}
-						onChange={(e) => p.onAgent(e.target.value)}
-						disabled={!p.hasSeeds}
+		<MobileCard title="Agent runtime">
+			<Section title="Agent runtime" description="Applies to every child run in the walk.">
+				<div className="flex flex-col gap-[5px] pb-[12px]">
+					<Field
+						label="Agent"
+						hint={
+							p.agentDefaultFrom ? `PROJECT DEFAULT · ${p.agentDefaultFrom.sourceFile}` : undefined
+						}
 					>
-						<option value="" disabled>
-							Pick an agent…
-						</option>
-						{p.agents.map((a) => (
-							<option key={a.name} value={a.name}>
-								{a.name}
-								{a.source ? ` · ${a.source}` : ""}
+						<select
+							className={controlClass}
+							value={d.agent}
+							onChange={(e) => p.onAgent(e.target.value)}
+							disabled={!p.hasSeeds}
+						>
+							<option value="" disabled>
+								Pick an agent…
 							</option>
-						))}
-					</select>
-				</Field>
-			</div>
-			<div className="flex gap-[12px]">
-				<Field label="Provider" hint={defaultKindHint(p.providerDefaultKind)}>
-					<input
-						className={controlClass}
-						value={d.providerOverride}
-						onChange={(e) => p.onProvider(e.target.value)}
-						placeholder="anthropic, openai, …"
-						disabled={!p.hasSeeds}
-						autoComplete="off"
-						spellCheck={false}
-					/>
-				</Field>
-				<Field label="Model" hint={defaultKindHint(p.modelDefaultKind)}>
-					<input
-						className={controlClass}
-						value={d.modelOverride}
-						onChange={(e) => p.onModel(e.target.value)}
-						placeholder="claude-sonnet-4-6, gpt-4o, …"
-						disabled={!p.hasSeeds}
-						autoComplete="off"
-						spellCheck={false}
-					/>
-				</Field>
-			</div>
-		</Section>
+							{p.agents.map((a) => (
+								<option key={a.name} value={a.name}>
+									{a.name}
+									{a.source ? ` · ${a.source}` : ""}
+								</option>
+							))}
+						</select>
+					</Field>
+				</div>
+				{/* Two-up only at md+ — the pair doesn't fit below md (warren-9e94). */}
+				<div className="flex flex-col gap-[12px] md:flex-row md:gap-[12px]">
+					<Field label="Provider" hint={defaultKindHint(p.providerDefaultKind)}>
+						<input
+							className={controlClass}
+							value={d.providerOverride}
+							onChange={(e) => p.onProvider(e.target.value)}
+							placeholder="anthropic, openai, …"
+							disabled={!p.hasSeeds}
+							autoComplete="off"
+							spellCheck={false}
+						/>
+					</Field>
+					<Field label="Model" hint={defaultKindHint(p.modelDefaultKind)}>
+						<input
+							className={controlClass}
+							value={d.modelOverride}
+							onChange={(e) => p.onModel(e.target.value)}
+							placeholder="claude-sonnet-4-6, gpt-4o, …"
+							disabled={!p.hasSeeds}
+							autoComplete="off"
+							spellCheck={false}
+						/>
+					</Field>
+				</div>
+			</Section>
+		</MobileCard>
 	);
 }
 
@@ -324,40 +294,42 @@ const childRowClass =
 function ChildrenSection(p: SectionProps) {
 	const d = p.draft;
 	return (
-		<Section
-			title="Children"
-			description="The plan's open children in walk order. Each dispatches as its own run."
-		>
-			<div className="mb-[5px] flex gap-[6px]">
-				<ModeButton
-					active={d.sourceMode === "plan"}
-					label="Plan source"
-					onClick={() => p.onSourceMode("plan")}
-				/>
-				<ModeButton
-					active={d.sourceMode === "issues"}
-					label="Explicit issue list"
-					onClick={() => p.onSourceMode("issues")}
-				/>
-			</div>
-			{d.sourceMode === "issues" ? (
-				<textarea
-					className={cn(controlClass, "mb-[5px] min-h-[64px] resize-y py-2 sm:leading-[17px]")}
-					value={d.issuesText}
-					onChange={(e) => p.onIssuesText(e.target.value)}
-					placeholder={"warren-93df\nwarren-4c1a\nwarren-b7e2"}
-					disabled={!p.hasSeeds}
-					autoComplete="off"
-					spellCheck={false}
-				/>
-			) : null}
-			<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-				<ChildrenTable p={p} />
-			</div>
-			<p className={`${hintClass} pt-[5px]`}>
-				RE-DISPATCHING THE SAME PLAN RESUMES FROM THE NEXT OPEN CHILD
-			</p>
-		</Section>
+		<MobileCard title="Children">
+			<Section
+				title="Children"
+				description="The plan's open children in walk order. Each dispatches as its own run."
+			>
+				<div className="mb-[5px] flex gap-[6px]">
+					<ModeButton
+						active={d.sourceMode === "plan"}
+						label="Plan source"
+						onClick={() => p.onSourceMode("plan")}
+					/>
+					<ModeButton
+						active={d.sourceMode === "issues"}
+						label="Explicit issue list"
+						onClick={() => p.onSourceMode("issues")}
+					/>
+				</div>
+				{d.sourceMode === "issues" ? (
+					<textarea
+						className={cn(controlClass, "mb-[5px] min-h-[64px] resize-y py-2 sm:leading-[17px]")}
+						value={d.issuesText}
+						onChange={(e) => p.onIssuesText(e.target.value)}
+						placeholder={"warren-93df\nwarren-4c1a\nwarren-b7e2"}
+						disabled={!p.hasSeeds}
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				) : null}
+				<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+					<ChildrenTable p={p} />
+				</div>
+				<p className={`${hintClass} pt-[5px]`}>
+					RE-DISPATCHING THE SAME PLAN RESUMES FROM THE NEXT OPEN CHILD
+				</p>
+			</Section>
+		</MobileCard>
 	);
 }
 
@@ -410,57 +382,61 @@ function planChildrenSummary(d: WalkDraft, p: SectionProps): string {
 function GuardrailsSection(p: SectionProps) {
 	const d = p.draft;
 	return (
-		<Section
-			title="Guardrails"
-			description="Per-child limits. They remain outside the agent process."
-		>
-			<div className="flex gap-[12px]">
-				<Field
-					label="Cost cap per child (USD)"
-					hint={p.costCapError ?? "ENFORCED FROM LIVE USAGE EVENTS"}
-				>
-					<input
-						className={`${controlClass} ${p.costCapError ? "border-(--color-danger)" : ""} font-mono`}
-						value={d.costCap}
-						onChange={(e) => p.onCostCap(e.target.value)}
-						placeholder="unset"
-						inputMode="decimal"
-						autoComplete="off"
-						spellCheck={false}
-					/>
-				</Field>
-				<Field label="Timeout per child" hint="NO PER-RUN TIMEOUT API YET">
-					<select className={`${controlClass} opacity-60`} disabled value="">
-						<option value="">—</option>
-					</select>
-				</Field>
-			</div>
-		</Section>
+		<MobileCard title="Guardrails">
+			<Section
+				title="Guardrails"
+				description="Per-child limits. They remain outside the agent process."
+			>
+				<div className="flex gap-[12px]">
+					<Field
+						label="Cost cap per child (USD)"
+						hint={p.costCapError ?? "ENFORCED FROM LIVE USAGE EVENTS"}
+					>
+						<input
+							className={`${controlClass} ${p.costCapError ? "border-(--color-danger)" : ""} font-mono`}
+							value={d.costCap}
+							onChange={(e) => p.onCostCap(e.target.value)}
+							placeholder="unset"
+							inputMode="decimal"
+							autoComplete="off"
+							spellCheck={false}
+						/>
+					</Field>
+					<Field label="Timeout per child" hint="NO PER-RUN TIMEOUT API YET">
+						<select className={`${controlClass} opacity-60`} disabled value="">
+							<option value="">—</option>
+						</select>
+					</Field>
+				</div>
+			</Section>
+		</MobileCard>
 	);
 }
 
 function IntentSection(p: SectionProps) {
 	const d = p.draft;
 	return (
-		<Section
-			title="Intent"
-			description="The prompt each child run receives, with {seed_id} substituted per child."
-			last
-		>
-			<div className="flex flex-col gap-[5px]">
-				<span className={labelClass}>Prompt template</span>
-				<textarea
-					className={cn(controlClass, "min-h-[64px] resize-y py-2 sm:leading-[17px]")}
-					value={d.promptTemplate}
-					onChange={(e) => p.onPrompt(e.target.value)}
-					placeholder="work on sd {seed_id}"
-					disabled={!p.hasSeeds}
-				/>
-				<p className={hintClass}>
-					{"{seed_id}"} IS SUBSTITUTED PER CHILD · PROJECT CONTEXT APPENDED AT DISPATCH
-				</p>
-			</div>
-		</Section>
+		<MobileCard title="Intent">
+			<Section
+				title="Intent"
+				description="The prompt each child run receives, with {seed_id} substituted per child."
+				divider="none"
+			>
+				<div className="flex flex-col gap-[5px]">
+					<span className={labelClass}>Prompt template</span>
+					<textarea
+						className={cn(controlClass, "min-h-[64px] resize-y py-2 sm:leading-[17px]")}
+						value={d.promptTemplate}
+						onChange={(e) => p.onPrompt(e.target.value)}
+						placeholder="work on sd {seed_id}"
+						disabled={!p.hasSeeds}
+					/>
+					<p className={hintClass}>
+						{"{seed_id}"} IS SUBSTITUTED PER CHILD · PROJECT CONTEXT APPENDED AT DISPATCH
+					</p>
+				</div>
+			</Section>
+		</MobileCard>
 	);
 }
 
@@ -472,8 +448,8 @@ const footerButtonClass = cn(
 function Footer(p: SectionProps) {
 	return (
 		<>
-			<div className={cn(responsiveFooterActions, "px-[15px] py-[12px] sm:items-center")}>
-				<p className={cn(hintClass, "sm:flex-1")}>
+			<div className={cn(responsiveFooterActions, "px-0 py-[12px] sm:items-center md:px-[15px]")}>
+				<p className={cn(hintClass, "hidden md:block md:flex-1")}>
 					Dispatch writes the plan-run record before the first child is admitted.
 				</p>
 				<button
@@ -482,7 +458,7 @@ function Footer(p: SectionProps) {
 					disabled={p.pending}
 					className={cn(
 						footerButtonClass,
-						"border border-(--color-border-strong) bg-(--color-surface) text-(--color-text-2) hover:bg-(--color-surface-hover)",
+						"hidden border border-(--color-border-strong) bg-(--color-surface) text-(--color-text-2) hover:bg-(--color-surface-hover) md:flex",
 					)}
 				>
 					Cancel
@@ -496,7 +472,7 @@ function Footer(p: SectionProps) {
 				</button>
 			</div>
 			{p.submitError ? (
-				<p className="border-t border-(--color-border) px-[15px] py-2 font-mono text-[10px] leading-3 text-(--color-danger)">
+				<p className="px-3.5 py-2 font-mono text-[10px] leading-3 text-(--color-danger) md:border-t md:border-(--color-border) md:px-[15px]">
 					{p.submitError}
 				</p>
 			) : null}
