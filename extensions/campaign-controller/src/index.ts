@@ -228,6 +228,9 @@ export type {
 } from "./reconcile/reconciler.ts";
 export { UpstreamPrReconciler } from "./reconcile/reconciler.ts";
 export {
+	COMMENT_PLACEHOLDERS,
+	type CommentPlaceholder,
+	type CommentTemplatesPolicy,
 	MAX_STALENESS_DAYS,
 	OPENCLAW_UPSTREAM_MAX_OPEN_PRS,
 	type PolicySource,
@@ -235,10 +238,23 @@ export {
 	REPOSITORY_POLICY_SCHEMA_VERSION,
 	type RepositoryPolicy,
 	type ValidatedRepositoryPolicy,
+	validateCommentTemplates,
 	validateRepositoryPolicy,
 	WORK_TYPES,
 	type WorkType,
 } from "./repository-policy.ts";
+export {
+	COMMENT_RATE_CAPPED_REASON,
+	commentActionKey,
+	composeFindingResponseComment,
+	composeReReviewComment,
+	postFindingResponseComment,
+	postReReviewCommandComment,
+	type PostCommentDeps,
+	type PostCommentInput,
+	type PostCommentOutcome,
+	type PostCommentOutcomeStatus,
+} from "./pr-execute/post-comment.ts";
 export { ActionStore, type SettleActionInput } from "./store/actions.ts";
 export { BudgetStore } from "./store/budget.ts";
 export { CampaignStore } from "./store/campaigns.ts";
