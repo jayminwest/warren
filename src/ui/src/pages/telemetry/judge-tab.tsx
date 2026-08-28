@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { RunRow } from "@/api/types.ts";
+import { InventoryCardList, InventoryRowCard } from "@/components/ui/inventory-card.tsx";
 import { relativeTime } from "@/lib/utils.ts";
 import {
 	type JudgeStoreRow,
@@ -60,15 +61,126 @@ function AbsentPanel({ state }: { state: JudgeVerdictsAbsent }) {
 	);
 }
 
+/** Share of `total`, rounded to a whole percent (mock's `round(x%,1px)`). */
+function pct(count: number, total: number): number {
+	if (total === 0) return 0;
+	return Math.round((count / total) * 100);
+}
+
 function prStateLabel(run: RunRow | undefined): string {
 	const state = run?.prState;
 	if (state === null || state === undefined) return "—";
 	return state;
 }
 
-function FailedVerdictRow({ row, run }: { row: JudgeStoreRow; run: RunRow | undefined }) {
+/** The failing-class label a failed row carries (shared by both arms). */
+function failedClassLabel(row: JudgeStoreRow): string {
 	const classes = (row.verdict?.assignments ?? []).filter((a) => a.class !== "clean");
-	const label = UNJUDGED_REASON_LABELS[row.reason ?? ""] ?? classes.map((a) => a.class).join(", ");
+	return UNJUDGED_REASON_LABELS[row.reason ?? ""] ?? classes.map((a) => a.class).join(", ");
+}
+
+/**
+ * The mobile distribution (warren-a293 / mock telemetry.jsx:218-258):
+ * one full-width 8px stacked segment bar + wrapped swatch legend +
+ * top-failure-class summary row, replacing the bare pass/fail/unjudged
+ * text line below md. Desktop keeps the mono count spans at md+.
+ */
+function JudgeDistributionMobile({
+	summary,
+	total,
+}: {
+	summary: ReturnType<typeof summarizeJudgeVerdicts>;
+	total: number;
+}) {
+	const segments = [
+		{
+			key: "pass",
+			count: summary.pass,
+			label: "pass",
+			bar: "bg-(--color-success)",
+			swatch: "bg-(--color-success)",
+		},
+		{
+			key: "fail",
+			count: summary.fail,
+			label: "fail",
+			bar: "bg-(--color-danger)",
+			swatch: "bg-(--color-danger)",
+		},
+		{
+			key: "unjudged",
+			count: summary.unjudged,
+			label: "unjudged",
+			bar: "bg-(--color-neutral) opacity-50",
+			swatch: "bg-(--color-neutral) opacity-50",
+		},
+	];
+	const topClass = summary.failingClasses[0];
+	return (
+		<div className="flex flex-col gap-2.5 md:hidden">
+			<div className="flex h-2 shrink-0 overflow-clip rounded-[2px]">
+				{segments.map((seg) => (
+					<div
+						key={seg.key}
+						className={seg.bar}
+						style={{ width: `${String(pct(seg.count, total))}%` }}
+					/>
+				))}
+			</div>
+			<div className="flex flex-wrap items-center gap-3">
+				{segments.map((seg) => (
+					<span key={seg.key} className="flex items-center gap-[5px]">
+						<span className={`h-[7px] w-[7px] shrink-0 rounded-[2px] ${seg.swatch}`} aria-hidden />
+						<span className="font-mono text-[9px] leading-[11px] text-(--color-text-2)">
+							{seg.label} {String(pct(seg.count, total))}%
+						</span>
+					</span>
+				))}
+			</div>
+			{topClass !== undefined ? (
+				<div className="flex items-center gap-2 pt-[2px]">
+					<span className="w-[110px] shrink-0 font-mono text-[9px] leading-[11px] text-(--color-danger)">
+						{topClass.name}
+					</span>
+					<span className="flex-1 font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+						top failure class · {String(topClass.count)} runs
+					</span>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/**
+ * The below-md arm of one failed-verdict row (warren-a293): the shared
+ * InventoryRowCard pattern — dot-only tone (danger for a failing
+ * verdict, neutral for an unjudged marker), the run id as the link,
+ * agent · PR state as the subline, judged time as the trailing figure,
+ * and the failing-class label on the meta line.
+ */
+function FailedVerdictCard({ row, run }: { row: JudgeStoreRow; run: RunRow | undefined }) {
+	return (
+		<InventoryRowCard
+			tone={row.kind === "unjudged" ? "neutral" : "danger"}
+			title={row.runId}
+			titleTo={`/runs/${encodeURIComponent(row.runId)}`}
+			subline={`${run?.agentName ?? "—"} · pr ${prStateLabel(run)}`}
+			figures={
+				row.verdict?.provenance.judgedAt !== undefined
+					? relativeTime(row.verdict.provenance.judgedAt)
+					: "—"
+			}
+			meta={
+				<span className="font-mono text-[9px] leading-[11px] text-(--color-danger)">
+					{failedClassLabel(row)}
+				</span>
+			}
+		/>
+	);
+}
+
+function FailedVerdictRow({ row, run }: { row: JudgeStoreRow; run: RunRow | undefined }) {
+	const label = failedClassLabel(row);
 	return (
 		<tr className="border-b border-(--color-border) last:border-b-0">
 			<td className="py-1.5 pr-3">
@@ -145,27 +257,36 @@ export function TelemetryJudgeTab() {
 						No failed verdicts in the export — every judged run is clean.
 					</p>
 				) : (
-					<div className="overflow-x-auto">
-						<table className="w-full">
-							<thead>
-								<tr>
-									{["RUN", "AGENT", "FAILING CLASS", "PR", "JUDGED"].map((h, i) => (
-										<th
-											key={h}
-											className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i === 4 ? "text-right" : ""}`}
-										>
-											{h}
-										</th>
+					<>
+						<div className="hidden overflow-x-auto md:block">
+							<table className="w-full">
+								<thead>
+									<tr>
+										{["RUN", "AGENT", "FAILING CLASS", "PR", "JUDGED"].map((h, i) => (
+											<th
+												key={h}
+												className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i === 4 ? "text-right" : ""}`}
+											>
+												{h}
+											</th>
+										))}
+									</tr>
+								</thead>
+								<tbody>
+									{failing.slice(0, FAILED_ROWS).map((row) => (
+										<FailedVerdictRow key={row.id} row={row} run={runById.get(row.runId)} />
 									))}
-								</tr>
-							</thead>
-							<tbody>
-								{failing.slice(0, FAILED_ROWS).map((row) => (
-									<FailedVerdictRow key={row.id} row={row} run={runById.get(row.runId)} />
-								))}
-							</tbody>
-						</table>
-					</div>
+								</tbody>
+							</table>
+						</div>
+						{/* Below md the 5-col table degrades to the shared inventory
+						 * row-card arm (warren-a293) so it stops h-scrolling at 375. */}
+						<InventoryCardList>
+							{failing.slice(0, FAILED_ROWS).map((row) => (
+								<FailedVerdictCard key={row.id} row={row} run={runById.get(row.runId)} />
+							))}
+						</InventoryCardList>
+					</>
 				)}
 				<p className="text-[12px] leading-4 text-(--color-text-2)">
 					Failed verdicts and unjudged markers from the extension's append-only export, joined with
@@ -174,7 +295,7 @@ export function TelemetryJudgeTab() {
 			</TelemetryPanel>
 
 			<TelemetryPanel title="Judge verdicts" meta="RUBRIC V1 · 15 CLASSES">
-				<div className="flex flex-wrap items-center gap-4">
+				<div className="hidden flex-wrap items-center gap-4 md:flex">
 					<span className="font-mono text-[11px] leading-[14px] text-(--color-success)">
 						pass {String(summary.pass)}
 					</span>
@@ -186,8 +307,10 @@ export function TelemetryJudgeTab() {
 					</span>
 				</div>
 
+				<JudgeDistributionMobile summary={summary} total={state.rows.length} />
+
 				{summary.failingClasses.length > 0 ? (
-					<div className="flex flex-col gap-2">
+					<div className="hidden flex-col gap-2 md:flex">
 						<span className="font-mono text-[10px] tracking-[0.06em] leading-3 text-(--color-text-3)">
 							FAILING CLASSES · WORST 5 OF 15
 						</span>
