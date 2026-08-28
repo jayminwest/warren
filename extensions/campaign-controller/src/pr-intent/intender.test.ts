@@ -71,6 +71,8 @@ function basePolicy(): Record<string, unknown> {
 		requiredChecks: ["ci", "typecheck", "lint"],
 		mutations: {
 			createPullRequest: false,
+			followUpPush: false,
+			updatePullRequest: false,
 			pushCommits: false,
 			updateBranch: false,
 			postComment: false,

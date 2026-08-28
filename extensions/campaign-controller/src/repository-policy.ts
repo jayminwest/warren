@@ -284,19 +284,26 @@ function requireMutations(root: ReturnType<typeof asObject>): Mutations {
 	for (const flag of MUTATION_FLAGS) {
 		requireBoolean(raw, flag, "repository policy.mutations");
 	}
-	// Phase 2 (warren-84da): `createPullRequest` is the single executable
-	// mutation. Every other flag stays schema-refused until its own phase
-	// lands — the schema change is the reviewable event (§7.1).
-	const enabled = MUTATION_FLAGS.filter(
+	// Phase 2 (warren-84da) opened `createPullRequest`; Phase 3 (warren-094b)
+	// opened the response-loop vocabulary. Every flag outside
+	// EXECUTABLE_MUTATION_FLAGS stays schema-refused — the schema change is
+	// the reviewable event (§7.1). Each executable flag is individually
+	// policy-gated: enabling any one changes the policy digest, so it always
+	// requires fresh owner approval.
+	const refused = MUTATION_FLAGS.filter(
 		(flag) => raw[flag] === true && !EXECUTABLE_MUTATION_FLAGS.includes(flag),
 	) as MutationFlag[];
-	if (enabled.length > 0) {
+	if (refused.length > 0) {
 		throw new ValidationError(
-			`mutation flag(s) enabled at 'repository policy.mutations': ${enabled.join(", ")} — no executable code path exists for them; only ${EXECUTABLE_MUTATION_FLAGS.join(", ")} may be enabled (warren-84da)`,
+			`mutation flag(s) enabled at 'repository policy.mutations': ${refused.join(", ")} — no executable code path exists for them; only ${EXECUTABLE_MUTATION_FLAGS.join(", ")} may be enabled (warren-84da, warren-094b)`,
 		);
 	}
-	if (raw.createPullRequest !== true) {
+	const enabled = EXECUTABLE_MUTATION_FLAGS.filter((flag) => raw[flag] === true);
+	if (enabled.length === 0) {
 		return NO_MUTATIONS;
 	}
-	return Object.freeze({ ...NO_MUTATIONS, createPullRequest: true });
+	return Object.freeze({
+		...NO_MUTATIONS,
+		...Object.fromEntries(enabled.map((flag) => [flag, true])),
+	} as Record<MutationFlag, boolean>);
 }
