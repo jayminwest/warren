@@ -47,9 +47,27 @@ const NOW = Date.parse("2026-08-26T00:00:00.000Z");
 const TOKEN = "test-token";
 const BRANCH = "warren/issue-812";
 const GOLDEN_PATH = join(import.meta.dir, "__golden__", "openclaw-pr-intent.json");
+const DEFAULT_GOLDEN_PATH = join(import.meta.dir, "__golden__", "default-pr-intent.json");
 const UPDATE = process.env.WARREN_UPDATE_GOLDENS === "1";
 
-function basePolicy(): Record<string, unknown> {
+/** The openclaw profile's PR-body contract (warren-e361): profile data. */
+const OPENCLAW_PR_BODY_CONTRACT = (
+	JSON.parse(
+		readFileSync(
+			new URL("../../profiles/openclaw.repository-policy.json", import.meta.url),
+			"utf8",
+		),
+	) as { prBodyContract: Record<string, unknown> }
+).prBodyContract;
+
+/** The generic fallback contract the intender uses when a profile declares none. */
+const DEFAULT_PR_BODY_CONTRACT: Record<string, unknown> = JSON.parse(
+	readFileSync(new URL("../../profiles/default.pr-body-contract.json", import.meta.url), "utf8"),
+) as Record<string, unknown>;
+
+function basePolicy(
+	prBodyContract: Record<string, unknown> | null = OPENCLAW_PR_BODY_CONTRACT,
+): Record<string, unknown> {
 	return {
 		schemaVersion: 1,
 		profileId: "openclaw",
@@ -62,6 +80,7 @@ function basePolicy(): Record<string, unknown> {
 		stalenessMaxDays: 90,
 		issueFirstRequired: true,
 		aiDisclosure: { required: true, evidenceRequired: true },
+		prBodyContract,
 		allowedWorkTypes: ["bug-fix", "feature", "docs", "test", "refactor"],
 		forbiddenPaths: [".github/workflows/*", "SECURITY.md"],
 		protectedPaths: ["docs/CONSTITUTION.md"],
@@ -281,7 +300,7 @@ describe("renderAndJournalPrIntent", () => {
 		expect(identity?.prNumber).toBeNull();
 	});
 
-	test("the golden body carries every policy-required section", async () => {
+	test("the golden body carries every profile-declared section", async () => {
 		const h = await harness({});
 		const result = renderAndJournalPrIntent(h.store, {
 			...intentInput(),
@@ -289,20 +308,68 @@ describe("renderAndJournalPrIntent", () => {
 			workItemId: h.workItem.id,
 		});
 		const body = result.intent.body.body;
+		// Headings and wording come from the openclaw profile contract, not source:
+		const contract = OPENCLAW_PR_BODY_CONTRACT as {
+			sections: { key: string; heading: string | null }[];
+			disclosureTemplate: string;
+			footerTemplate: string;
+		};
 		expect(body).toContain("Closes #812");
-		expect(body).toContain("## AI disclosure");
-		expect(body).toContain("## What Problem This Solves");
-		expect(body).toContain("## Solution");
-		expect(body).toContain("## User impact");
-		expect(body).toContain("## Evidence");
-		expect(body).toContain("## Warren run reference");
-		expect(body).toContain("## Operator review notes");
+		for (const section of contract.sections) {
+			if (section.heading !== null) {
+				expect(body).toContain(`## ${section.heading}`);
+			}
+		}
 		expect(body).toContain("maintainers may push edits");
-		expect(body).toContain("journaled, owner-approved cross-fork intent");
+		const fill: Record<string, string> = {
+			campaignId: "camp-openclaw-eod-v0",
+			agent: "pi",
+			provider: "anthropic",
+			model: "claude-sonnet-4-5",
+			approvedBy: "jayminwest",
+		};
+		const expand = (template: string) =>
+			template.replaceAll(/\{([A-Za-z]+)\}/g, (whole, name: string) => fill[name] ?? whole);
+		expect(body).toContain(expand(contract.footerTemplate));
+		expect(body).toContain(expand(contract.disclosureTemplate));
 		expect(result.intent.body.head).toBe(`warren-run-bot:${BRANCH}`);
 		expect(result.intent.body.base).toBe("main");
 		expect(result.intent.body.draft).toBe(true);
 		expect(result.intent.body.maintainer_can_modify).toBe(true);
+	});
+
+	test("a profile without a contract renders the shipped default contract (golden)", async () => {
+		const genericPolicy = basePolicy(null);
+		const h = await harness({ policy: genericPolicy });
+		const result = renderAndJournalPrIntent(h.store, {
+			...intentInput(),
+			campaignId: h.campaign.id,
+			workItemId: h.workItem.id,
+			policy: genericPolicy,
+		});
+		const machine = prIntentMachineJson(result);
+		const snapshot = { requestDigest: machine.requestDigest, request: machine.request };
+		const contract = DEFAULT_PR_BODY_CONTRACT as {
+			sections: { key: string; heading: string | null }[];
+		};
+		for (const section of contract.sections) {
+			if (section.heading !== null) {
+				expect(machine.request.body.body).toContain(`## ${section.heading}`);
+			}
+		}
+		// The default render must differ from the openclaw render: a generic
+		// contract is not the openclaw CI-gate contract (warren-e361).
+		const openclawGolden = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as {
+			requestDigest: string;
+		};
+		expect(machine.requestDigest).not.toBe(openclawGolden.requestDigest);
+		if (UPDATE) {
+			mkdirSync(join(import.meta.dir, "__golden__"), { recursive: true });
+			writeFileSync(DEFAULT_GOLDEN_PATH, `${JSON.stringify(snapshot, null, "\t")}\n`);
+		}
+		expect(existsSync(DEFAULT_GOLDEN_PATH)).toBe(true);
+		const golden = JSON.parse(readFileSync(DEFAULT_GOLDEN_PATH, "utf8")) as typeof snapshot;
+		expect(snapshot).toEqual(golden);
 	});
 
 	test("a double tick produces exactly one intent, not a second journal row", async () => {

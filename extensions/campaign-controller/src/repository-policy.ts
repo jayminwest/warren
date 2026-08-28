@@ -75,6 +75,63 @@ export interface AgentGuidance {
 	norms: string[];
 }
 
+/**
+ * Stable key of one renderable PR-body section (warren-e361). The renderer
+ * knows how to fill each key's content; the profile owns the heading, order,
+ * and required flag.
+ */
+export const PR_BODY_SECTION_KEYS = [
+	"closes",
+	"disclosure",
+	"problem",
+	"solution",
+	"userImpact",
+	"evidence",
+	"runReference",
+	"operatorNotes",
+] as const;
+
+export type PrBodySectionKey = (typeof PR_BODY_SECTION_KEYS)[number];
+
+/** Named template placeholders the renderer can fill (warren-e361). */
+export const PR_BODY_PLACEHOLDERS = [
+	"campaignId",
+	"agent",
+	"provider",
+	"model",
+	"approvedBy",
+	"runId",
+	"branch",
+	"forkOwner",
+	"issueNumber",
+] as const;
+
+export type PrBodyPlaceholder = (typeof PR_BODY_PLACEHOLDERS)[number];
+
+/** One entry in the profile-declared PR-body section order. */
+export interface PrBodySection {
+	key: PrBodySectionKey;
+	/** Rendered `##` heading, or `null` for a heading-less section. */
+	heading: string | null;
+	required: boolean;
+}
+
+/**
+ * Versioned PR-body contract (warren-e361): the profile-owned data behind
+ * every rendered pull-request body. Covered by the policy digest, so
+ * operator approval binds the exact wording.
+ */
+export interface PrBodyContract {
+	/** Contract revision; bumps whenever the wording or order changes. */
+	version: number;
+	/** Ordered sections; the renderer walks this list, declaring no headings. */
+	sections: PrBodySection[];
+	/** AI-disclosure paragraph with named placeholders. */
+	disclosureTemplate: string;
+	/** Footer paragraph with named placeholders. */
+	footerTemplate: string;
+}
+
 /** The normalized, validated V0 repository policy. */
 export interface RepositoryPolicy {
 	schemaVersion: typeof REPOSITORY_POLICY_SCHEMA_VERSION;
@@ -86,6 +143,12 @@ export interface RepositoryPolicy {
 	aiDisclosure: AiDisclosurePolicy;
 	/** Present when the profile declares it; `null` keeps old profiles valid. */
 	agentGuidance: AgentGuidance | null;
+	/**
+	 * Present when the profile declares it; `null` keeps old profiles valid
+	 * and the intender falls back to the shipped default contract
+	 * (`profiles/default.pr-body-contract.json`, warren-e361).
+	 */
+	prBodyContract: PrBodyContract | null;
 	allowedWorkTypes: WorkType[];
 	forbiddenPaths: string[];
 	protectedPaths: string[];
@@ -116,6 +179,7 @@ const TOP_LEVEL_FIELDS = [
 	"issueFirstRequired",
 	"aiDisclosure",
 	"agentGuidance",
+	"prBodyContract",
 	"allowedWorkTypes",
 	"forbiddenPaths",
 	"protectedPaths",
@@ -129,6 +193,87 @@ const TOP_LEVEL_FIELDS = [
 const SOURCE_FIELDS = ["url", "fetchedAt", "sha256"] as const;
 const DISCLOSURE_FIELDS = ["required", "evidenceRequired"] as const;
 const AGENT_GUIDANCE_FIELDS = ["version", "norms"] as const;
+const PR_BODY_CONTRACT_FIELDS = [
+	"version",
+	"sections",
+	"disclosureTemplate",
+	"footerTemplate",
+] as const;
+const PR_BODY_SECTION_FIELDS = ["key", "heading", "required"] as const;
+
+/** Current PR-body contract revision. */
+export const PR_BODY_CONTRACT_VERSION = 1;
+
+/**
+ * Fail closed on any `{token}` in a contract template that the renderer
+ * cannot fill (warren-e361): an unfilled placeholder would leak a broken
+ * literal into the rendered body.
+ */
+function requireKnownPlaceholders(template: string, path: string): void {
+	for (const match of template.matchAll(/\{([A-Za-z]+)\}/g)) {
+		if (!PR_BODY_PLACEHOLDERS.includes(match[1] as PrBodyPlaceholder)) {
+			throw new ValidationError(
+				`unknown placeholder {${match[1]}} at '${path}' — allowed: ${PR_BODY_PLACEHOLDERS.join(", ")}`,
+			);
+		}
+	}
+}
+
+/** Validate one `prBodyContract` value (also used on the default-contract load). */
+export function validatePrBodyContract(input: unknown, path: string): PrBodyContract {
+	const raw = asObject(input, path);
+	rejectUnknownKeys(raw, PR_BODY_CONTRACT_FIELDS, path);
+	const version = requireInt(raw, "version", path, { min: 1, max: 1_000 });
+	const sectionsRaw = raw.sections;
+	if (!Array.isArray(sectionsRaw) || sectionsRaw.length === 0) {
+		throw new ValidationError(`expected a non-empty array at '${path}.sections'`);
+	}
+	if (sectionsRaw.length > 20) {
+		throw new ValidationError(`expected at most 20 items at '${path}.sections'`);
+	}
+	const seen = new Set<string>();
+	const sections: PrBodySection[] = [];
+	for (const entry of sectionsRaw) {
+		const item = asObject(entry, `${path}.sections[]`);
+		rejectUnknownKeys(item, PR_BODY_SECTION_FIELDS, `${path}.sections[]`);
+		const key = requireString(item, "key", `${path}.sections[]`, { min: 1, max: 32 });
+		if (!PR_BODY_SECTION_KEYS.includes(key as PrBodySectionKey)) {
+			throw new ValidationError(
+				`unknown section key "${key}" at '${path}.sections[].key' — allowed: ${PR_BODY_SECTION_KEYS.join(", ")}`,
+			);
+		}
+		if (seen.has(key)) {
+			throw new ValidationError(`duplicate section key "${key}" at '${path}.sections[].key'`);
+		}
+		seen.add(key);
+		const heading = item.heading;
+		if (heading !== null && typeof heading !== "string") {
+			throw new ValidationError(`expected a string or null at '${path}.sections[].heading'`);
+		}
+		if (typeof heading === "string" && (heading.length === 0 || heading.length > 200)) {
+			throw new ValidationError(`expected 1–200 characters at '${path}.sections[].heading'`);
+		}
+		sections.push({
+			key: key as PrBodySectionKey,
+			heading,
+			required: requireBoolean(item, "required", `${path}.sections[]`),
+		});
+	}
+	const disclosureTemplate = requireString(raw, "disclosureTemplate", path, { min: 1, max: 2_000 });
+	requireKnownPlaceholders(disclosureTemplate, `${path}.disclosureTemplate`);
+	const footerTemplate = requireString(raw, "footerTemplate", path, { min: 1, max: 2_000 });
+	requireKnownPlaceholders(footerTemplate, `${path}.footerTemplate`);
+	return { version, sections, disclosureTemplate, footerTemplate };
+}
+
+function requirePrBodyContract(root: ReturnType<typeof asObject>): PrBodyContract | null {
+	if (root.prBodyContract === undefined || root.prBodyContract === null) {
+		return null;
+	}
+	// Optional by design (warren-e361): a previously-valid profile without a
+	// contract stays valid and renders through the default contract.
+	return validatePrBodyContract(root.prBodyContract, "repository policy.prBodyContract");
+}
 
 /**
  * Render the versioned agent-guidance block, clearly delimited, for
@@ -193,6 +338,7 @@ export function validateRepositoryPolicy(
 	}
 	const aiDisclosure = requireAiDisclosure(root);
 	const agentGuidance = requireAgentGuidance(root);
+	const prBodyContract = requirePrBodyContract(root);
 	const allowedWorkTypes = requireWorkTypes(root);
 	const forbiddenPaths = requireStringArray(root, "forbiddenPaths", "repository policy", {
 		minItems: 1,
@@ -221,6 +367,7 @@ export function validateRepositoryPolicy(
 		issueFirstRequired: true,
 		aiDisclosure,
 		agentGuidance,
+		prBodyContract,
 		allowedWorkTypes,
 		forbiddenPaths,
 		protectedPaths,
@@ -273,7 +420,7 @@ function requireAiDisclosure(root: ReturnType<typeof asObject>): AiDisclosurePol
 	);
 	if (!required || !evidenceRequired) {
 		throw new ValidationError(
-			"AI disclosure must require both disclosure and evidence at 'repository policy.aiDisclosure' — V0 only contributes where AI-assisted work is disclosed with evidence",
+			"must require both disclosure and evidence at 'repository policy.aiDisclosure' — V0 only contributes where AI-assisted work is disclosed with evidence",
 		);
 	}
 	return { required: true, evidenceRequired: true };
