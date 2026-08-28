@@ -1,5 +1,5 @@
 {
-	"version": 2,
+	"version": 3,
 	"sections": [
 		{ "key": "closes", "heading": null, "required": true },
 		{ "key": "disclosure", "heading": "AI disclosure", "required": true },
@@ -8,6 +8,7 @@
 		{ "key": "userImpact", "heading": "Impact", "required": true },
 		{ "key": "evidence", "heading": "Evidence", "required": true },
 		{ "key": "knownGap", "heading": "Known gap", "required": false },
+		{ "key": "responseSummary", "heading": "Response summary", "required": false },
 		{ "key": "runReference", "heading": "Run reference", "required": true },
 		{ "key": "operatorNotes", "heading": "Operator notes", "required": true }
 	],
