@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import { summarizeJudgeVerdicts, useJudgeVerdicts } from "@/pages/telemetry/judge-verdicts.ts";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
@@ -16,6 +17,8 @@ function MetricCell({
 	valueClassName,
 	note,
 	title,
+	mobileBottom,
+	mobileRight,
 	hasRightBorder,
 }: {
 	label: string;
@@ -23,24 +26,35 @@ function MetricCell({
 	valueClassName?: string;
 	note: string;
 	title?: string;
+	/** Below-md 2x2 grid hairlines: bottom (row 1) and/or right (column 1). */
+	mobileBottom?: boolean;
+	mobileRight?: boolean;
 	hasRightBorder: boolean;
 }) {
 	return (
 		<div
 			{...(title ? { title } : {})}
-			className={`flex min-w-0 flex-1 flex-col gap-2 border-b border-(--color-border) px-5 py-4 last:border-b-0 sm:border-b-0 ${
-				hasRightBorder ? "sm:border-r sm:border-r-(--color-border)" : ""
-			}`}
+			className={cn(
+				"flex min-w-0 flex-1 flex-col gap-1 border-(--color-border) p-3 md:gap-2 md:px-5 md:py-4",
+				mobileBottom ? "border-b md:border-b-0" : undefined,
+				mobileRight ? "border-r" : undefined,
+				hasRightBorder ? "md:border-r md:border-r-(--color-border)" : undefined,
+			)}
 		>
-			<span className="font-mono text-[10px] tracking-[0.08em] leading-3 text-(--color-text-3)">
+			<span className="font-mono text-[9px] tracking-[0.08em] leading-[11px] text-(--color-text-3) md:text-[10px] md:leading-3">
 				{label}
 			</span>
 			<span
-				className={`font-mono text-[24px] font-medium leading-7 ${valueClassName ?? "text-(--color-text)"}`}
+				className={cn(
+					"font-mono text-[18px] font-semibold leading-[22px] md:text-[24px] md:font-medium md:leading-7",
+					valueClassName ?? "text-(--color-text)",
+				)}
 			>
 				{value}
 			</span>
-			<span className="font-mono text-[10px] leading-[14px] text-(--color-text-3)">{note}</span>
+			<span className="hidden font-mono text-[10px] leading-[14px] text-(--color-text-3) md:inline">
+				{note}
+			</span>
 		</div>
 	);
 }
@@ -56,7 +70,7 @@ export function TelemetryMetricStrip() {
 		verdicts.data?.available === true ? summarizeJudgeVerdicts(verdicts.data.rows) : null;
 
 	return (
-		<div className="flex w-full flex-col overflow-hidden rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) sm:flex-row">
+		<div className="grid w-full grid-cols-2 overflow-hidden rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:flex">
 			<MetricCell
 				label="COST / MERGED PR"
 				value={
@@ -74,6 +88,8 @@ export function TelemetryMetricStrip() {
 							: "all spend over merges · failed runs included"
 				}
 				title="Windowed USD rollup divided by merged PRs (GET /analytics/runs outcomes)"
+				mobileBottom
+				mobileRight
 				hasRightBorder
 			/>
 			<MetricCell
@@ -81,6 +97,7 @@ export function TelemetryMetricStrip() {
 				value="—"
 				note="merged with no steer, no re-run, no human commit"
 				title="No API surface computes this figure yet"
+				mobileBottom
 				hasRightBorder
 			/>
 			<MetricCell
@@ -88,6 +105,7 @@ export function TelemetryMetricStrip() {
 				value="—"
 				note="median issue-to-merge lead time"
 				title="No API surface computes this figure yet"
+				mobileRight
 				hasRightBorder
 			/>
 			<MetricCell

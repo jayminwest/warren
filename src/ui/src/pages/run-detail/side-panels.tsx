@@ -35,12 +35,14 @@ function PanelShell({
 }
 
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
+	// Mobile (warren-ecd8): 82px label + 10px values below md — at 375px the
+	// desktop 104px label leaves ~207px for values like anthropic/claude-sonnet-4-6.
 	return (
 		<div className="flex gap-2.5">
-			<span className="w-[104px] shrink-0 text-[10px] leading-3 text-(--color-text-3)">
+			<span className="w-[82px] shrink-0 text-[10px] leading-3 text-(--color-text-3) md:w-[104px]">
 				{label}
 			</span>
-			<span className="min-w-0 flex-1 font-mono text-[9px] leading-3 break-words text-(--color-text-2)">
+			<span className="min-w-0 flex-1 font-mono text-[10px] leading-3 break-words text-(--color-text-2) md:text-[9px]">
 				{children}
 			</span>
 		</div>
@@ -48,6 +50,18 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 }
 
 const DASH = <span className="text-(--color-text-3)">—</span>;
+
+/** Total measured tokens across all four counters, or null if none is set. */
+function totalTokens(run: RunRow): number | null {
+	const parts = [
+		run.tokensInput,
+		run.tokensOutput,
+		run.tokensCacheRead,
+		run.tokensCacheWrite,
+	].filter((v): v is number => v !== null);
+	if (parts.length === 0) return null;
+	return parts.reduce((a, b) => a + b, 0);
+}
 
 export function RuntimePanel({ run }: { run: RunRow }) {
 	const handle = run.sandboxRunId ?? run.sandboxId ?? null;
@@ -87,8 +101,8 @@ export function BudgetPanel({ run }: { run: RunRow }) {
 				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">MEASURED</span>
 			}
 		>
-			<div className="flex items-baseline justify-between">
-				<span className="font-mono text-[22px] leading-7 font-medium tracking-[-0.04em] text-(--color-text)">
+			<div className="flex items-baseline justify-between gap-2">
+				<span className="font-mono text-[16px] leading-5 font-semibold tracking-[-0.04em] text-(--color-text) md:text-[22px] md:leading-7 md:font-medium">
 					{run.costUsd !== null
 						? run.costBasis === "subscription_estimate"
 							? `~${formatCostUsd(run.costUsd)} est.`
@@ -97,6 +111,19 @@ export function BudgetPanel({ run }: { run: RunRow }) {
 				</span>
 				<CostBasisNote run={run} />
 			</div>
+			{/*
+			 * Mobile (warren-ecd8): the mock's inline "N% OF CAP · x TOKENS" line.
+			 * The "% OF CAP" arm is unrenderable — the run row carries no
+			 * dispatch-time cap (same reason the progress bar stays out above),
+			 * and warren never fabricates numbers — so only the measured total
+			 * token count renders. The four token MetaRows stay (deliberate
+			 * divergence from the mock, which drops them).
+			 */}
+			{totalTokens(run) !== null ? (
+				<p className="font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+					{formatTokens(totalTokens(run) ?? 0)} TOKENS
+				</p>
+			) : null}
 			<MetaRow label="tokens in">
 				{run.tokensInput !== null ? formatTokens(run.tokensInput) : DASH}
 			</MetaRow>
