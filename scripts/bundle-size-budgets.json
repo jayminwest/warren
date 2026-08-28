@@ -13,18 +13,18 @@
 	"$comment_pl4ab6_mobile_2026_08_27": "SESSION ALLOWANCE (pl-4ab6 mobile conformance, 2026-08-27): the 25-issue mobile pass grows the bundle a few hundred bytes per PR across ~20 UI PRs merging in quick succession; per-PR re-baselining caused a serial budget chase (every merge re-dirtied every open sibling), and the run-pod builds measure ~1.3-1.5KB gzip cooler than CI (stale src/ui/node_modules), actively writing WRONG lower budgets. These js ceilings are a deliberate one-time headroom bump (~+6KB gzip) to let the plan land without per-PR budget churn. warren-2c97 (the pl-4ab6 verification sweep) MUST re-baseline all budgets DOWN to the true measured floor via rm -rf src/ui/node_modules and bun run check:bundle-size --update. The ratchet-only-goes-down rule resumes there.",
 	"totals": {
 		"raw": {
-			"js": 668000,
-			"css": 56000
+			"js": 669288,
+			"css": 52966
 		},
 		"gzip": {
-			"js": 196608,
-			"css": 11500
+			"js": 195236,
+			"css": 10427
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 196608,
-			"css": 11500
+			"js": 195236,
+			"css": 10427
 		}
 	}
 }
