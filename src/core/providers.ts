@@ -80,6 +80,10 @@ export const PROVIDER_ENV_REGISTRY = {
 	mistral: { envKeys: ["MISTRAL_API_KEY"], optionalEnvKeys: [] },
 	deepseek: { envKeys: ["DEEPSEEK_API_KEY"], optionalEnvKeys: [] },
 	zai: { envKeys: ["ZAI_API_KEY"], optionalEnvKeys: [] },
+	"opencode-go": {
+		envKeys: ["OPENCODE_API_KEY"],
+		optionalEnvKeys: [],
+	},
 } as const satisfies Record<string, ProviderEnvRegistration>;
 
 /** A provider name the registry knows. */

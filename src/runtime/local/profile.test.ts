@@ -60,6 +60,12 @@ describe("resolveEnvPassthrough", () => {
 		expect(resolveEnvPassthrough("pi", { provider: "OpenAI" })).toContain("OPENAI_BASE_URL");
 	});
 
+	test("forwards OPENCODE_API_KEY for an opencode-go pi run", () => {
+		const passthrough = resolveEnvPassthrough("pi", { provider: "opencode-go" });
+		expect(passthrough).toContain("OPENCODE_API_KEY");
+		expect(passthrough).toContain("ANTHROPIC_API_KEY");
+	});
+
 	test("warren-81e0: forwards the openrouter key set for an openrouter pi run", () => {
 		// Regression: a project `defaultProvider: openrouter` (e.g. warren's own
 		// `.warren/config.yaml`) folds onto the pi argv as `--provider openrouter`,

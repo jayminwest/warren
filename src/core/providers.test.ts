@@ -22,10 +22,11 @@ describe("PROVIDER_ENV_REGISTRY (warren-fb8d)", () => {
 			"mistral",
 			"deepseek",
 			"zai",
+			"opencode-go",
 		]) {
 			expect(isKnownProviderName(name)).toBe(true);
 		}
-		expect(KNOWN_PROVIDER_NAMES).toHaveLength(8);
+		expect(KNOWN_PROVIDER_NAMES).toHaveLength(9);
 	});
 
 	test("every entry declares at least one canonical env key shaped like an env var", () => {
@@ -60,7 +61,9 @@ describe("normalizeProviderName", () => {
 describe("providerEnvRegistration / primaryProviderEnvKey", () => {
 	test("returns the registry entry for known providers, case-insensitively", () => {
 		expect(providerEnvRegistration("openrouter")?.envKeys).toEqual(["OPENROUTER_API_KEY"]);
+		expect(providerEnvRegistration("opencode-go")?.envKeys).toEqual(["OPENCODE_API_KEY"]);
 		expect(primaryProviderEnvKey("Groq")).toBe("GROQ_API_KEY");
+		expect(primaryProviderEnvKey("opencode-go")).toBe("OPENCODE_API_KEY");
 	});
 
 	test("returns undefined for unknown providers", () => {
