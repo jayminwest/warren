@@ -922,9 +922,9 @@ describe("runTick with a profile bot grammar (warren-8c83)", () => {
 			{
 				node_id: "IC_bot_1",
 				id: 1,
-				user: { login: "clawreview-bot" },
+				user: { login: "clawsweeper[bot]" },
 				author_association: "NONE",
-				body: "### Findings\n- [P1] Clock not seeded: `src/scheduler/clock.ts` line 42",
+				body: "## Findings\n- [P1] Clock not seeded \u2014 `src/scheduler/clock.ts:42-44`",
 				created_at: "2026-08-26T02:00:00.000Z",
 				updated_at: "2026-08-26T02:00:00.000Z",
 				html_url: "https://github.com/openclaw/openclaw/pull/7#issuecomment-1",
