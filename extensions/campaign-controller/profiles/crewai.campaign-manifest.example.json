@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"campaignId": "camp-crewai-v0",
+	"campaignVersion": 1,
+	"upstream": {
+		"owner": "crewAIInc",
+		"repo": "crewAI"
+	},
+	"fork": {
+		"owner": "warren-run-bot",
+		"repo": "crewAI"
+	},
+	"defaultBranch": "main",
+	"issues": [6731, 6733, 6742],
+	"warren": {
+		"project": "crewai-contrib",
+		"agent": "pi",
+		"provider": "openrouter",
+		"model": "glm-5.3"
+	},
+	"promptDigest": "8796a4da289517baff237588f2dd47e88c2da2ad53772cf7fcb6523ee565e7fb",
+	"budget": {
+		"perRunUsd": 5,
+		"dailyUsd": 15,
+		"totalUsd": 60
+	},
+	"maxConcurrentRuns": 1,
+	"expiresAt": "2026-12-31T00:00:00.000Z",
+	"issueEvidenceTiers": {
+		"6742": "external-proof-required"
+	},
+	"approval": {
+		"approvedBy": "jayminwest",
+		"approvedAt": "2026-08-31T17:00:00.000Z",
+		"manifestDigest": "d3b49721bc419579404275d407f9b7984c00da8882003b01ab4a41acf2ced983"
+	}
+}

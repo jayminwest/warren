@@ -1,0 +1,11 @@
+{
+	"knownBotLogins": [
+		"coderabbitai[bot]"
+	],
+	"findingMarker": "_",
+	"findingLinePattern": "^\\*\\*(?<title>.+?)\\*\\*$",
+	"reReviewCommands": [
+		"@coderabbitai review",
+		"@coderabbitai full review"
+	]
+}

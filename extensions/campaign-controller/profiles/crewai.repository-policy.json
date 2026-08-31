@@ -1,0 +1,143 @@
+{
+	"schemaVersion": 1,
+	"profileId": "crewai",
+	"upstream": {
+		"owner": "crewAIInc",
+		"repo": "crewAI"
+	},
+	"source": {
+		"url": "https://raw.githubusercontent.com/crewAIInc/crewAI/main/.github/CONTRIBUTING.md",
+		"fetchedAt": "2026-08-31T17:00:00.000Z",
+		"sha256": "83531928bc6fd394a7d7bb701beb7bec3cd0ed080a85bd1fcd7f500746ade7f1"
+	},
+	"stalenessMaxDays": 90,
+	"issueFirstRequired": true,
+	"aiDisclosure": {
+		"required": true,
+		"evidenceRequired": true
+	},
+	"prBodyContract": {
+		"version": 1,
+		"sections": [
+			{
+				"key": "closes",
+				"heading": null,
+				"required": true
+			},
+			{
+				"key": "disclosure",
+				"heading": "AI disclosure (`llm-generated`)",
+				"required": true
+			},
+			{
+				"key": "problem",
+				"heading": "Problem",
+				"required": true
+			},
+			{
+				"key": "solution",
+				"heading": "Solution",
+				"required": true
+			},
+			{
+				"key": "userImpact",
+				"heading": "Impact",
+				"required": true
+			},
+			{
+				"key": "evidence",
+				"heading": "Evidence",
+				"required": true
+			},
+			{
+				"key": "knownGap",
+				"heading": "Known gap",
+				"required": false
+			},
+			{
+				"key": "responseSummary",
+				"heading": "Response summary",
+				"required": false
+			},
+			{
+				"key": "runReference",
+				"heading": "Warren run reference",
+				"required": true
+			},
+			{
+				"key": "operatorNotes",
+				"heading": "Operator review notes",
+				"required": true
+			}
+		],
+		"disclosureTemplate": "This contribution was prepared by an AI agent under the warren campaign `{campaignId}` (agent `{agent}` on `{provider}/{model}`), approved by {approvedBy}. Per this repository's AI-contribution policy it requires the `llm-generated` label; a cross-fork author cannot apply labels, so maintainers are kindly asked to add it. Validation evidence is below.",
+		"footerTemplate": "Opened by the warren campaign controller from a journaled, owner-approved cross-fork intent (campaign `{campaignId}`). The exact request was journaled before any posting; when the campaign policy does not enable the create mutation, this body exists only as dry-run evidence and no pull request is opened."
+	},
+	"commentTemplates": {
+		"version": 1,
+		"findingResponseTemplate": "Addressed in follow-up run `{runId}` (PR #{prNumber}, campaign `{campaignId}`):\n\n{findingTitles}\n\nUpdated evidence:\n{evidenceLines}",
+		"reReviewCommandTemplate": "Body refreshed to address {findingTitles} — `{runId}`. {reReviewCommand}",
+		"maxCommentsPerDay": 20
+	},
+	"agentGuidance": {
+		"version": 1,
+		"norms": [
+			"Produce the smallest possible diff that resolves the issue; scope changes to what the reviewed issue actually requires.",
+			"Write behavior-focused unit tests for the fix: assert observable behavior, never implementation details.",
+			"Never stringify LLMMessage.content with str(); collapse message content to text with the message_content_text helper from crewai.utilities.agent_utils.",
+			"Never modify files under docs/v*/ or docs/images/ — those are frozen release snapshots managed by devtools; current docs live under docs/edge/en/ and register in docs/docs.json.",
+			"Use Conventional Commits for every commit message and the PR title (feat|fix|docs|refactor|perf|test|chore with a scope), for example fix(llms): map default context window.",
+			"Run the repository's own gates before finishing: uv run pytest on the touched test files, plus the configured pre-commit hooks; keep changes DRY and YAGNI.",
+			"State unprovable claims as known gaps rather than omitting them; silent omissions are harder for review to catch than declared uncertainty."
+		]
+	},
+	"evidenceTiers": [
+		"local-provable",
+		"external-proof-required"
+	],
+	"allowedWorkTypes": [
+		"bug-fix",
+		"docs",
+		"test"
+	],
+	"forbiddenPaths": [
+		".github/workflows/*",
+		".github/dependabot.yml",
+		".github/codeql/*",
+		"docs/v*/*",
+		"docs/images/*",
+		"LICENSE",
+		".pre-commit-config.yaml"
+	],
+	"protectedPaths": [
+		"uv.lock",
+		"pyproject.toml",
+		"conftest.py",
+		".python-version",
+		".github/*"
+	],
+	"upstreamObservedMaxOpenPrs": 750,
+	"maxOpenPrs": 3,
+	"maxNewPrsPerDay": 1,
+	"requiredChecks": [
+		"lint",
+		"tests (3.12)",
+		"type-checker (3.12)"
+	],
+	"mutations": {
+		"createPullRequest": false,
+		"followUpPush": false,
+		"updatePullRequest": false,
+		"pushCommits": false,
+		"updateBranch": false,
+		"postComment": false,
+		"editComment": false,
+		"requestReview": false,
+		"addLabels": false,
+		"closePullRequest": false,
+		"reopenPullRequest": false,
+		"enableAutoMerge": false,
+		"mergePullRequest": false,
+		"editIssue": false
+	}
+}
