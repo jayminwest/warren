@@ -489,6 +489,8 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_ANTHROPIC_SECRET_NAME` / `_KEY` | `warren-anthropic-key` / `api-key` | optional agent-key `secretKeyRef` |
 | `WARREN_K8S_GIT_SECRET_NAME` / `_KEY` | `warren-git-token` / `token` | init-container git token source |
 | `WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB` / `_LIMIT_MIB` | `10240` / `10240` (10Gi) | cluster-wide default ephemeral-storage budget (request + limit + emptyDir `sizeLimit`). A per-project `resources` block beats it (§7.3.1) |
+| `WARREN_K8S_MEMORY_REQUEST_MIB` / `_LIMIT_MIB` | `2048` / `4096` | cluster-wide default memory budget; a per-project `resources` block beats it |
+| `WARREN_K8S_CPU_REQUEST_MILLICORES` / `_LIMIT_MILLICORES` | `1000` / `4000` | cluster-wide default cpu budget; a per-project `resources` block beats it. Lower the request on a small node (a two-core laptop VM never schedules the 1-CPU default) |
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
 | `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
 | `WARREN_GITHUB_APP_REGISTRATION` | unset (fail-safe default, §2.6) | existence gate for the `/github-app/*` registration surface (warren-e320). `on`/`off` overrides the default. Gated-off routes answer 404 |
@@ -509,6 +511,7 @@ The verbs are exactly what `src/runtime/k8s/` exercises:
 | `pods` | `get, list, watch, create, delete` | dispatch (create), the pod-watcher informer (list/watch), status reads (get), reap + GC (delete) |
 | `pods/log` | `get, watch` | the pod-log NDJSON event stream (§6.1 / §5.1) |
 | `configmaps` | `get, list, create, delete` | per-run seed-file ConfigMaps — create at dispatch, list/delete at GC |
+| `events` | `get, list, watch` | the pod-warning-events watcher (`src/runtime/k8s/pod-event-watcher.ts`, warren-32f8) list-watches core Events to surface `FailedScheduling`, `FailedAttachVolume`, and image-pull stalls on the run's event stream. Without it the watcher reconnects on 403 forever |
 
 Two verb families are absent on purpose:
 
@@ -528,7 +531,7 @@ kubectl auth can-i --as=system:serviceaccount:warren:warren \
 
 If dispatch fails with a `403 Forbidden` from the K8s API, check this Role first.
 A missing verb shows up as pods that never get created, or as an informer that never attaches.
-`configmaps` and `watch` are the common gaps — the plan text under-specified them.
+`configmaps`, `watch`, and `events` are the common gaps — the plan text under-specified them.
 
 ### 4.1 NetworkPolicy — run-pod egress contract (warren-8dbb)
 

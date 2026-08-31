@@ -152,6 +152,37 @@ describe("resolveK8sPodConfig — ephemeral-storage", () => {
 		expect(c.limits.memoryMiB).toBe(8192);
 		expect(c.requests.memoryMiB).toBe(2048);
 	});
+
+	// cpu follows the same chain: a two-core laptop VM never schedules the
+	// 1-CPU default request, and the repo cannot always carry a .warren/ block.
+	test("reads bounded millicore integers from the WARREN_K8S_CPU_*_MILLICORES env", () => {
+		const c = resolveK8sPodConfig({
+			WARREN_K8S_CPU_REQUEST_MILLICORES: "250",
+			WARREN_K8S_CPU_LIMIT_MILLICORES: "2000",
+		});
+		expect(c.requests.cpuMillicores).toBe(250);
+		expect(c.limits.cpuMillicores).toBe(2000);
+	});
+
+	test("invalid cpu env falls back to the 1/4 CPU defaults", () => {
+		for (const raw of ["9", "64001", "-5", "1.5", "  ", "abc"]) {
+			const c = resolveK8sPodConfig({
+				WARREN_K8S_CPU_REQUEST_MILLICORES: raw,
+				WARREN_K8S_CPU_LIMIT_MILLICORES: raw,
+			});
+			expect(c.requests.cpuMillicores).toBe(1000);
+			expect(c.limits.cpuMillicores).toBe(4000);
+		}
+	});
+
+	test("a per-project cpu block beats the cpu env default", () => {
+		const c = resolveK8sPodConfig(
+			{ WARREN_K8S_CPU_REQUEST_MILLICORES: "250" },
+			{ requests: { cpuMillicores: 500 } },
+		);
+		expect(c.requests.cpuMillicores).toBe(500);
+		expect(c.limits.cpuMillicores).toBe(4000);
+	});
 });
 
 describe("buildRunPod — resource rendering", () => {
