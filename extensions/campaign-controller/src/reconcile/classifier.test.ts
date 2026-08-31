@@ -48,6 +48,15 @@ const PROFILE_B = validateBotGrammar({
 	reReviewCommands: ["@reviewbot please review again"],
 });
 
+/** The observed ClawSweeper format on openclaw (warren-442e) — same data the committed profile pins. */
+const PROFILE_CLAWSWEEPER = validateBotGrammar({
+	knownBotLogins: ["clawsweeper[bot]"],
+	findingMarker: "## Findings",
+	findingLinePattern:
+		"^- \\[(?<priority>P[0-9])\\] (?<title>.+?)(?: — `(?<file>[^`]+?)(?::(?<line>[0-9]+)(?:-[0-9]+)?)?`)?$",
+	reReviewCommands: ["@clawsweeper re-review"],
+});
+
 /** A real captured lint-bot comment — marker, two findings, trailing blank. */
 const CAPTURED_LINT_COMMENT = `### Findings
 - Fix unused import: src/index.ts:42 [high]
@@ -118,6 +127,25 @@ describe("classifyEvent", () => {
 		// a maintainer-side question, with no findings extracted.
 		const a = classifyComment("EV_BOT_2", reviewbotComment, "reviewbot", "MEMBER", PROFILE_A);
 		expect(a?.category).toBe("maintainer_question");
+	});
+
+	test("parses the observed ClawSweeper finding line verbatim (warren-442e)", () => {
+		// Body captured on openclaw PR 132081: App bot login, '## Findings'
+		// marker, em-dash separator, backticked 'file:line-range'.
+		const body =
+			"## Findings\n" +
+			"- [P1] Bind each delivery outcome to its originating cron run — `" +
+			"src/cron/service/failure-alerts.ts:217-222`";
+		const row = classifyComment("EV_CS_1", body, "clawsweeper[bot]", "NONE", PROFILE_CLAWSWEEPER);
+		expect(row?.category).toBe("review_bot_findings");
+		const findings = findingsOf(row);
+		expect(findings).toHaveLength(1);
+		const finding = findings[0];
+		expect(finding?.title?.value).toBe("Bind each delivery outcome to its originating cron run");
+		expect(finding?.priority?.value).toBe("P1");
+		expect(finding?.file?.value).toBe("src/cron/service/failure-alerts.ts");
+		// A line range captures the first number only.
+		expect(finding?.line?.value).toBe(217);
 	});
 
 	test("classifies a plain maintainer comment as a question under both profiles", () => {

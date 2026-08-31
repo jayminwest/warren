@@ -33,6 +33,26 @@ describe("validateBotGrammar", () => {
 		);
 	});
 
+	test("accepts App bot logins '<owner>[bot]' and exact-matches them", () => {
+		// GitHub reports a GitHub App's author login with the literal '[bot]'
+		// suffix (observed: 'clawsweeper[bot]'); the classifier exact-matches,
+		// so validation must admit the same literals (warren-442e).
+		const grammar = validateBotGrammar({ ...VALID, knownBotLogins: ["clawsweeper[bot]"] });
+		expect(grammar.knownBotLogins).toEqual(["clawsweeper[bot]"]);
+	});
+
+	test("rejects malformed App bot logins", () => {
+		expect(() => validateBotGrammar({ ...VALID, knownBotLogins: ["[bot]"] })).toThrow(
+			/invalid bot login/,
+		);
+		expect(() => validateBotGrammar({ ...VALID, knownBotLogins: ["ok-name[gogot]"] })).toThrow(
+			/invalid bot login/,
+		);
+		expect(() => validateBotGrammar({ ...VALID, knownBotLogins: ["ok-name[bot][bot]"] })).toThrow(
+			/invalid bot login/,
+		);
+	});
+
 	test("rejects a pattern that does not compile", () => {
 		expect(() => validateBotGrammar({ ...VALID, findingLinePattern: "(?<title" })).toThrow(
 			/invalid regex/,

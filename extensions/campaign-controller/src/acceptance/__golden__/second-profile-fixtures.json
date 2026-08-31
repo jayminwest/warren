@@ -16,9 +16,9 @@
 			"userImpact": "Contributors see stable CI results for scheduler changes.",
 			"operatorNotes": "Reviewed during the dry-run session."
 		},
-		"botLogin": "clawreview-bot",
-		"botComment": "### Findings\n- [P1] Clock not seeded: `src/scheduler/clock.ts` line 42\n- [P2] Stale assertion: `src/scheduler/scheduler.test.ts` line 88",
-		"reReviewCommand": "@clawreview-bot recheck please",
+		"botLogin": "clawsweeper[bot]",
+		"botComment": "## Findings\n- [P1] Clock not seeded — `src/scheduler/clock.ts:42-44`\n- [P2] Stale assertion — `src/scheduler/scheduler.test.ts:88`",
+		"reReviewCommand": "@clawsweeper re-review",
 		"guidanceFragment": "smallest possible diff"
 	},
 	"meridian": {
