@@ -43,6 +43,12 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "create", "delete"]
+  # The pod-warning-events watcher (src/runtime/k8s/pod-event-watcher.ts)
+  # list-watches core v1 Events to surface FailedScheduling / FailedAttachVolume
+  # / image-pull stalls on the run's event stream.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
 ---
 # Binds the control-plane SA (in the `warren` namespace) to the Role in
 # `warren-runs`. A RoleBinding's subject may live in a different namespace than

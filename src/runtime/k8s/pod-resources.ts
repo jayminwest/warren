@@ -9,6 +9,8 @@
 
 import type { V1ResourceRequirements } from "@kubernetes/client-node";
 import {
+	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
+	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
 	DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
 	DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
 	DEFAULT_K8S_MEMORY_LIMIT_MIB,
@@ -31,6 +33,40 @@ function pickMiB(env: ResourceEnv, key: string, fallback: number): number {
 	if (raw === undefined || raw === "") return fallback;
 	const n = Number(raw);
 	return Number.isInteger(n) && n >= 64 && n <= 1_048_576 ? n : fallback;
+}
+
+/**
+ * Read a millicore env override, validated against the same 10m..64 CPU bounds
+ * the `.warren/config.yaml` `resources` schema enforces. Invalid values fall
+ * back to `fallback`, same as `pickMiB`.
+ */
+function pickMillicores(env: ResourceEnv, key: string, fallback: number): number {
+	const raw = env[key]?.trim();
+	if (raw === undefined || raw === "") return fallback;
+	const n = Number(raw);
+	return Number.isInteger(n) && n >= 10 && n <= 64_000 ? n : fallback;
+}
+
+/**
+ * Resolve the cpu request/limit (millicores) for a run pod. Same precedence
+ * as `resolveMemoryMiB`: the per-project `resources` block wins, then the
+ * `WARREN_K8S_CPU_REQUEST_MILLICORES` / `_LIMIT_MILLICORES` env defaults,
+ * then the compiled-in 1/4 CPU defaults. The env slot serves a repo that
+ * cannot carry a `.warren/` directory and a small cluster (a laptop VM with
+ * two allocatable cores) where the 1-CPU default request never schedules.
+ */
+export function resolveCpuMillicores(
+	env: ResourceEnv,
+	resources: ResourcesConfig | null | undefined,
+): { request: number; limit: number } {
+	return {
+		request:
+			resources?.requests?.cpuMillicores ??
+			pickMillicores(env, "WARREN_K8S_CPU_REQUEST_MILLICORES", DEFAULT_K8S_CPU_REQUEST_MILLICORES),
+		limit:
+			resources?.limits?.cpuMillicores ??
+			pickMillicores(env, "WARREN_K8S_CPU_LIMIT_MILLICORES", DEFAULT_K8S_CPU_LIMIT_MILLICORES),
+	};
 }
 
 /**

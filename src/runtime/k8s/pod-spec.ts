@@ -28,8 +28,6 @@
 
 import type { V1Container, V1Pod, V1PodSecurityContext } from "@kubernetes/client-node";
 import {
-	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
-	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
 	DEFAULT_K8S_NETWORK,
 	type NetworkPolicy,
 	type ResourcesConfig,
@@ -52,6 +50,7 @@ import {
 import {
 	clampRequests,
 	type ResolvedResourceQuantities,
+	resolveCpuMillicores,
 	resolveEphemeralStorageMiB,
 	resolveMemoryMiB,
 	resourceRequirements,
@@ -281,6 +280,7 @@ export function resolveK8sPodConfig(
 	// Per-project resources block > WARREN_K8S_EPHEMERAL_STORAGE_*_MIB > 10Gi (warren-4a95).
 	const ephemeral = resolveEphemeralStorageMiB(env, resources);
 	const memory = resolveMemoryMiB(env, resources); // warren-06b8 chain: see pod-resources.ts
+	const cpu = resolveCpuMillicores(env, resources);
 	const config: K8sPodConfig = {
 		namespace: pickString(env, "WARREN_K8S_NAMESPACE", DEFAULT_K8S_NAMESPACE),
 		agentImage: pickString(env, "WARREN_K8S_AGENT_IMAGE", DEFAULT_K8S_AGENT_IMAGE),
@@ -289,12 +289,12 @@ export function resolveK8sPodConfig(
 		gid: WARREN_POD_GID,
 		requests: {
 			memoryMiB: memory.requestMiB,
-			cpuMillicores: resources?.requests?.cpuMillicores ?? DEFAULT_K8S_CPU_REQUEST_MILLICORES,
+			cpuMillicores: cpu.request,
 			ephemeralStorageMiB: ephemeral.requestMiB,
 		},
 		limits: {
 			memoryMiB: memory.limitMiB,
-			cpuMillicores: resources?.limits?.cpuMillicores ?? DEFAULT_K8S_CPU_LIMIT_MILLICORES,
+			cpuMillicores: cpu.limit,
 			ephemeralStorageMiB: ephemeral.limitMiB,
 		},
 		network: resources?.network ?? DEFAULT_K8S_NETWORK,
