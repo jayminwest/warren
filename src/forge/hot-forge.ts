@@ -76,6 +76,16 @@ export class HotForge implements Forge {
 		return this.delegate.parseRepoRef(cloneUrl);
 	}
 
+	/**
+	 * A getter, not a method: `repoLayout` is optional on the contract and
+	 * its PRESENCE signals a layout-declaring forge, so this wrapper must
+	 * mirror whatever the current delegate declares.
+	 */
+	get repoLayout(): Forge["repoLayout"] {
+		const layout = this.delegate.repoLayout;
+		return layout === undefined ? undefined : layout.bind(this.delegate);
+	}
+
 	gitCredential(ref: Parameters<Forge["gitCredential"]>[0]) {
 		return this.delegate.gitCredential(ref);
 	}

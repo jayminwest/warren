@@ -66,6 +66,18 @@
 			]
 		},
 		{
+			"name": "ado-api-literal-is-forge-only",
+			"why": "The dev.azure.com and visualstudio.com literals live only inside the forge seam, the same rule the api.github.com literal answers to (docs/design/forge-contract.md §0). Domain code names a RepoRef, never an Azure DevOps URL.",
+			"from": ["src/", "scripts/"],
+			"forbidPattern": "dev\\.azure\\.com|visualstudio\\.com",
+			"allow": [
+				{
+					"path": "src/forge/",
+					"why": "the forge seam itself — it owns the Azure DevOps transport"
+				}
+			]
+		},
+		{
 			"name": "forge-transport-is-forge-only",
 			"why": "GitHub transport (src/forge/github/ internals, octokit-family packages) is reached only through the Forge contract (src/forge/contract.ts). The allow list below is the phase-3 ratchet (plan pl-d1c9): it only shrinks, and reaches zero when the callers migrate onto the seam.",
 			"from": ["src/", "scripts/"],

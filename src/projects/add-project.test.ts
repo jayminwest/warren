@@ -116,6 +116,19 @@ describe("addProject", () => {
 		expect(await repo.listAll()).toHaveLength(0);
 	});
 
+	test("rejects a gitUrl carrying userinfo at registration, whatever the forge", async () => {
+		await expect(
+			addProject({
+				repo,
+				config: CFG,
+				gitUrl: "https://org@dev.azure.com/org/Proj/_git/repo",
+				spawn: NOOP_SPAWN,
+				clone: async () => ({ localPath: "x", defaultBranch: "main" }),
+			}),
+		).rejects.toThrow(/must not carry credentials or a username/);
+		expect(await repo.listAll()).toHaveLength(0);
+	});
+
 	test("registers a forge-owned non-GitHub URL via the forge fallback (warren-2600)", async () => {
 		const row = await addProject({
 			repo,

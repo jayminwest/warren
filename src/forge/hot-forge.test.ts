@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AdoForge } from "./ado/provider.ts";
 import type { Forge } from "./contract.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { generateTestAppKeyPair, stubGitHubAppServer } from "./github-app/test-helpers.ts";
@@ -13,6 +14,16 @@ describe("HotForge", () => {
 			fake.parseRepoRef("https://fake.invalid/o/r"),
 		);
 		expect(hot.activated).toBe(false);
+	});
+
+	test("mirrors the delegate's repoLayout declaration — present, layout-declaring, or absent", () => {
+		const layoutForge = new AdoForge({ token: "t" });
+		const hot = new HotForge(layoutForge);
+		expect(hot.repoLayout).toBeDefined();
+		expect(hot.repoLayout?.("https://dev.azure.com/acme/Widgets/_git/widget")).toEqual(
+			layoutForge.repoLayout("https://dev.azure.com/acme/Widgets/_git/widget"),
+		);
+		expect(new HotForge(new FakeForge()).repoLayout).toBeUndefined();
 	});
 
 	test("activateApp swaps the delegate to a GitHubAppForge without a restart", () => {
@@ -41,5 +52,15 @@ describe("HotForge", () => {
 		).toThrow();
 		// The boot forge still answers — a failed activation does not leave a half-swapped seam.
 		expect(hot.activated).toBe(false);
+	});
+
+	test("mirrors the delegate's repoLayout declaration — present, layout-declaring, or absent", () => {
+		const layoutForge = new AdoForge({ token: "t" });
+		const hot = new HotForge(layoutForge);
+		expect(hot.repoLayout).toBeDefined();
+		expect(hot.repoLayout?.("https://dev.azure.com/acme/Widgets/_git/widget")).toEqual(
+			layoutForge.repoLayout("https://dev.azure.com/acme/Widgets/_git/widget"),
+		);
+		expect(new HotForge(new FakeForge()).repoLayout).toBeUndefined();
 	});
 });

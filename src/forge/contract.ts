@@ -206,6 +206,17 @@ export interface Forge {
 	parseRepoRef(cloneUrl: string): RepoRef | null;
 
 	/**
+	 * OPTIONAL. The `<owner>/<name>` pair warren lays a clone out under
+	 * (`/data/projects/<owner>/<name>`) for a URL this forge owns. Layout
+	 * only — the pair never crosses back into the forge. A forge whose
+	 * clone URLs end in `<owner>/<name>` leaves this out and the projects
+	 * module derives the pair from the last two path segments; a forge with
+	 * a deeper coordinate (Azure DevOps: org/project/_git/repo) supplies
+	 * it. NEVER throws; a URL this forge does not own returns `null`.
+	 */
+	repoLayout?(cloneUrl: string): { owner: string; name: string } | null;
+
+	/**
 	 * Mint a git-over-HTTPS credential for one operation (§4). GitHubApp:
 	 * POST /app/installations/:id/access_tokens; GitHubPat: the static secret
 	 * with `expiresAt: null`.

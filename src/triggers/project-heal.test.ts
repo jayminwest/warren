@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectRow } from "../db/schema.ts";
+import { AdoForge } from "../forge/ado/provider.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import {
 	createProjectCloneHealer,
@@ -104,6 +105,32 @@ describe("recloneMissingProject", () => {
 			gitCredential: { username: "x-access-token", secret: "ghs_secret", host: "github.com" },
 		});
 	});
+
+	test("lays a forge-owned URL out under the owner/name addProject chose", async () => {
+		const calls: Record<string, unknown>[] = [];
+		await recloneMissingProject({
+			project: makeProject({ gitUrl: "https://dev.azure.com/acme/Widgets/_git/widget" }),
+			config: CONFIG,
+			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			forge: new AdoForge({ token: "t" }),
+			clone: async (input) => {
+				calls.push({ ...input, spawn: undefined });
+				return { localPath: input.config.root, defaultBranch: input.defaultBranch ?? "" };
+			},
+		});
+		expect(calls[0]).toMatchObject({ owner: "acme-Widgets", name: "widget" });
+	});
+
+	test("throws on a forge-owned URL when no forge is in reach", async () => {
+		await expect(
+			recloneMissingProject({
+				project: makeProject({ gitUrl: "https://dev.azure.com/acme/Widgets/_git/widget" }),
+				config: CONFIG,
+				spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+				clone: async (input) => ({ localPath: input.config.root, defaultBranch: "" }),
+			}),
+		).rejects.toThrow(/unrecognized GitHub URL/);
+	});
 });
 
 describe("createProjectCloneHealer", () => {
@@ -144,6 +171,44 @@ describe("createProjectCloneHealer", () => {
 		expect(await heal(makeProject())).toBe("recloned");
 		expect(recloneCalls).toBe(1);
 		expect(logger.logs.some((l) => l.msg === "scheduler.project_recloned")).toBe(true);
+	});
+
+	test("forwards the boot-resolved forge to the re-clone, so non-GitHub rows heal", async () => {
+		const tracker = new ProjectHealTracker();
+		const forge = new AdoForge({ token: "t" });
+		let seenForge: unknown = "unset";
+		const heal = createProjectCloneHealer({
+			tracker,
+			config: CONFIG,
+			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			exists: () => false,
+			forge,
+			reclone: async (input) => {
+				seenForge = input.forge;
+			},
+			now: () => new Date(0),
+		});
+		expect(await heal(makeProject())).toBe("recloned");
+		expect(seenForge).toBe(forge);
+	});
+
+	test("forwards the minted credential as gitCredential, so private re-clones authenticate", async () => {
+		const tracker = new ProjectHealTracker();
+		const minted = { username: "x-access-token", secret: "s3cret", host: "dev.azure.com" };
+		let seenCredential: unknown = "unset";
+		const heal = createProjectCloneHealer({
+			tracker,
+			config: CONFIG,
+			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			exists: () => false,
+			mintCredential: async () => minted,
+			reclone: async (input) => {
+				seenCredential = input.gitCredential;
+			},
+			now: () => new Date(0),
+		});
+		expect(await heal(makeProject())).toBe("recloned");
+		expect(seenCredential).toBe(minted);
 	});
 
 	test("failed re-clone backs off and logs once, not every tick", async () => {

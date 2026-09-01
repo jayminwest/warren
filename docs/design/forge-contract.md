@@ -70,6 +70,13 @@ interface Forge {
   // registry tries the next forge in its fixed boot order (§1.1).
   parseRepoRef(cloneUrl: string): RepoRef | null;
 
+  // OPTIONAL. The <owner>/<name> pair warren lays a clone out under
+  // (/data/projects/<owner>/<name>). Layout only — the pair never crosses
+  // back into the forge. A forge whose URLs end in <owner>/<name> leaves
+  // it out and the projects module reads the last two path segments; a
+  // deeper coordinate (Azure DevOps: org/project/_git/repo) supplies it.
+  repoLayout?(cloneUrl: string): { owner: string; name: string } | null;
+
   // Mint a git-over-HTTPS credential for one operation.
   // The load-bearing method — see §4. Callers invoke it immediately before
   // the git process spawns and MUST NOT hold the result across an await
@@ -159,10 +166,11 @@ loudly). Settled as follows:
 
 ```ts
 // Opaque handle — the domain compares and passes these, and reads nothing
-// out of them. A GitHubForge packs owner/repo/host; FakeForge packs a
-// directory path. NOTHING outside the provider destructures a RepoRef.
+// out of them. A GitHubForge packs owner/repo/host; AdoForge packs the
+// org/project/repo triple; FakeForge packs a directory path. NOTHING
+// outside the provider destructures a RepoRef.
 interface RepoRef {
-  readonly forge: string;  // registry key: "github" | "fake"
+  readonly forge: string;  // registry key: "github" | "ado" | "fake"
   readonly key: string;    // provider-private, stable, safe to log
 }
 
@@ -443,14 +451,26 @@ PAT-only degradation as the primary path — is retired.
 Every declared flag gets a stated fallback. `unsupported` is the error kind a
 provider returns when the domain calls past a false flag.
 
-| Capability | GitHubApp | GitHubPat | FakeForge | Domain behavior when absent |
-| --- | --- | --- | --- | --- |
-| `checkRuns` | yes | **no** | yes | CI-fixer poller stays idle and logs one notice per project. No run dispatches. |
-| `jobLogs` | yes | yes | synthetic | CI-fixer prompt omits the log tail and says so. |
-| `pullRequestBodyEdit` | yes | yes | yes | Preview annotation sub-step reports `skipped`, and the reap continues. |
-| `branchDelete` | yes | yes | yes | Acceptance cleanup logs and moves on. Never fails a scenario. |
-| `botIdentity` | yes | no | yes | Fall back to `WARREN_GIT_AUTHOR_*`, which is today's only source. |
-| `credentialLifetime` | `short-lived` | `static` | `static` | Re-mint path skipped when static. |
+| Capability | GitHubApp | GitHubPat | AdoForge | FakeForge | Domain behavior when absent |
+| --- | --- | --- | --- | --- | --- |
+| `checkRuns` | yes | **no** | yes | yes | CI-fixer poller stays idle and logs one notice per project. No run dispatches. |
+| `jobLogs` | yes | yes | yes | synthetic | CI-fixer prompt omits the log tail and says so. |
+| `pullRequestBodyEdit` | yes | yes | yes | yes | Preview annotation sub-step reports `skipped`, and the reap continues. |
+| `branchDelete` | yes | yes | yes | yes | Acceptance cleanup logs and moves on. Never fails a scenario. |
+| `botIdentity` | yes | no | no | yes | Fall back to `WARREN_GIT_AUTHOR_*`, which is today's only source. |
+| `credentialLifetime` | `short-lived` | `static` | `static` | `static` | Re-mint path skipped when static. |
+
+`AdoForge` (`src/forge/ado/`, `WARREN_FORGE=ado`) is the Azure DevOps Repos
+arm. A personal access token with Code (read & write) and Build (read)
+reaches both the pull-request and the Pipelines APIs, so `checkRuns` and
+`jobLogs` are true from the first cut: a build is the check run, its id is
+the `jobId`, and the log tail is the first failed task's log out of the
+build timeline. `partiallySucceeded` counts as failing, because a task did
+fail. Azure DevOps pull requests never cross repositories, so a
+fork-qualified head (`owner:branch`) is `unsupported` rather than
+mis-targeted, and a duplicate open is a 409 (TF401179) that resolves to the
+existing PR. A rejected token is a 203 carrying the sign-in page, not a 401;
+the transport reads it as `unauthorized`.
 
 **`checkRuns` is the one that hurts, and it is not a warren limitation.** A
 fine-grained personal access token cannot call the Checks API. GitHub's own

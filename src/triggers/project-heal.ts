@@ -31,9 +31,10 @@
 import { existsSync } from "node:fs";
 import { formatError } from "../core/errors.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import type { Forge } from "../forge/contract.ts";
 import { cloneProjectRepo, type SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
-import { parseGitHubUrl } from "../projects/url.ts";
+import { parseProjectUrl } from "../projects/url.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 
 /** Default gap between repeated notices for the same unresolved condition. */
@@ -108,6 +109,11 @@ export interface RecloneMissingProjectInput {
 	readonly timeoutMs?: number;
 	/** Injected cloner; defaults to the live `cloneProjectRepo`. */
 	readonly clone?: typeof cloneProjectRepo;
+	/**
+	 * The boot-resolved forge, so a project registered under a non-GitHub
+	 * grammar lays out under the same `owner`/`name` `addProject` chose.
+	 */
+	readonly forge?: Forge;
 }
 
 /**
@@ -119,7 +125,7 @@ export interface RecloneMissingProjectInput {
  * clone failure — the caller decides whether to back off.
  */
 export async function recloneMissingProject(input: RecloneMissingProjectInput): Promise<void> {
-	const parsed = parseGitHubUrl(input.project.gitUrl);
+	const parsed = parseProjectUrl(input.project.gitUrl, input.forge);
 	const cloneFn = input.clone ?? cloneProjectRepo;
 	await cloneFn({
 		config: input.config,
@@ -169,6 +175,12 @@ export interface ProjectCloneHealerInput {
 	/** Injected re-cloner; defaults to `recloneMissingProject`. */
 	readonly reclone?: typeof recloneMissingProject;
 	readonly now?: () => Date;
+	/**
+	 * The boot-resolved forge, forwarded to `recloneMissingProject` so a
+	 * project registered under a non-GitHub grammar heals under the same
+	 * on-disk layout `addProject` chose.
+	 */
+	readonly forge?: Forge;
 }
 
 /**
@@ -231,13 +243,14 @@ async function attemptReclone(
 	recloneFn: typeof recloneMissingProject,
 	project: ProjectRow,
 ): Promise<void> {
-	const token =
+	const credential =
 		input.mintCredential !== undefined ? await input.mintCredential(project) : undefined;
 	await recloneFn({
 		project,
 		config: input.config,
 		spawn: input.spawn,
-		...(token !== undefined ? { token } : {}),
+		...(input.forge !== undefined ? { forge: input.forge } : {}),
+		...(credential !== undefined ? { gitCredential: credential } : {}),
 		...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
 	});
 }

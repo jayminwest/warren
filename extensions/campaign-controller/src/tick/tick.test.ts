@@ -726,10 +726,12 @@ describe("runTick with a policy-gated PR creator", () => {
 		expect(stagesOf(tick2.stages)).toContain("pr_intent:rendered");
 		expect(stagesOf(tick2.stages)).toContain("pr_execute:created");
 		expect(creator.received).toHaveLength(1);
-		// The exact journaled request went to the wire: draft, cross-fork head.
+		// The exact journaled request went to the wire: cross-fork head, and
+		// ready for review — an executable createPullRequest policy renders
+		// draft:false so upstream review bots don't skip the PR (warren-68f2).
 		expect(creator.received[0]?.url).toBe("/repos/openclaw/openclaw/pulls");
 		expect(creator.received[0]?.body.head).toBe(`warren-run-bot:${BRANCH}`);
-		expect(creator.received[0]?.body.draft).toBe(true);
+		expect(creator.received[0]?.body.draft).toBe(false);
 		const intent = h.store.actions
 			.listActionsForCampaign(h.campaignId)
 			.find((action) => action.actionType === PR_INTENT_ACTION_TYPE);

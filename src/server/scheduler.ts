@@ -132,6 +132,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		tracker: projectHealTracker,
 		config: input.projectsConfig,
 		spawn: input.projectSpawn,
+		forge: input.forge,
 		mintCredential: (project) => mintGitCredential(input.forge, project.gitUrl),
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 		...(input.cloneExists !== undefined ? { exists: input.cloneExists } : {}),

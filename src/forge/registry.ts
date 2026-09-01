@@ -18,6 +18,8 @@
  *     `WARREN_GITHUB_APP_ID` / `WARREN_GITHUB_APP_INSTALLATION_ID` /
  *     `WARREN_GITHUB_APP_PRIVATE_KEY` triple; a missing or unparseable
  *     input throws `ForgeConfigError` at boot (fail loud, §4).
+ *   - `ado`    → `AdoForge` (Azure DevOps Repos) over the personal access
+ *     token in `WARREN_GIT_TOKEN`.
  *   - `fake`   → `FakeForge` with its in-memory PR store.
  *   - anything else → `UnknownForgeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong forge).
@@ -29,6 +31,7 @@
  * has length one.
  */
 
+import { AdoForge } from "./ado/provider.ts";
 import type { Forge } from "./contract.ts";
 import { UnknownForgeError } from "./errors.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
@@ -41,13 +44,13 @@ import {
 } from "./github-app/provider.ts";
 
 /** Forge backends the selector understands. */
-export type ForgeKind = "github" | "app" | "fake";
+export type ForgeKind = "github" | "app" | "ado" | "fake";
 
 /** Selector default when `WARREN_FORGE` is unset — the real forge. */
 export const DEFAULT_FORGE_KIND: ForgeKind = "github";
 
 /** Every recognized `WARREN_FORGE` value (used for validation + error hints). */
-export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "fake"];
+export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "ado", "fake"];
 
 /** Minimal env surface the selector reads. */
 export type ForgeEnv = Readonly<Record<string, string | undefined>>;
@@ -93,6 +96,18 @@ export interface ForgeDeps {
 	 * constructed `GitHubAppForge` never reaches the network.
 	 */
 	readonly githubAppFetch?: typeof fetch;
+	/**
+	 * Lazy static-secret factory for the `ado` arm. Optional — when omitted
+	 * the selector reads `WARREN_GIT_TOKEN` from the same env the selection
+	 * came from. A test injects a throwing factory here to prove the other
+	 * arms never touch the ado arm's inputs.
+	 */
+	readonly adoToken?: () => string;
+	/**
+	 * OPTIONAL fetch seam for the `ado` arm — a test injects a stub so the
+	 * constructed `AdoForge` never reaches the network.
+	 */
+	readonly adoFetch?: typeof fetch;
 	/**
 	 * Lazy store factory for the `fake` arm — only consulted for
 	 * `WARREN_FORGE=fake`. Optional: the `FakeForge` defaults to a fresh
@@ -161,19 +176,32 @@ export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env):
 				...(deps.githubAppFetch !== undefined ? { fetch: deps.githubAppFetch } : {}),
 			});
 		}
-		case "fake": {
-			if (deps.fakeStore !== undefined) {
-				return new FakeForge({ store: deps.fakeStore() });
-			}
-			// Cross-process acceptance seam (warren-2600): the harness boots
-			// warren as a subprocess, so it drives FakeForge state transitions
-			// (markMerged & friends) by editing a JSON state file the store
-			// reloads on every read. Unset → the pure in-memory store.
-			const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
-			if (stateFile === undefined || stateFile === "") {
-				return new FakeForge();
-			}
-			return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
-		}
+		case "ado":
+			return buildAdoForge(deps, env);
+		case "fake":
+			return buildFakeForge(deps, env);
 	}
+}
+
+function buildAdoForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	const tokenFactory = deps.adoToken ?? (() => firstToken(env.WARREN_GIT_TOKEN));
+	return new AdoForge({
+		token: tokenFactory(),
+		...(deps.adoFetch !== undefined ? { fetch: deps.adoFetch } : {}),
+	});
+}
+
+function buildFakeForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	if (deps.fakeStore !== undefined) {
+		return new FakeForge({ store: deps.fakeStore() });
+	}
+	// Cross-process acceptance seam (warren-2600): the harness boots
+	// warren as a subprocess, so it drives FakeForge state transitions
+	// (markMerged & friends) by editing a JSON state file the store
+	// reloads on every read. Unset → the pure in-memory store.
+	const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
+	if (stateFile === undefined || stateFile === "") {
+		return new FakeForge();
+	}
+	return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
 }
