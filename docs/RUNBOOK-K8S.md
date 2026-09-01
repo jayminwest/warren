@@ -511,7 +511,7 @@ The verbs are exactly what `src/runtime/k8s/` exercises:
 | `pods` | `get, list, watch, create, delete` | dispatch (create), the pod-watcher informer (list/watch), status reads (get), reap + GC (delete) |
 | `pods/log` | `get, watch` | the pod-log NDJSON event stream (§6.1 / §5.1) |
 | `configmaps` | `get, list, create, delete` | per-run seed-file ConfigMaps — create at dispatch, list/delete at GC |
-| `events` | `get, list, watch` | the pod-warning-events watcher (`src/runtime/k8s/pod-event-watcher.ts`, warren-32f8) list-watches core Events to surface `FailedScheduling`, `FailedAttachVolume`, and image-pull stalls on the run's event stream. Without it the watcher reconnects on 403 forever |
+| `events` | `list, watch` | the pod-warning-events watcher (`src/runtime/k8s/pod-event-watcher.ts`, warren-32f8) list-watches core Events to surface `FailedScheduling`, `FailedAttachVolume`, and image-pull stalls on the run's event stream. Without it the watcher reconnects on 403 forever |
 
 Two verb families are absent on purpose:
 

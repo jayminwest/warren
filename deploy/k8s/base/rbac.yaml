@@ -19,6 +19,9 @@
 #     delete   pod-GC reclaims seed ConfigMaps               | deleteNamespacedConfigMap
 #     get, list  GC enumerates labelled seed ConfigMaps      | listNamespacedConfigMap
 #
+#   events:                                                  | pod-event-watcher.ts
+#     list, watch  pod-warning stream (FailedScheduling etc) | listNamespacedEvent
+#
 # ConfigMap verbs are present because K8sProvider.create() DOES ship seed files as
 # a ConfigMap volume (see src/runtime/k8s/seed-configmap.ts + pod-spec.ts
 # SEED_VOLUME_NAME). No `update`/`patch` on anything — warren never mutates a live
@@ -48,7 +51,7 @@ rules:
   # / image-pull stalls on the run's event stream.
   - apiGroups: [""]
     resources: ["events"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["list", "watch"]
 ---
 # Binds the control-plane SA (in the `warren` namespace) to the Role in
 # `warren-runs`. A RoleBinding's subject may live in a different namespace than

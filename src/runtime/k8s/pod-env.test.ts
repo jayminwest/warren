@@ -175,6 +175,21 @@ describe("generic provider Secret mapping (warren-fb8d)", () => {
 		});
 	});
 
+	test("a hyphenated provider id still has a reachable env override", () => {
+		// `opencode-go` is the first registry id carrying a hyphen. Interpolating
+		// it raw would ask for `WARREN_K8S_OPENCODE-GO_SECRET_NAME`, which is not
+		// a valid identifier: no shell can export it, so the override would be
+		// unreachable while every other provider keeps one.
+		const overridden = resolveK8sPodConfig({
+			WARREN_K8S_OPENCODE_GO_SECRET_NAME: "custom-opencode",
+			WARREN_K8S_OPENCODE_GO_SECRET_KEY: "creds",
+		});
+		expect(overridden.providerSecrets["opencode-go"]).toEqual({
+			name: "custom-opencode",
+			key: "creds",
+		});
+	});
+
 	test("every registry provider's canonical key rides an optional secretKeyRef", () => {
 		const env = buildRunPod(baseSpec(), config).spec?.containers?.[0]?.env ?? [];
 		for (const [provider, envKey] of [

@@ -69,15 +69,18 @@ export function defaultProviderSecretName(provider: string): string {
 /**
  * Resolve the Secret coordinates for EVERY registry provider (warren-fb8d):
  * each defaults to `warren-<provider>-key` / `api-key` and is overridable
- * per provider via `WARREN_K8S_<PROVIDER>_SECRET_NAME` / `_KEY` (provider
- * uppercased — e.g. `WARREN_K8S_OPENROUTER_SECRET_NAME`).
+ * per provider via `WARREN_K8S_<PROVIDER>_SECRET_NAME` / `_KEY`, with the
+ * provider uppercased and every hyphen mapped to an underscore, so
+ * `openrouter` reads `WARREN_K8S_OPENROUTER_SECRET_NAME` and `opencode-go`
+ * reads `WARREN_K8S_OPENCODE_GO_SECRET_NAME`. A hyphen left in place would
+ * make a name no shell can export and no kubelet will pass through.
  */
 export function resolveProviderSecrets(
 	env: K8sPodConfigEnv,
 ): Record<string, { name: string; key: string }> {
 	const out: Record<string, { name: string; key: string }> = {};
 	for (const provider of KNOWN_PROVIDER_NAMES) {
-		const stem = provider.toUpperCase();
+		const stem = provider.toUpperCase().replaceAll("-", "_");
 		const name = env[`WARREN_K8S_${stem}_SECRET_NAME`]?.trim();
 		const key = env[`WARREN_K8S_${stem}_SECRET_KEY`]?.trim();
 		out[provider] = {
