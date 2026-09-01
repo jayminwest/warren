@@ -639,7 +639,7 @@ imports it. `check:layers` enforces both directions, because an import
 either way compiles the extension into core and makes its removal
 breaking.
 
-Five extension packages ship today. The flagship is
+Six extension packages ship today. The flagship is
 `extensions/audit-log/` (plan pl-116e), a collector that tails run
 events, normalizes them into an append-only audit log, and exports it
 over `GET /audit-log.jsonl`. Beside it sits `extensions/judge/`
@@ -648,7 +648,9 @@ over `GET /audit-log.jsonl`. Beside it sits `extensions/judge/`
 over `GET /verdicts.jsonl`. `extensions/tracker-jira/` (warren-27d9)
 speaks the warren-tracker/v1 protocol against Jira Cloud and holds
 its own Jira credential. Its README carries the friction list for
-that build. `extensions/tracker-conformance/` (warren-53ea) is the
+that build. `extensions/tracker-ado/` does the same against Azure
+DevOps Boards, holding its own PAT, and its README carries the second
+friction list. `extensions/tracker-conformance/` (warren-53ea) is the
 warren-tracker/v1 conformance suite plus FakeTracker, the reference
 in-memory server. `extensions/campaign-controller/` (plan pl-91b6) is
 the first controller extension: it owns durable campaign state and
