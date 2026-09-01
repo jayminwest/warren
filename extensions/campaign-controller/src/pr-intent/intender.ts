@@ -242,7 +242,12 @@ export function renderAndJournalPrIntent(
 		headBranch: branch,
 		title,
 		body,
-		draft: true,
+		// Dry-run posture only (warren-68f2): a journaled-never-sent intent
+		// renders as a draft, but once the owner-approved policy enables the
+		// live create, the PR must open ready for review — upstream review
+		// bots (ClawSweeper, CodeRabbit) skip drafts, which stalled both
+		// openclaw#132081 and crewAI#7176.
+		draft: !policy.mutations.createPullRequest,
 		maintainerCanModify: true,
 	});
 	const requestDigest = sha256Hex(canonicalJson(intent.body));

@@ -303,6 +303,21 @@ describe("renderAndJournalPrIntent", () => {
 		expect(identity?.prNumber).toBeNull();
 	});
 
+	test("an executable createPullRequest policy renders a ready-for-review intent (warren-68f2)", async () => {
+		// Dry-run journaling renders draft:true (asserted elsewhere); once the
+		// owner-approved policy enables the live create, the intent must open
+		// ready for review — upstream review bots skip drafts.
+		const livePolicy = basePolicy();
+		(livePolicy.mutations as Record<string, boolean>).createPullRequest = true;
+		const h = await harness({ policy: livePolicy });
+		const result = renderAndJournalPrIntent(h.store, {
+			...intentInput({ policy: livePolicy }),
+			campaignId: h.campaign.id,
+			workItemId: h.workItem.id,
+		});
+		expect(result.intent.body.draft).toBe(false);
+	});
+
 	test("the golden body carries every profile-declared section", async () => {
 		const h = await harness({});
 		const result = renderAndJournalPrIntent(h.store, {
