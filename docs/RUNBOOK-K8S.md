@@ -491,6 +491,7 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB` / `_LIMIT_MIB` | `10240` / `10240` (10Gi) | cluster-wide default ephemeral-storage budget (request + limit + emptyDir `sizeLimit`). A per-project `resources` block beats it (§7.3.1) |
 | `WARREN_K8S_MEMORY_REQUEST_MIB` / `_LIMIT_MIB` | `2048` / `4096` | cluster-wide default memory budget; a per-project `resources` block beats it |
 | `WARREN_K8S_CPU_REQUEST_MILLICORES` / `_LIMIT_MILLICORES` | `1000` / `4000` | cluster-wide default cpu budget; a per-project `resources` block beats it. Lower the request on a small node (a two-core laptop VM never schedules the 1-CPU default) |
+| `WARREN_K8S_SPOT` | unset (On-Demand) | run pods only: pin every run pod onto GKE Autopilot Spot nodes (`nodeSelector cloud.google.com/gke-spot=true` plus the matching NoSchedule toleration, warren-2e2e). Truthy values are exactly `1`/`true` (case-insensitive); anything else stays off. Never applies to the control-plane Deployment. See "Spot run pods" below |
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
 | `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
 | `WARREN_GITHUB_APP_REGISTRATION` | unset (fail-safe default, §2.6) | existence gate for the `/github-app/*` registration surface (warren-e320). `on`/`off` overrides the default. Gated-off routes answer 404 |
@@ -498,6 +499,15 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_JUDGE_EXPORT_TOKEN` | from `judge-secrets/judge-export-token` (optional) | bearer credential the proxy presents to the judge's export endpoint (`deploy/k8s/extensions/judge/secrets.yaml`). Both knobs unset ⇒ the surface is disabled |
 
 The provider injects these into pods (never set them by hand): `WARREN_API_URL`, `WARREN_RUN_ID`, `WARREN_REPO_URL`, `WARREN_BRANCH`, `WARREN_BASE_BRANCH`, `WARREN_WORKSPACE_PATH`, `WARREN_SEED_MANIFEST`.
+
+#### Spot run pods (warren-2e2e)
+
+Setting `WARREN_K8S_SPOT=true` opts every **run pod** into GKE Autopilot Spot capacity. `buildRunPod` adds `nodeSelector: {"cloud.google.com/gke-spot": "true"}` plus the toleration `{key: cloud.google.com/gke-spot, operator: Equal, value: "true", effect: NoSchedule}`. Run pods suit this placement: they are ephemeral and retry-safe. The trade:
+
+- Spot pods cost 60–91% less but the cluster can preempt them. Autopilot sends a **25 s** preemption signal before it reclaims the node.
+- A preemption counts as an infra-lost retry, not a failure of the work. The preemption classification treats it as retryable and the run re-dispatches from scratch. The model spend of the aborted attempt is the real cost of the trade. The run's `maxCostUsd` cap bounds it.
+- `terminationGracePeriodSeconds` stays at the K8s 30 s default. We do not raise it for Spot. Preemption ends the pod as lost whatever the grace says, and the run re-dispatches, so a longer grace buys nothing. Explicit `cancel()` controls its grace separately through `WARREN_K8S_CANCEL_GRACE_SECONDS` (a delete-request `gracePeriodSeconds`, independent of the 25 s notice).
+- The control plane stays on On-Demand. The Deployment manifests under `deploy/k8s/` do not read this knob, so warren itself never lands on preemptible capacity.
 
 ---
 
