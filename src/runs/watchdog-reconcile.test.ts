@@ -46,6 +46,10 @@ describe("reconcileTargetFromStatus (warren-c433)", () => {
 		expect(
 			reconcileTargetFromStatus(statusOf({ phase: "failed", terminalReason: "evicted" })),
 		).toEqual({ outcome: "failed", failureReason: "evicted" });
+		// warren-ea4b: a Spot-preempted pod carries the retryable `preempted` cause.
+		expect(
+			reconcileTargetFromStatus(statusOf({ phase: "failed", terminalReason: "preempted" })),
+		).toEqual({ outcome: "failed", failureReason: "preempted" });
 		expect(reconcileTargetFromStatus(statusOf({ phase: "failed" }))).toEqual({
 			outcome: "failed",
 			failureReason: "crashed",

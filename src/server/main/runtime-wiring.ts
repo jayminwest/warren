@@ -291,6 +291,7 @@ export function resolveBootRuntimeProvider(
 						k8sCoreApi: input.k8sRuntime.coreApi,
 						k8sPodCache: input.k8sRuntime.podWatcher,
 						k8sPodAdmission: input.k8sRuntime.podWatcher,
+						k8sPreemptedPods: input.k8sRuntime.podWatcher,
 					}
 				: {}),
 			...k8sForgeTokenWindows(input.forge),

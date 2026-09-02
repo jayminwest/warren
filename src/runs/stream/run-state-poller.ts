@@ -121,13 +121,15 @@ function isBurrowTerminal(state: string): state is RunTerminalState {
 const TERMINAL_REASON_TO_FAILURE_REASON: Partial<Record<TerminalReason, RunFailureReason>> = {
 	oom_killed: "oom_killed",
 	evicted: "evicted",
+	preempted: "preempted",
 };
 
 /**
  * Build the terminal snapshot the poller records, distilling the seam's coarse
  * `terminalReason` into a domain `failure_reason` (warren-9cce, warren-c0cd).
- * `oom_killed` (a cgroup kill) and `evicted` (a kubelet pod eviction, most often
- * ephemeral-storage exhaustion) both ride through to the finalized run's
+ * `oom_killed` (a cgroup kill), `evicted` (a kubelet pod eviction, most often
+ * ephemeral-storage exhaustion) and `preempted` (a Spot-node reclamation,
+ * warren-ea4b) all ride through to the finalized run's
  * `failure_reason` instead of collapsing into an anonymous error; every other
  * reason is already covered by `state`.
  */

@@ -72,17 +72,31 @@ const OOM_KILLED_REASON = "OOMKilled";
 const EVICTED_REASON = "Evicted";
 
 /**
+ * The kubelet's pod-level `status.reason` for a node-shutdown termination
+ * (warren-ea4b): the kubelet terminates pods during graceful node shutdown /
+ * cloud reclamation (a GKE Spot node being preempted) with reason `Terminated`
+ * or `Shutdown` and a node-shutdown `status.message`.
+ */
+const PREEMPTED_POD_REASONS = new Set(["Terminated", "Shutdown"]);
+/** The kubelet node-shutdown message carried on a preempted pod. */
+const NODE_SHUTDOWN_MESSAGE = /shut(?:ting)? ?down/i;
+/** The `DisruptionTarget` condition reason the kubelet stamps on preemption. */
+const TERMINATION_BY_KUBELET = "TerminationByKubelet";
+/** The node label GKE stamps on Spot (preemptible) nodes. */
+export const GKE_SPOT_NODE_LABEL = "cloud.google.com/gke-spot";
+
+/**
  * The reconcile snapshot for a run whose pod is ABSENT from the API — deleted,
  * GC'd, or evicted-and-gone (design doc §1.3 / contract §6.7). Reported as a
  * terminal `failed` so the domain stops waiting, tagged `lost` so it knows the
  * run vanished rather than failing on its own merits, `exists:false` so the
  * caller can branch on run-lost. Mirrors LocalProvider's burrow-404 mapping.
  */
-export function runLostStatus(): RunStatus {
+export function runLostStatus(terminalReason: TerminalReason = "lost"): RunStatus {
 	return {
 		phase: "failed",
 		exitCode: null,
-		terminalReason: "lost",
+		terminalReason,
 		lastEventSeq: 0,
 		lastEventTs: null,
 		exists: false,
@@ -171,6 +185,15 @@ function classifyFailed(pod: V1Pod): Classified {
 			agentExitCode(pod) ?? terminated.find((t) => t.exitCode !== 0)?.exitCode ?? null;
 		return { phase: "failed", exitCode, terminalReason: "evicted" };
 	}
+	// warren-ea4b: a Spot/node-shutdown preemption is checked BEFORE the generic
+	// non-zero path — a preempted pod's container typically terminates
+	// `ContainerStatusUnknown` exit 137, which would otherwise be mis-labelled a
+	// plain `error`.
+	if (isPreemptedPod(pod)) {
+		const exitCode =
+			agentExitCode(pod) ?? terminated.find((t) => t.exitCode !== 0)?.exitCode ?? null;
+		return { phase: "failed", exitCode, terminalReason: "preempted" };
+	}
 	const nonZero = terminated.find((t) => t.exitCode !== 0);
 	if (nonZero !== undefined) {
 		return { phase: "failed", exitCode: nonZero.exitCode ?? null, terminalReason: "error" };
@@ -178,6 +201,34 @@ function classifyFailed(pod: V1Pod): Classified {
 	// Failed phase but no failing terminated container (lost node, etc.). Still
 	// terminal — a Failed pod never leaves the run `running`.
 	return { phase: "failed", exitCode: null, terminalReason: "error" };
+}
+
+/**
+ * Pure preemption witness (warren-ea4b). A pod was PREEMPTED when its kubelet
+ * terminated it for a node shutdown / cloud reclamation — any of:
+ *
+ *   - `status.reason` `Terminated` or `Shutdown` with the kubelet node-shutdown
+ *     message (`The node is shutting down`);
+ *   - a `DisruptionTarget` condition with reason `TerminationByKubelet` — the
+ *     kubelet's own disruption marker for a workload it terminated outside the
+ *     workload's fault (GKE Spot reclamation rides this).
+ *
+ * The third witness — the pod VANISHING while its (spot-labelled) node was
+ * deleted — needs cluster state the pure map cannot see, so the pod-watcher /
+ * provider surface it separately (see `PodWatcher.wasPreempted`).
+ */
+export function isPreemptedPod(pod: V1Pod): boolean {
+	const reason = pod.status?.reason;
+	if (
+		reason !== undefined &&
+		PREEMPTED_POD_REASONS.has(reason) &&
+		NODE_SHUTDOWN_MESSAGE.test(pod.status?.message ?? "")
+	) {
+		return true;
+	}
+	return (pod.status?.conditions ?? []).some(
+		(c) => c.type === "DisruptionTarget" && c.reason === TERMINATION_BY_KUBELET,
+	);
 }
 
 /**

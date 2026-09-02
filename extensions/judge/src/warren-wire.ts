@@ -67,6 +67,9 @@ export const RUN_FAILURE_REASONS = [
 	"provider_error",
 	"oom_killed",
 	"evicted",
+	// warren-ea4b: GKE Spot node reclaimed under the run pod — K8s-only,
+	// retryable (the substrate lost the run, not the agent).
+	"preempted",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 

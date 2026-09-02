@@ -34,7 +34,14 @@ export const RETRYABLE_CHILD_FAILURE_REASONS = [
 	// warren-4af7: infra-lost — the sandbox/pod disappeared mid-run with the
 	// warren row still live. The workspace is gone but the failure says
 	// nothing about the prompt or seed, so a fresh run has a real chance.
+	// warren-4af7: infra-lost — the sandbox/pod disappeared mid-run with the
+	// warren row still live. The workspace is gone but the failure says
+	// nothing about the prompt or seed, so a fresh run has a real chance.
 	"sandbox_run_lost",
+	// warren-ea4b: Spot preemption — the same substrate-lost shape (the pod
+	// died because GKE reclaimed its node), kept a distinct reason so
+	// telemetry can tell capacity reclamation apart from a generic loss.
+	"preempted",
 ] as const satisfies readonly RunFailureReason[];
 
 export type RetryableChildFailureReason = (typeof RETRYABLE_CHILD_FAILURE_REASONS)[number];

@@ -135,17 +135,17 @@ export interface StreamOpts {
 export type RunPhase = RunState;
 
 /**
- * Coarse terminal reason — the only terminal classification that is a provider
- * concern (fine-grained `failure_reason` stays in the domain, §3).
- *
+ * Coarse terminal reason — the provider-owned terminal classification
+ * (fine-grained `failure_reason` stays in the domain, §3).
  * - `completed` — agent finished normally.
  * - `error` — agent/runtime failed.
  * - `oom_killed` — killed by the cgroup/OOM killer (§6.5): burrow's oomKilled()
- *   probe + `oom_killed` event; K8s `terminated.reason=="OOMKilled"`.
+ *   probe; K8s `terminated.reason=="OOMKilled"`.
  * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`)
  *   under node pressure, usually ephemeral-storage exhaustion (warren-c0cd).
- *   K8s-only, and distinct from `oom_killed` (a container cgroup kill) and
- *   `error` (an agent fault): an eviction is an infra-capacity signal.
+ *   K8s-only; an infra-capacity signal, not a container or agent fault.
+ * - `preempted` (warren-ea4b) — Spot preemption: the pod's (spot-labelled) node
+ *   was reclaimed. K8s-only; witness set in `./k8s/status-map.ts`.
  * - `cancelled` — graceful stop via `cancel()`.
  * - `lost` — run vanished (burrow 404 / pod GC'd); pairs with `exists:false`.
  */
@@ -154,6 +154,7 @@ export type TerminalReason =
 	| "error"
 	| "oom_killed"
 	| "evicted"
+	| "preempted"
 	| "cancelled"
 	| "lost";
 
@@ -215,10 +216,9 @@ export interface RuntimeCapabilities {
 	/** terminate returns an archive handle */
 	workspaceArchive: boolean;
 	/**
-	 * Fallback garbage collection of stranded run workspaces is a backend concern
-	 * the control plane can drive (warren-e24d). `true` for LocalProvider — reap's
-	 * per-run destroy can strand a workspace on a mid-reap crash, so warren sweeps
-	 * idle workspaces via the destroy seam. `false` where the backend's own
+	 * Fallback GC of stranded run workspaces (warren-e24d): `true` for LocalProvider
+	 * — reap's per-run destroy can strand a workspace on a mid-reap crash, so warren
+	 * sweeps idle workspaces via the destroy seam. `false` where the backend's own
 	 * lifecycle reclaims them (K8s pod-GC reclaims terminal pods + their emptyDir),
 	 * so the sweep stays dark instead of aiming a burrow destroy at a pod name.
 	 */

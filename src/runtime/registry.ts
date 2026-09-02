@@ -120,6 +120,13 @@ export interface RuntimeProviderDeps {
 	 */
 	readonly k8sPodAdmission?: PodAdmissionSource;
 	/**
+	 * OPTIONAL preemption-witness source (warren-ea4b) — only consulted for
+	 * `WARREN_RUNTIME=k8s`. Boot threads the started `PodWatcher`, whose
+	 * `wasPreempted` records pods that vanished while their (spot-labelled)
+	 * node was deleted.
+	 */
+	readonly k8sPreemptedPods?: { wasPreempted(runId: string): boolean };
+	/**
 	 * OPTIONAL structured logger for the K8s pod-log stream pump (warren-72a8) —
 	 * only consulted for `WARREN_RUNTIME=k8s`. Threaded onto the provider so the
 	 * pump's backoff/disconnect warnings surface instead of being silent no-ops;
@@ -245,6 +252,7 @@ function buildK8sProvider(deps: RuntimeProviderDeps): K8sProvider {
 			: {}),
 		...(deps.k8sPodCache !== undefined ? { podCache: deps.k8sPodCache } : {}),
 		...(deps.k8sPodAdmission !== undefined ? { podAdmission: deps.k8sPodAdmission } : {}),
+		...(deps.k8sPreemptedPods !== undefined ? { preemptedPods: deps.k8sPreemptedPods } : {}),
 		...(deps.k8sLogger !== undefined ? { logger: deps.k8sLogger } : {}),
 		...(deps.k8sMintGitCredential !== undefined
 			? { mintGitCredential: deps.k8sMintGitCredential }
