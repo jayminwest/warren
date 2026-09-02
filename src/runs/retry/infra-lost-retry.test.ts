@@ -62,7 +62,7 @@ interface Harness {
 		maxCostUsd?: number;
 		/** Extra frontmatter frozen onto the run, beside the cap. */
 		frontmatter?: Record<string, unknown>;
-		failureReason?: "sandbox_run_lost" | "crashed" | "provider_error";
+		failureReason?: "sandbox_run_lost" | "crashed" | "provider_error" | "preempted";
 	}) => Promise<RunRow>;
 }
 
@@ -246,6 +246,27 @@ describe("infra-lost run auto-retry (warren-4af7)", () => {
 		expect(h.spawnCalls).toHaveLength(0);
 		expect(isInfraLostRunFailure("crashed")).toBe(false);
 		expect(isInfraLostRunFailure("sandbox_run_lost")).toBe(true);
+	});
+
+	// warren-ea4b: Spot preemption joins the retryable infra-lost bucket.
+	test("preempted run → one retry; a second preemption stays terminal", async () => {
+		expect(isInfraLostRunFailure("preempted")).toBe(true);
+		const original = await h.run({ failureReason: "preempted" });
+
+		await hookFor(h)(original.id);
+
+		expect(h.spawnCalls).toHaveLength(1);
+		expect(h.spawnCalls[0]?.retryOf).toBe(original.id);
+		expect(h.spawnCalls[0]?.dispatchOrigin).toBe("retry_infra_lost");
+
+		// The retry itself landing preempted stays terminal — no third run
+		// (the retry-of link IS the budget, same as sandbox_run_lost).
+		const retry = await h.run({ retryOf: original.id, failureReason: "preempted" });
+		await hookFor(h)(retry.id);
+		expect(h.spawnCalls).toHaveLength(1);
+		const decision = await decideInfraLostRetry(h.repos, retry);
+		expect(decision.retry).toBe(false);
+		expect(decision.skip).toBe("is_retry");
 	});
 
 	test("exhausted budget → no retry", async () => {

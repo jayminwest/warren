@@ -114,6 +114,20 @@ describe("K8sProvider.status — cache-cold list-by-label", () => {
 		});
 	});
 
+	// warren-ea4b: the pod watcher's vanished-spot-pod witness upgrades the
+	// lost mapping to the retryable `preempted` cause.
+	test("vanished pod on a deleted spot node → exists:false + preempted", async () => {
+		const fake = fakeApi({ items: [] });
+		const provider = new K8sProvider({
+			coreApi: () => fake.api,
+			serverEnv: {},
+			preemptedPods: { wasPreempted: (runId) => runId === "run_status" },
+		});
+		const status = await provider.status(handle);
+		expect(status.terminalReason).toBe("preempted");
+		expect(status.exists).toBe(false);
+	});
+
 	test("prefers the pod whose uid matches the handle's providerRunId", async () => {
 		const stale = podWith({ phase: "Failed", uid: "old-uid", exitCode: 1 });
 		const current = podWith({ phase: "Running", uid: "pod-uid-9" });

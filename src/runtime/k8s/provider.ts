@@ -7,23 +7,20 @@
  *
  * `create()` (pl-829f step 15 / warren-2181) and `status()` (step 16 /
  * warren-a7ff) are the first real bodies: `create` materializes the workspace in
- * an init container, ships seed files as a ConfigMap, points the agent at warren
- * over Service DNS, and creates the pod; `status` reconciles the pod's
- * phase/container state onto the seam's `RunStatus` (OOMKilled → `oom_killed`,
- * absent pod → `exists:false`). The remaining methods stay deliberate
- * `RuntimeNotImplementedError` stubs that name the plan step that fills each:
- *
+ * an init container, ships seed files as a ConfigMap, and creates the pod;
+ * `status` reconciles the pod's phase/container state onto the seam's
+ * `RunStatus` (OOMKilled → `oom_killed`, absent pod → `exists:false`). The
+ * remaining methods stay deliberate `RuntimeNotImplementedError` stubs:
  *   - `streamEvents` → step 17 (warren-026c): follow pod logs, synthesize the seq cursor.
- *   - `sendMessage`  → step 18 (warren-3d0b): persist into `run_inbox`; the in-pod
- *     harness drains it via the `GET /runs/:id/inbox` poll endpoint.
+ *   - `sendMessage`  → step 18 (warren-3d0b): persist into `run_inbox`; drained via the inbox poll.
  *   - `cancel`/`terminate` → step 19 (warren-31d4): delete pod + SIGTERM grace + GC.
  *   - `finalize`     → step 20 (warren-0d35): in-pod post-agent reap emitting deltas.
  *
  * The K8s API client is taken as a FACTORY (`() => CoreV1Api`) rather than a live
- * client — mirroring `LocalProvider`'s `() => BurrowClient`. Construction
- * never touches a cluster (no stub invokes the factory), so the registry can
- * build a `K8sProvider` off `WARREN_RUNTIME=k8s` in any environment; only the
- * real method bodies (later steps) need in-cluster config.
+ * client — mirroring `LocalProvider`'s `() => BurrowClient`. Construction never
+ * touches a cluster (no stub invokes the factory), so the registry can build a
+ * `K8sProvider` off `WARREN_RUNTIME=k8s` in any environment; only the real method
+ * bodies need in-cluster config.
  */
 
 import { ApiException, type CoreV1Api, type V1Pod } from "@kubernetes/client-node";
@@ -93,11 +90,8 @@ export interface K8sProviderDeps {
 	 */
 	readonly serverEnv?: EnvLike;
 	/**
-	 * OPTIONAL live pod cache the pod-watcher (`./pod-watcher.ts`) maintains
-	 * (pl-829f step 16). `status()` consults it as an optimization to skip a
-	 * list-by-label round-trip; when absent — or on a cache miss — `status()`
-	 * still works cache-cold by listing the run's pod itself. The watcher is
-	 * provider-internal plumbing, so wiring this stays optional.
+	 * OPTIONAL live pod cache the pod-watcher maintains (pl-829f step 16). `status()`
+	 * consults it to skip a list round-trip; absent (or on a miss) it lists cache-cold.
 	 */
 	readonly podCache?: PodCacheReader;
 	/**
@@ -113,15 +107,13 @@ export interface K8sProviderDeps {
 	readonly admissionMetrics?: AdmissionCounterSink;
 	/**
 	 * OPTIONAL injectable pod-log follow seam `streamEvents` drives (pl-829f step
-	 * 17). A factory-free direct fn (mirrors the pod-watcher's `WatchFn`) so tests
-	 * script the log source; when absent the provider lazily builds the real
-	 * `@kubernetes/client-node` `Log`-backed follow via `defaultLogFollowFactory`.
+	 * 17); tests script the log source. When absent the provider lazily builds the
+	 * real `@kubernetes/client-node` `Log`-backed follow via `defaultLogFollowFactory`.
 	 */
 	readonly logFollow?: LogFollowFn;
 	/**
-	 * OPTIONAL counter sink for the pod-log parse-failure metric
-	 * (`METRIC_LOG_PARSE_FAILURES_TOTAL`) — satisfied by the shared
-	 * `MetricsRegistry`. When absent, malformed lines are still dropped safely;
+	 * OPTIONAL counter sink for the pod-log parse-failure metric — satisfied by the
+	 * shared `MetricsRegistry`. Absent ⇒ malformed lines are still dropped safely;
 	 * only the observability counter is skipped.
 	 */
 	readonly metrics?: StreamCounterSink;
@@ -131,8 +123,7 @@ export interface K8sProviderDeps {
 	 * Lazy run_inbox store `sendMessage` writes steering messages into (pl-829f
 	 * step 18 / warren-3d0b). A factory — mirroring `coreApi` — so the provider
 	 * builds without a DB handle in environments that never steer; `sendMessage`
-	 * raises `RuntimeProviderError` if it is called without one. Boot threads
-	 * `() => repos.runInbox` here (src/server/main/deps.ts).
+	 * raises `RuntimeProviderError` without one. Boot threads `() => repos.runInbox`.
 	 */
 	readonly runInbox?: () => K8sInboxStore;
 	/**
@@ -167,6 +158,11 @@ export interface K8sProviderDeps {
 	 * fallback.
 	 */
 	readonly allowStaticPushTokenFallback?: boolean;
+	/**
+	 * OPTIONAL preemption witness source (warren-ea4b, the pod-watcher): a pod that
+	 * vanished while its spot node was deleted maps to `preempted`, not `lost`.
+	 */
+	readonly preemptedPods?: { wasPreempted(runId: string): boolean };
 }
 
 /**
@@ -379,12 +375,10 @@ export class K8sProvider implements RuntimeProvider {
 	/**
 	 * Out-of-band reconcile snapshot (contract §6.7) — what the watchdog /
 	 * recovery / pod-watcher read. NEVER throws on a missing run: an absent pod
-	 * returns `exists:false` + `terminalReason:"lost"` (`runLostStatus`), a value
-	 * not a throw.
-	 *
-	 * Correlation is by the `warren.io/run-id` LABEL (the exact runId), never by
-	 * pod name — the pod name is a DNS-sanitized derivative (`podNameForRun`),
-	 * whereas the label carries the runId verbatim (contract-preserving, step 15).
+	 * returns `exists:false` + `terminalReason:"lost"` (`runLostStatus`), a value,
+	 * not a throw. Correlation is by the `warren.io/run-id` LABEL (the exact runId),
+	 * never by pod name — the pod name is a DNS-sanitized derivative
+	 * (`podNameForRun`), whereas the label carries the runId verbatim.
 	 *
 	 * A wired pod-watcher cache short-circuits the list; on a miss (or no cache)
 	 * we list the run's pod by label — so `status()` works cache-cold. The pure
@@ -409,7 +403,13 @@ export class K8sProvider implements RuntimeProvider {
 			throw mapApiError(err, `pod status list for run ${handle.runId}`);
 		}
 		const pod = pickPodForRun(items, handle);
-		if (pod === undefined) return runLostStatus();
+		if (pod === undefined) {
+			// warren-ea4b: vanished while its spot node was deleted ⇒ preempted.
+			if (this.deps.preemptedPods?.wasPreempted(handle.runId) === true) {
+				return runLostStatus("preempted");
+			}
+			return runLostStatus();
+		}
 		return mapPodToRunStatus(pod);
 	}
 

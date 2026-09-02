@@ -24,7 +24,7 @@ describe("advancePlanRun — automatic child retry (warren-6de9)", () => {
 
 	/** Drive child seq=1 to a terminal-failed run with the given cause. */
 	const failChildRun = async (
-		failureReason: "provider_error" | "crashed" | "timed_out" | "sandbox_run_lost",
+		failureReason: "provider_error" | "crashed" | "timed_out" | "sandbox_run_lost" | "preempted",
 	): Promise<string> => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
 			startedAt: NOW.toISOString(),
@@ -158,6 +158,22 @@ describe("advancePlanRun — automatic child retry (warren-6de9)", () => {
 		expect(retryEvent?.payload.previousRunId).toBe(failedRunId);
 		expect(retryEvent?.payload.failureReason).toBe("sandbox_run_lost");
 		expect(h.events.some((e) => e.kind === "plan_run.failed")).toBe(false);
+	});
+
+	// warren-ea4b: a Spot-preempted child earns the same single automatic
+	// re-dispatch as an infra-lost child — same shape, distinct cause.
+	test("child preempted (spot) → one retry via the same shape (warren-ea4b)", async () => {
+		const failedRunId = await failChildRun("preempted");
+		const result = await advance();
+		expect(result.kind).toBe("dispatched");
+		if (result.kind !== "dispatched") return;
+		expect(result.childRunId).not.toBe(failedRunId);
+
+		const child = (await h.repos.planRuns.listChildren(h.planRun.id)).find((c) => c.seq === 1);
+		expect(child?.state).toBe("dispatched");
+		expect(child?.retryCount).toBe(1);
+		const retryEvent = h.events.find((e) => e.kind === "plan_run.child_retried");
+		expect(retryEvent?.payload.failureReason).toBe("preempted");
 	});
 
 	test("non-provider child failure → no retry, plan_failed as before", async () => {

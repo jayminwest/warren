@@ -69,6 +69,7 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	provider_error: "Provider error",
 	oom_killed: "Out of memory",
 	evicted: "Evicted",
+	preempted: "Preempted (Spot node reclaimed)",
 } satisfies Record<RunFailureReason, string>;
 
 /** Prose for a run's `failureReason`. */

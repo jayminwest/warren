@@ -64,6 +64,10 @@ import { inheritedDispatchOverrides } from "./inherited-overrides.ts";
  */
 export const INFRA_LOST_RUN_FAILURE_REASONS = [
 	"sandbox_run_lost",
+	// warren-ea4b: Spot preemption — the pod died because GKE reclaimed its
+	// node, not because of anything in the prompt or seed. Same single-retry
+	// posture as `sandbox_run_lost`.
+	"preempted",
 ] as const satisfies readonly RunFailureReason[];
 
 export type InfraLostRunFailureReason = (typeof INFRA_LOST_RUN_FAILURE_REASONS)[number];
