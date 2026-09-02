@@ -136,6 +136,7 @@ describe("runWorkspaceInit", () => {
 		);
 		expect(calls[0]?.args).toEqual([
 			"clone",
+			"--filter=blob:none",
 			"--branch",
 			"main",
 			"https://x-access-token:tok@github.com/o/r.git",
@@ -175,6 +176,7 @@ describe("runWorkspaceInit", () => {
 		);
 		expect(calls[0]?.args).toEqual([
 			"clone",
+			"--filter=blob:none",
 			"--branch",
 			"fix/pr-head",
 			"https://github.com/o/r.git",
@@ -197,7 +199,7 @@ describe("runWorkspaceInit", () => {
 			{ git, log: () => {} },
 		);
 		const argv = calls.map((c) => c.args);
-		expect(argv[1]).toEqual(["clone", "https://github.com/o/r.git", "/ws"]);
+		expect(argv[1]).toEqual(["clone", "--filter=blob:none", "https://github.com/o/r.git", "/ws"]);
 		expect(calls[2]).toEqual({ args: ["checkout", sha], cwd: "/ws" });
 		expect(calls[3]).toEqual({ args: ["switch", "-c", "warren/run_1"], cwd: "/ws" });
 	});
@@ -342,7 +344,14 @@ describe("runWorkspaceInit repo-cache path (warren-e908, §4.3/R2)", () => {
 		await runWorkspaceInit(CACHE_ENV, { git, fs: noopFs, log: () => {} });
 		const argv = calls.map((c) => c.args);
 		// Cache path bailed → fell back to the direct authenticated clone.
-		expect(argv).toContainEqual(["clone", "--branch", "main", AUTH_URL, "/ws"]);
+		expect(argv).toContainEqual([
+			"clone",
+			"--filter=blob:none",
+			"--branch",
+			"main",
+			AUTH_URL,
+			"/ws",
+		]);
 		// The workspace's token is stripped on the fallback path too.
 		expect(calls).toContainEqual({
 			args: ["remote", "set-url", "origin", "https://github.com/o/r.git"],
@@ -363,7 +372,14 @@ describe("runWorkspaceInit repo-cache path (warren-e908, §4.3/R2)", () => {
 			{ git, log: () => {} },
 		);
 		const argv = calls.map((c) => c.args);
-		expect(argv).toContainEqual(["clone", "--branch", "main", AUTH_URL, "/ws"]);
+		expect(argv).toContainEqual([
+			"clone",
+			"--filter=blob:none",
+			"--branch",
+			"main",
+			AUTH_URL,
+			"/ws",
+		]);
 		expect(argv.some((a) => a[0] === "clone" && a[1] === "--mirror")).toBe(false);
 		expect(argv.some((a) => a.includes("--is-bare-repository"))).toBe(false);
 	});

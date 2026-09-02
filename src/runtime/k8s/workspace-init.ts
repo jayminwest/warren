@@ -15,7 +15,9 @@
  * *target* branch — wrong for a per-run branch that does not yet exist).
  *
  * Env contract (injected by `buildRunPod`, see `./pod-spec.ts`):
- *   - `WARREN_REPO_URL`       — origin URL to clone (https or ssh).
+ *   - `WARREN_REPO_URL`       — origin URL to clone (https or ssh). The direct
+ *     network clone is a blobless partial clone (`--filter=blob:none`,
+ *     warren-3b44) so large repos initialize without a shared mirror cache.
  *   - `WARREN_BRANCH`         — per-run branch to create off the base.
  *   - `WARREN_BASE_BRANCH`    — branch the clone checks out + the per-run branch forks from.
  *   - `WARREN_WORKSPACE_PATH` — clone target (the emptyDir mount, default `/workspace`).
@@ -234,11 +236,23 @@ async function ensureMirror(
  * `git checkout`; and when the branch to carve IS the checked-out base, the
  * `switch -c` would collide with the clone's local branch, so skip it.
  */
-async function cloneBaseAndCarve(git: InitGitRunner, cfg: InitEnv, url: string): Promise<void> {
-	const branched = await git(["clone", "--branch", cfg.baseBranch, url, cfg.workspacePath]);
+async function cloneBaseAndCarve(
+	git: InitGitRunner,
+	cfg: InitEnv,
+	url: string,
+	extraCloneArgs: string[] = [],
+): Promise<void> {
+	const branched = await git([
+		"clone",
+		...extraCloneArgs,
+		"--branch",
+		cfg.baseBranch,
+		url,
+		cfg.workspacePath,
+	]);
 	if (branched.exitCode !== 0) {
 		// SHA (or otherwise non-`--branch`-able) base ref: plain clone + checkout.
-		await gitOrThrow(git, ["clone", url, cfg.workspacePath]);
+		await gitOrThrow(git, ["clone", ...extraCloneArgs, url, cfg.workspacePath]);
 		await gitOrThrow(git, ["checkout", cfg.baseBranch], { cwd: cfg.workspacePath });
 	}
 	if (cfg.branch !== cfg.baseBranch) {
@@ -284,6 +298,16 @@ async function materializeViaCache(
  * Direct network clone of the base branch into the workspace, carve the per-run
  * branch, and strip any embedded token from the saved remote. The original
  * (pre-cache) materialization path — also the fallback when the cache misses.
+ *
+ * warren-3b44: the direct clone is a BLOBLESS PARTIAL clone
+ * (`--filter=blob:none` — history + trees present, blobs fetched on demand),
+ * which is what lets a ~3 GB repo (openclaw) initialize in seconds-to-minutes
+ * instead of the ~20-min full clone that justified the 1 TiB Filestore cache
+ * (warren-8175). Deliberately NOT `--depth`: a shallow history breaks
+ * base-commit pinning (warren-919a) and merge-base computation, while the
+ * partial clone keeps every commit reachable and lazily fetches only the blobs
+ * checkout/diff/push touch. The opt-in mirror-cache path is untouched — its
+ * local clones copy from the full mirror and need no filter.
  */
 async function directClone(
 	git: InitGitRunner,
@@ -291,8 +315,10 @@ async function directClone(
 	log: (m: string) => void,
 ): Promise<void> {
 	const cloneUrl = authenticatedCloneUrl(cfg.repoUrl, bareTokenCredential(cfg.token));
-	log(`workspace-init: cloning ${cfg.repoUrl} (${cfg.baseBranch}) into ${cfg.workspacePath}`);
-	await cloneBaseAndCarve(git, cfg, cloneUrl);
+	log(
+		`workspace-init: cloning ${cfg.repoUrl} (${cfg.baseBranch}, --filter=blob:none) into ${cfg.workspacePath}`,
+	);
+	await cloneBaseAndCarve(git, cfg, cloneUrl, ["--filter=blob:none"]);
 	// Strip the embedded token so it never persists in the workspace .git/config.
 	if (cfg.token !== undefined) {
 		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: cfg.workspacePath });
