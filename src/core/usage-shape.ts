@@ -160,6 +160,15 @@ export const USAGE_SHAPES: Readonly<Partial<Record<RuntimeId, UsageShape>>> = {
 const USAGE_SHAPE_PRIORITY: readonly UsageShape[] = [PI_USAGE_SHAPE, CLAUDE_CODE_USAGE_SHAPE];
 
 /**
+ * The `payload.type` values that carry usage, derived once from the
+ * declared shapes so SQL predicates (e.g. `EventsRepo.listUsageEvents`)
+ * and the in-process readers cannot drift. Derived, not hand-listed.
+ */
+export const USAGE_ENVELOPE_TYPES: readonly string[] = [
+	...new Set(USAGE_SHAPE_PRIORITY.map((shape) => shape.envelopeType)),
+];
+
+/**
  * Look up the declared usage shape for a runtime id, or `null` when
  * the runtime emits no usage envelope.
  */

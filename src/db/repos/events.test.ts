@@ -282,6 +282,57 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await handle.close();
 			}
 		});
+		test("listUsageEvents returns exactly the usage envelopes (warren-5dd5)", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				const types = [
+					"turn_start",
+					"turn_end",
+					"tool_execution_start",
+					"tool_execution_end",
+					"message_start",
+					"message_end",
+					"agent_end",
+					"result",
+				];
+				for (const [i, type] of types.entries()) {
+					await events.append({
+						runId,
+						sandboxEventSeq: i + 1,
+						ts: new Date(2026, 4, 8, 12, 0, i).toISOString(),
+						kind: "state_change",
+						stream: "system",
+						payload: { type, usage: { input_tokens: 1 } },
+					});
+				}
+				// Off-carrier rows sharing the usage types must stay excluded:
+				// wrong kind, wrong stream, and another run's envelope.
+				await events.append({
+					runId,
+					sandboxEventSeq: 100,
+					ts: new Date(2026, 4, 8, 12, 1, 0).toISOString(),
+					kind: "state_change",
+					stream: "stdout",
+					payload: { type: "turn_end" },
+				});
+				await events.append({
+					runId,
+					sandboxEventSeq: 101,
+					ts: new Date(2026, 4, 8, 12, 1, 1).toISOString(),
+					kind: "text",
+					stream: "system",
+					payload: { type: "turn_end" },
+				});
+
+				const rows = await events.listUsageEvents([runId]);
+				expect(rows.map((r) => (r.payloadJson as { type?: string }).type)).toEqual([
+					"turn_end",
+					"result",
+				]);
+			} finally {
+				await handle.close();
+			}
+		});
 	});
 }
 
