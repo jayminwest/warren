@@ -51,6 +51,7 @@ import {
 	METRIC_EVICTED_TOTAL,
 	METRIC_INIT_FAILURES_TOTAL,
 	METRIC_OOM_KILLED_TOTAL,
+	METRIC_PREEMPTED_TOTAL,
 	METRIC_WATCH_RECONNECTS_TOTAL,
 	type PodMetricsSnapshot,
 	type PodMetricsSource,
@@ -84,6 +85,15 @@ export interface PodWatcherDeps {
 	readonly namespace: string;
 	/** Shared counter registry (OOM / reconnect / init-failure totals). */
 	readonly metrics: CounterSink;
+	/**
+	 * Optional cluster seam (warren-ea4b): reports whether a NODE was deleted
+	 * while carrying the `cloud.google.com/gke-spot=true` label. Consulted when
+	 * a tracked pod VANISHES (`forget`) so a spot reclamation that removed the
+	 * pod before its terminal status could be observed still counts as a
+	 * preemption and lands the run on the retryable `preempted` cause. Absent ⇒
+	 * the vanished-pod arm is inert and only the in-status witnesses classify.
+	 */
+	readonly deletedSpotNode?: (nodeName: string) => boolean;
 	/** Injected clock for pending-duration math. Default `() => new Date()`. */
 	readonly now?: () => Date;
 	/** Backoff floor / ceiling for reconnects (ms). Defaults 1s / 30s. */
@@ -129,6 +139,14 @@ export class PodWatcher
 	private readonly oomCounted = new Set<string>();
 	/** runIds whose eviction we have already counted (count once, not per event). */
 	private readonly evictedCounted = new Set<string>();
+	/** runIds whose preemption we have already counted (count once, not per event). */
+	private readonly preemptedCounted = new Set<string>();
+	/**
+	 * runIds whose pod vanished while its (spot-labelled) node was deleted —
+	 * the third preemption witness. Kept AFTER the cache forgets the pod so the
+	 * provider's `status()` can still classify the absent pod as `preempted`.
+	 */
+	private readonly vanishedPreempted = new Set<string>();
 	/** runIds whose workspace-init terminal we have already accounted for. */
 	private readonly initAccounted = new Set<string>();
 	private lastInitDurationSeconds: number | null = null;
@@ -207,6 +225,15 @@ export class PodWatcher
 		return countPodsForAdmission([...this.cache.values()], projectId, LABEL_PROJECT);
 	}
 
+	/**
+	 * Whether the run's pod vanished while its (spot-labelled) node was deleted
+	 * (warren-ea4b). Wired into `K8sProvider.status()` so an absent pod maps to
+	 * the retryable `preempted` terminalReason instead of plain `lost`.
+	 */
+	wasPreempted(runId: string): boolean {
+		return this.vanishedPreempted.has(runId);
+	}
+
 	// --- PodMetricsSource ----------------------------------------------------
 
 	metricsSnapshot(): PodMetricsSnapshot {
@@ -259,10 +286,29 @@ export class PodWatcher
 		this.cache.set(runId, pod);
 		this.accountOom(runId, pod);
 		this.accountEvicted(runId, pod);
+		this.accountPreempted(runId, pod);
 		this.accountInit(runId, pod);
 	}
 
 	private forget(runId: string): void {
+		const pod = this.cache.get(runId);
+		// warren-ea4b: a pod disappearing while its Spot node is being deleted is
+		// a preemption the pod may never live long enough to report in status.
+		const nodeName = pod?.spec?.nodeName;
+		if (
+			pod !== undefined &&
+			nodeName !== undefined &&
+			this.deps.deletedSpotNode?.(nodeName) === true &&
+			!this.preemptedCounted.has(runId)
+		) {
+			this.preemptedCounted.add(runId);
+			this.vanishedPreempted.add(runId);
+			this.deps.metrics.increment(METRIC_PREEMPTED_TOTAL);
+			this.deps.logger?.warn?.(
+				{ runId, nodeName },
+				"run pod vanished while its spot node was deleted",
+			);
+		}
 		this.cache.delete(runId);
 		this.oomCounted.delete(runId);
 		this.evictedCounted.delete(runId);
@@ -298,6 +344,27 @@ export class PodWatcher
 					...(status.terminalDetail != null ? { detail: status.terminalDetail } : {}),
 				},
 				"run pod evicted by kubelet",
+			);
+		}
+	}
+
+	/**
+	 * Count a Spot preemption once per run (warren-ea4b): either the pod's own
+	 * terminal status witnesses it (`isPreemptedPod`) or it vanished while its
+	 * spot node was deleted (recorded in `forget`, already counted there).
+	 */
+	private accountPreempted(runId: string, pod: V1Pod): void {
+		if (this.preemptedCounted.has(runId)) return;
+		if (mapPodToRunStatus(pod).terminalReason === "preempted") {
+			this.preemptedCounted.add(runId);
+			this.deps.metrics.increment(METRIC_PREEMPTED_TOTAL);
+			this.deps.logger?.warn?.(
+				{
+					runId,
+					reason: pod.status?.reason,
+					...(pod.status?.message != null ? { detail: pod.status.message } : {}),
+				},
+				"run pod preempted (spot node reclaimed)",
 			);
 		}
 	}

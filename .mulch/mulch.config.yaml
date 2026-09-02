@@ -71,6 +71,7 @@ domains:
   warren-deploy: {}
   infra: {}
   postgres: {}
+  usage-hydrate: {}
 governance:
   max_entries: 100
   warn_entries: 150

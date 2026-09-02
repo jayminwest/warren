@@ -73,14 +73,10 @@ export * from "./wire-tracker.ts";
 
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
- * (warren-e96f). Both kinds share the parent back-link column but differ in
- * workspace semantics: `continue` (warren-4b11) seeds the new run's
- * workspace from the parent's pushed branch; `replicate` (warren-e96f) is a
- * fresh re-dispatch of the parent's exact agent / model / project / prompt
- * against the project's default base, independent of whatever the parent
- * did.
- *
- * Nullable on the row: root runs (no parent) leave it null. TS-only narrowing
+ * (warren-e96f). `continue` (warren-4b11) seeds the new run's workspace from
+ * the parent's pushed branch; `replicate` (warren-e96f) is a fresh re-dispatch
+ * of the parent's exact agent / model / project / prompt against the default
+ * base. Nullable on the row (root runs leave it null); TS-only narrowing
  * (mx-2ab984); no SQL CHECK. Set at run-create time and never mutated.
  */
 export const CLONE_KINDS = ["replicate", "continue"] as const;
@@ -196,6 +192,8 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     budget). K8s-only; distinct from `oom_killed` (a container cgroup kill)
  *     and `crashed` (an agent fault) because an eviction is an infra-capacity
  *     signal, surfaced via the run-state probe's `terminalReason`.
+ *   - `preempted` (warren-ea4b): the pod's GKE Spot node was reclaimed
+ *     (K8s-only, retryable — the substrate lost the run, not the agent).
  *
  * Null on succeeded/cancelled rows.
  */
@@ -217,6 +215,7 @@ export const RUN_FAILURE_REASONS = [
 	"provider_error",
 	"oom_killed",
 	"evicted",
+	"preempted",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 

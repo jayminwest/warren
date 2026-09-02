@@ -35,6 +35,14 @@ export const METRIC_OOM_KILLED_TOTAL = "warren_run_oom_killed_total";
  * visible as an infra-capacity signal distinct from OOM kills.
  */
 export const METRIC_EVICTED_TOTAL = "warren_run_evicted_total";
+/**
+ * Total Spot preemptions observed across all run pods (warren-ea4b) — the GKE
+ * Spot node reclaimed out from under a running pod. Counted once per run,
+ * alongside the `preempted` terminalReason the run finalizes with (a
+ * retryable infra-lost cause), so a spike is visible as a capacity-reclamation
+ * signal distinct from the eviction counter.
+ */
+export const METRIC_PREEMPTED_TOTAL = "warren_run_preempted_total";
 /** Total pod-watch reconnects (watch stream ended and the informer re-attached). */
 export const METRIC_WATCH_RECONNECTS_TOTAL = "warren_pod_watch_reconnects_total";
 /** Total workspace-init container failures (init terminated with a non-zero exit). */

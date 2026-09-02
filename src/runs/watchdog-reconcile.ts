@@ -117,6 +117,8 @@ function failureReasonFromTerminal(reason: TerminalReason | undefined): RunFailu
 			return "oom_killed";
 		case "evicted":
 			return "evicted";
+		case "preempted":
+			return "preempted";
 		case "lost":
 			return "sandbox_run_lost";
 		default:

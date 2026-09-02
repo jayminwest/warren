@@ -1252,6 +1252,7 @@ components:
         - provider_error
         - oom_killed
         - evicted
+        - preempted
     RunMode:
       type: string
       enum:
@@ -1458,6 +1459,7 @@ components:
             - provider_error
             - oom_killed
             - evicted
+            - preempted
             - null
         createdAt:
           type:
