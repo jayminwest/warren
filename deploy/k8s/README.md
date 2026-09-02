@@ -23,6 +23,8 @@ deploy/k8s/
     gke/                  GKE Autopilot: Artifact Registry images, gce Ingress + static IP,
                           ManagedCertificate TLS, FrontendConfig HTTPS redirect, NEG ClusterIP,
                           BackendConfig (Cloud Armor + stream-safe backend timeout)
+  components/
+    postgres/             opt-in in-cluster Postgres Component (warren-9f5a), see below
   servicemonitor.yaml     Prometheus Operator scrape (standalone — see below)
 ```
 
@@ -49,6 +51,37 @@ If you apply raw files instead of kustomize, apply in this order: `namespaces` �
 > namespaces. That is a dry-run artifact, not a manifest error — a real apply
 > succeeds (validated on k3d). Use `kubectl kustomize <overlay>` for offline
 > validation.
+
+## Components: opt-in in-cluster Postgres
+
+`deploy/k8s/components/postgres/` is a kustomize **Component** (kind
+`Component`, `apiVersion kustomize.config.k8s.io/v1alpha1`).
+
+The bundle holds a StatefulSet (postgres:17, one replica, 10Gi PVC with
+`storageClassName` omitted so the GKE default `standard-rwo` binds), a
+ClusterIP Service on 5432, and a NetworkPolicy admitting ingress only from
+the control-plane pods in `warren`.
+
+A placeholder Secret template (`postgres-credentials`) completes the set,
+with the same rules as base/secrets.yaml: never apply it as-is. Nothing in
+base or any committed overlay includes the component. Opt in from **your
+own** (usually gitignored live) overlay:
+
+```yaml
+# deploy/k8s/overlays/<your-overlay>/kustomization.yaml
+resources:
+  - ../../base
+components:
+  - ../../components/postgres
+```
+
+Then point `warren-secrets/warren-db-url` at
+`postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode flags,
+because traffic stays inside the cluster network. Runbook:
+`docs/RUNBOOK-K8S.md` §1.5, "In-cluster Postgres".
+
+A backup CronJob layer lands under `deploy/k8s/components/postgres/backup/`
+(warren-6db7). Do not run this component in production before that exists.
 
 ## Public exposure (GKE) — static IP, TLS, DNS
 

@@ -1,0 +1,21 @@
+# In-cluster Postgres component (warren-9f5a, plan pl-6076).
+#
+# An opt-in kustomize Component: an overlay pulls it in with
+# `components: [../../components/postgres]` (see deploy/k8s/README.md).
+# Nothing in base or any committed overlay includes it — an operator who
+# never adds the line keeps Supabase (RUNBOOK-K8S §1.5).
+#
+# The Secret here is a PLACEHOLDER template in the style of
+# deploy/k8s/base/secrets.yaml: never apply it as-is, create the real Secret
+# imperatively. The kind overlay's placeholder-Secret exclusion (warren-df5c)
+# only covers base/secrets.yaml; this component is not included by any
+# committed overlay, so it does not participate there — keep it that way.
+#
+# warren-6db7 adds the backup CronJob layer under deploy/k8s/components/postgres/backup/.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - statefulset.yaml
+  - service.yaml
+  - secret.yaml
+  - networkpolicy.yaml
