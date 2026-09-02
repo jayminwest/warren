@@ -99,6 +99,22 @@ export const WORKSPACE_MOUNT_PATH = "/workspace";
 export const INIT_CONTAINER_NAME = "workspace-init";
 export const AGENT_CONTAINER_NAME = "agent";
 
+// warren-2e2e: Spot placement (run pods only) lives in `./pod-spot.ts`; re-exported so this file stays the single import point for the pod shape.
+export {
+	resolveSpot,
+	SPOT_NODE_SELECTOR_KEY,
+	SPOT_NODE_SELECTOR_VALUE,
+	SPOT_TOLERATION,
+	spotPlacement,
+} from "./pod-spot.ts";
+
+import { resolveSpot, spotPlacement } from "./pod-spot.ts";
+
+// warren-2e2e: pod-name derivation + label-VALUE sanitization extracted to `./pod-name.ts`.
+export { podNameForRun, sanitizeLabelValue } from "./pod-name.ts";
+
+import { podNameForRun, sanitizeLabelValue } from "./pod-name.ts";
+
 /**
  * The init container's entry command. Runs warren's `workspace:init` package
  * script (`src/runtime/k8s/workspace-init.ts`) so the path resolves against the
@@ -237,6 +253,8 @@ export interface K8sPodConfig {
 	agentUidDrop?: AgentUidDrop;
 	/** optional ServiceAccount for the run pod (RBAC step). */
 	serviceAccountName?: string;
+	/** Spot placement (warren-2e2e, `./pod-spot.ts`): run pods only, never the control plane. */
+	spot?: boolean;
 	/**
 	 * `imagePullPolicy` for BOTH run-pod containers (`WARREN_K8S_IMAGE_PULL_POLICY`).
 	 * Absent ⇒ omit ⇒ K8s default (`Always` for `:latest`). On kind/k3d the images
@@ -338,27 +356,8 @@ export function resolveK8sPodConfig(
 	if (pullPolicy !== undefined) config.imagePullPolicy = pullPolicy;
 	const repoCache = resolveRepoCacheConfig(env);
 	if (repoCache !== undefined) config.repoCache = repoCache;
+	if (resolveSpot(env)) config.spot = true;
 	return config;
-}
-
-// --- Name sanitization -----------------------------------------------------
-
-/**
- * Derive the pod name for a run. warren run ids look like `run_01tdf3a0wg5e`;
- * the underscore is legal in a K8s label VALUE but NOT in a resource NAME
- * (DNS-1123: lowercase alphanumerics + `-`, ≤253). We lowercase, replace every
- * illegal char with `-`, collapse runs of `-`, and trim leading/trailing `-`.
- * The exact `runId` still travels verbatim on the `warren.io/run-id` label so
- * the pod-watcher can select it (labels permit `_`).
- */
-export function podNameForRun(runId: string): string {
-	const sanitized = runId
-		.toLowerCase()
-		.replace(/[^a-z0-9-]/g, "-")
-		.replace(/-+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	const name = `run-${sanitized}`;
-	return name.length > 253 ? name.slice(0, 253).replace(/-+$/g, "") : name;
 }
 
 // --- Builder ---------------------------------------------------------------
@@ -456,29 +455,22 @@ export function podLabelsForRun(spec: RunSpec, config: K8sPodConfig): Record<str
 }
 
 /**
- * Coerce a value into a legal K8s label VALUE: ≤63 chars of `[A-Za-z0-9._-]`,
- * beginning and ending with an alphanumeric. Illegal chars collapse to `-`;
- * blank/all-illegal input ⇒ `undefined` (no label stamped). Warren project ids
- * (`proj_<ulid>`) are already legal, so this is a defensive normalizer, not a
- * transform of the common case.
- */
-export function sanitizeLabelValue(raw: string | undefined): string | undefined {
-	if (raw === undefined || raw === "") return undefined;
-	const collapsed = raw
-		.replace(/[^A-Za-z0-9._-]/g, "-")
-		.replace(/-+/g, "-")
-		.slice(0, 63);
-	const trimmed = collapsed.replace(/^[._-]+|[._-]+$/g, "");
-	return trimmed === "" ? undefined : trimmed;
-}
-
-/**
  * Build the bare `V1Pod` for a run. Pure: a function of `(spec, config, opts)`.
  * `restartPolicy: Never`, hardened securityContext, the workspace-init init
  * container, and the `/workspace` emptyDir shared between init + agent. When
  * `opts.seedConfigMapName` is set, a read-only ConfigMap volume carries the seed
  * manifest into the init container. The agent's callback env is expected to be
  * folded into `spec.env` by the caller (`create()` owns the provider plumbing).
+ *
+ * Spot (warren-2e2e, `./pod-spot.ts`): when `config.spot` is set, the pod gains
+ * the `cloud.google.com/gke-spot=true` nodeSelector plus the matching NoSchedule
+ * toleration, pinning it to Autopilot Spot nodes. The builder sets NO explicit
+ * `terminationGracePeriodSeconds`, so K8s applies its 30 s pod default —
+ * deliberate against Autopilot's 25 s preemption notice: preemption ends the
+ * pod as infra-lost regardless (preemption is a retryable failure and the run
+ * re-dispatches from scratch), so a longer grace buys nothing on Spot; the
+ * 30 s default only matters for explicit `cancel()`, whose delete grace comes
+ * from `cancelGracePeriodSeconds`, not this field.
  */
 export function buildRunPod(
 	spec: RunSpec,
@@ -510,6 +502,11 @@ export function buildRunPod(
 	if (config.serviceAccountName !== undefined && pod.spec !== undefined) {
 		pod.spec.serviceAccountName = config.serviceAccountName;
 		pod.spec.automountServiceAccountToken = true;
+	}
+	if (config.spot && pod.spec !== undefined) {
+		const spot = spotPlacement();
+		pod.spec.nodeSelector = spot.nodeSelector;
+		pod.spec.tolerations = spot.tolerations;
 	}
 	return pod;
 }

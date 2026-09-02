@@ -144,7 +144,7 @@ export async function loadRunMetrics(
 ): Promise<{ rows: RunRow[]; metrics: RunMetrics }> {
 	const rowsRaw = await deps.repos.runs.listForAnalytics(filter);
 	// Hydrate so terminal runs with bridge-died usage still count.
-	const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events);
+	const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events, deps.repos.runs);
 	return { rows, metrics: buildRunMetrics(toMetricsRows(rows)) };
 }
 

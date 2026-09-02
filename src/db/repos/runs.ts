@@ -348,6 +348,25 @@ export class RunsRepo {
 		return { ...current, ...patch };
 	}
 
+	/**
+	 * Narrow write-through for the usage hydrator (warren-b33e): persist
+	 * derived cost/token totals onto the run row wholesale (no partial
+	 * patch semantics — the caller always has a full aggregate). Leaves
+	 * `cost_basis` and every other column untouched.
+	 */
+	async updateUsage(
+		id: string,
+		stats: {
+			costUsd: number;
+			tokensInput: number;
+			tokensOutput: number;
+			tokensCacheRead: number;
+			tokensCacheWrite: number;
+		},
+	): Promise<void> {
+		await this.adapter.runWrite(this.db.update(this.runs).set(stats).where(eq(this.runs.id, id)));
+	}
+
 	/** Preview-environment write (R-19); body lives in runs-preview.ts. */
 	attachPreview(id: string, input: AttachPreviewInput): Promise<RunRow> {
 		return attachPreview(this.adapter, id, input);

@@ -15,11 +15,14 @@
  * the row before the handler serializes it. Non-terminal rows are left
  * untouched — the bridge is the source of truth while it's alive.
  *
- * This is a transitional fallback only: a real fix would also backfill
- * the columns on terminal reconciliation so subsequent reads don't pay
- * the aggregation cost. The seed (warren-ab18) explicitly defers that
- * backfill — keep this helper focused on the symptom (operator sees
- * `-` for cost) and let the next iteration close the gap.
+ * Write-through (warren-b33e): when a `UsagePersister` is supplied,
+ * the derived totals are also persisted onto the run row so a terminal
+ * run is hydrated at most once — the next read sees `costUsd` set and
+ * skips the aggregation entirely. A terminal candidate with zero usage
+ * envelopes persists `costUsd = 0` so it also stops being a candidate.
+ * `cost_basis` is never touched. `backfillTerminalUsage` closes the
+ * write side of the same gap at terminal reconciliation (reap/finalize)
+ * so new runs never enter the null state when their envelopes exist.
  */
 
 import type { EventsRepo } from "../db/repos/events.ts";
@@ -41,6 +44,72 @@ export interface UsageEventsFetcher {
 }
 
 /**
+ * Narrow write seam for hydration. `RunsRepo` satisfies this
+ * structurally via `updateUsage`; tests stub it.
+ */
+export interface UsagePersister {
+	updateUsage(
+		runId: string,
+		stats: {
+			costUsd: number;
+			tokensInput: number;
+			tokensOutput: number;
+			tokensCacheRead: number;
+			tokensCacheWrite: number;
+		},
+	): Promise<void>;
+}
+
+const ZERO_STATS = {
+	costUsd: 0,
+	tokensInput: 0,
+	tokensOutput: 0,
+	tokensCacheRead: 0,
+	tokensCacheWrite: 0,
+};
+
+function zeroStatsFor(run: RunRow): typeof ZERO_STATS {
+	// Preserve any bridge-stamped token columns; zero only the nulls.
+	return {
+		costUsd: 0,
+		tokensInput: run.tokensInput ?? 0,
+		tokensOutput: run.tokensOutput ?? 0,
+		tokensCacheRead: run.tokensCacheRead ?? 0,
+		tokensCacheWrite: run.tokensCacheWrite ?? 0,
+	};
+}
+
+function persistUsage(runId: string, stats: typeof ZERO_STATS, persister: UsagePersister): void {
+	persister.updateUsage(runId, stats).catch((err: unknown) => {
+		console.error(`[usage-hydrate] failed to persist usage for run ${runId}:`, err);
+	});
+}
+
+/**
+ * Backfill at terminal reconciliation (warren-b33e): called from the
+ * reap/finalize path right after the run flips to succeeded/failed/
+ * cancelled, so a run whose bridge died before its last checkpoint is
+ * hydrated once at write time instead of on every read. Zero-envelope
+ * runs persist `costUsd = 0` and leave the columns otherwise untouched.
+ * Best-effort: failures are logged, never thrown — the transition has
+ * already landed and must not be rolled back by an accounting miss.
+ */
+export async function backfillTerminalUsage(
+	run: RunRow,
+	events: UsageEventsFetcher | EventsRepo,
+	persister: UsagePersister,
+): Promise<void> {
+	if (!isHydrationCandidate(run)) return;
+	try {
+		const rows = await events.listUsageEvents([run.id]);
+		const stats = aggregateUsageFromEvents(rows.map(eventRowToUsageInput)) ?? zeroStatsFor(run);
+		await persister.updateUsage(run.id, stats);
+	} catch (err) {
+		console.error(`[usage-hydrate] failed to backfill usage for run ${run.id}:`, err);
+	}
+}
+
+/**
  * For each run in `runs` that is terminal AND has `costUsd === null`,
  * compute usage from its persisted events and overlay the result onto
  * the row. Returns rows in the same order. Non-candidate rows are
@@ -53,6 +122,7 @@ export interface UsageEventsFetcher {
 export async function hydrateRunsUsage<T extends RunRow>(
 	runs: readonly T[],
 	events: UsageEventsFetcher | EventsRepo,
+	persister?: UsagePersister,
 ): Promise<T[]> {
 	const candidates = runs.filter(isHydrationCandidate);
 	if (candidates.length === 0) return runs.slice();
@@ -66,7 +136,17 @@ export async function hydrateRunsUsage<T extends RunRow>(
 	return runs.map((run) => {
 		if (!isHydrationCandidate(run)) return run;
 		const stats = aggregateUsageFromEvents((byRun.get(run.id) ?? []).map(eventRowToUsageInput));
-		if (stats === null) return run;
+		if (stats === null) {
+			// Zero usage envelopes: persist zeros so this terminal row stops
+			// being a candidate on the next read (warren-b33e).
+			if (persister) {
+				const zeros = zeroStatsFor(run);
+				persistUsage(run.id, zeros, persister);
+				return { ...run, ...zeros };
+			}
+			return run;
+		}
+		if (persister) persistUsage(run.id, stats, persister);
 		return {
 			...run,
 			costUsd: stats.costUsd,
