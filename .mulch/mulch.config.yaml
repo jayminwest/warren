@@ -70,6 +70,7 @@ domains:
   packaging: {}
   warren-deploy: {}
   infra: {}
+  usage-hydrate: {}
 governance:
   max_entries: 100
   warn_entries: 150

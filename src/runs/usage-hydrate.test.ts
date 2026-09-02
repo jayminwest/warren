@@ -9,7 +9,12 @@
 
 import { describe, expect, test } from "bun:test";
 import type { RunRow } from "../db/schema.ts";
-import { hydrateRunsUsage, hydrateRunUsage, type UsageEventsFetcher } from "./usage-hydrate.ts";
+import {
+	backfillTerminalUsage,
+	hydrateRunsUsage,
+	hydrateRunUsage,
+	type UsageEventsFetcher,
+} from "./usage-hydrate.ts";
 
 function row(over: Partial<RunRow> & { id: string; state: RunRow["state"] }): RunRow {
 	return {
@@ -159,5 +164,125 @@ describe("hydrateRunUsage", () => {
 		const input = row({ id: "run_a", state: "queued" });
 		const out = await hydrateRunUsage(input, events);
 		expect(out).toBe(input);
+	});
+});
+
+function persister() {
+	const calls: { id: string; stats: Record<string, number> }[] = [];
+	const persisted = new Map<string, Record<string, number>>();
+	return {
+		calls,
+		persisted,
+		updateUsage(id: string, stats: Record<string, number>) {
+			calls.push({ id, stats });
+			persisted.set(id, stats);
+			return Promise.resolve();
+		},
+	};
+}
+
+describe("hydrateRunsUsage write-through (warren-b33e)", () => {
+	test("persists derived stats onto the candidate row", async () => {
+		const events = fetcher([claudeResultEvent("run_a", 0.42, 1200)]);
+		const store = persister();
+		const out = await hydrateRunsUsage([row({ id: "run_a", state: "failed" })], events, store);
+		expect(store.calls).toEqual([
+			{
+				id: "run_a",
+				stats: {
+					costUsd: 0.42,
+					tokensInput: 1200,
+					tokensOutput: 0,
+					tokensCacheRead: 0,
+					tokensCacheWrite: 0,
+				},
+			},
+		]);
+		expect(out[0]?.costUsd).toBeCloseTo(0.42);
+	});
+
+	test("a second call over persisted rows issues no listUsageEvents", async () => {
+		const events = fetcher([claudeResultEvent("run_a", 0.42, 1200)]);
+		const store = persister();
+		const first = await hydrateRunsUsage([row({ id: "run_a", state: "failed" })], events, store);
+		expect(events.calls).toBe(1);
+		// Simulate the DB round-trip: the write-through landed, so the row
+		// read back carries the derived totals and is no longer a candidate.
+		const updated = first.map((r) => ({
+			...r,
+			...(store.persisted.get(r.id) as Record<string, number>),
+		})) as typeof first;
+		const second = await hydrateRunsUsage(updated, events, store);
+		expect(events.calls).toBe(1);
+		expect(second[0]?.costUsd).toBeCloseTo(0.42);
+		expect(store.calls.length).toBe(1);
+	});
+
+	test("zero-envelope terminal candidate persists costUsd = 0", async () => {
+		const events = fetcher([]);
+		const store = persister();
+		const out = await hydrateRunsUsage([row({ id: "run_a", state: "succeeded" })], events, store);
+		expect(store.calls).toEqual([
+			{
+				id: "run_a",
+				stats: {
+					costUsd: 0,
+					tokensInput: 0,
+					tokensOutput: 0,
+					tokensCacheRead: 0,
+					tokensCacheWrite: 0,
+				},
+			},
+		]);
+		expect(out[0]?.costUsd).toBe(0);
+	});
+
+	test("non-terminal rows are never persisted", async () => {
+		const events = fetcher([claudeResultEvent("run_a", 0.42, 1200)]);
+		const store = persister();
+		await hydrateRunsUsage([row({ id: "run_a", state: "running" })], events, store);
+		expect(events.calls).toBe(0);
+		expect(store.calls).toEqual([]);
+	});
+
+	test("persist failures are logged, not thrown", async () => {
+		const events = fetcher([claudeResultEvent("run_a", 0.42, 1200)]);
+		const failing = {
+			updateUsage() {
+				return Promise.reject(new Error("db down"));
+			},
+		};
+		const out = await hydrateRunsUsage([row({ id: "run_a", state: "failed" })], events, failing);
+		expect(out[0]?.costUsd).toBeCloseTo(0.42);
+	});
+});
+
+describe("backfillTerminalUsage", () => {
+	test("persists aggregate for a terminal null-cost row", async () => {
+		const events = fetcher([claudeResultEvent("run_a", 0.42, 1200)]);
+		const store = persister();
+		await backfillTerminalUsage(row({ id: "run_a", state: "succeeded" }), events, store);
+		expect(store.calls.length).toBe(1);
+		expect(store.calls[0]?.stats.costUsd).toBeCloseTo(0.42);
+	});
+
+	test("writes zeros for a terminal row with no usage envelopes", async () => {
+		const events = fetcher([]);
+		const store = persister();
+		await backfillTerminalUsage(row({ id: "run_a", state: "cancelled" }), events, store);
+		expect(store.calls[0]?.stats.costUsd).toBe(0);
+	});
+
+	test("skips non-terminal and already-hydrated rows", async () => {
+		const events = fetcher([claudeResultEvent("run_a", 0.42, 1200)]);
+		const store = persister();
+		await backfillTerminalUsage(row({ id: "run_a", state: "running" }), events, store);
+		await backfillTerminalUsage(
+			row({ id: "run_a", state: "succeeded", costUsd: 0.5 }),
+			events,
+			store,
+		);
+		expect(store.calls).toEqual([]);
+		expect(events.calls).toBe(0);
 	});
 });

@@ -221,7 +221,7 @@ export function listRunsHandler(deps: ServerDeps): RouteHandler {
 					: await deps.repos.runs.listAll(listOpts);
 		// warren-ab18: surface in-events cost for terminal runs whose
 		// bridge died before the final checkpoint landed.
-		const hydrated = await hydrateRunsUsage(rows, deps.repos.events);
+		const hydrated = await hydrateRunsUsage(rows, deps.repos.events, deps.repos.runs);
 		// warren-ee50 / pl-b0c0 step 1: aggregate the full filtered set so
 		// the Runs page can show all-time totals next to a paginated table.
 		const aggFilter = {
@@ -284,7 +284,7 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		if (projectId !== undefined) filter.projectId = projectId;
 		const rowsRaw = await deps.repos.runs.listForAnalytics(filter);
 		// Hydrate so terminal runs with bridge-died cost still count.
-		const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events);
+		const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events, deps.repos.runs);
 		const planByRun = new Map<string, string | null>();
 		if (rows.length > 0) {
 			const joined = await deps.repos.planRuns.resolvePlanForRunIds(rows.map((r) => r.id));
