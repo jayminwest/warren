@@ -66,7 +66,7 @@ describe("collectFinalizeResult — ref-dispatch repair topology (warren-ba08)",
 		expect(calls).toEqual([
 			["rev-parse", "--verify", "origin/fix/pr-head"],
 			["push", "origin", "HEAD:fix/pr-head"],
-			["rev-list", "--count", `${SHA}..HEAD`],
+			["rev-list", "--count", "--first-parent", `${SHA}..HEAD`],
 		]);
 		expect(r.stages).toEqual([
 			{ stage: "branch_push", status: "ok" },

@@ -467,10 +467,14 @@ async function countCommitsAhead(
 	}
 	try {
 		if ("error" in countBase) throw countBase.error;
-		const out = await exec.run("git", ["rev-list", "--count", `${countBase.ref}..HEAD`], {
-			cwd: workspacePath,
-			timeoutMs: 10_000,
-		});
+		const out = await exec.run(
+			"git",
+			["rev-list", "--count", "--first-parent", `${countBase.ref}..HEAD`],
+			{
+				cwd: workspacePath,
+				timeoutMs: 10_000,
+			},
+		);
 		const parsed = Number.parseInt(out.stdout.trim(), 10);
 		trail.ok("commits_ahead");
 		return Number.isFinite(parsed) ? parsed : null;

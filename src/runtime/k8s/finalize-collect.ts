@@ -336,7 +336,7 @@ async function countCommitsAhead(
 		trail.failed("commits_ahead", countBase.error);
 		return null;
 	}
-	const res = await git(["rev-list", "--count", `${countBase.ref}..HEAD`], {
+	const res = await git(["rev-list", "--count", "--first-parent", `${countBase.ref}..HEAD`], {
 		cwd: workspacePath,
 		timeoutMs: 10_000,
 	});

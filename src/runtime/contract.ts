@@ -293,7 +293,7 @@ export interface FinalizeIntent {
 	commit?: string[];
 	/**
 	 * Base ref for the commits-ahead / empty-push count
-	 * (`git rev-list --count <baseBranch>..HEAD`). A provider-NEUTRAL git ref
+	 * (`git rev-list --count --first-parent <baseBranch>..HEAD`). A provider-NEUTRAL git ref
 	 * (RunSpec.baseBranch was promoted first-class, §6.2), NOT a host path.
 	 * Omitted ⇒ `commitsAhead` is `null` (warren-f3bb).
 	 */

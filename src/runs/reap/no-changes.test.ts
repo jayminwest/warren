@@ -198,7 +198,7 @@ describe("reapRun ref-dispatch zero-commit (warren-ba08)", () => {
 		expect(measured).toEqual([
 			["rev-parse", "--verify", "origin/fix/pr-head"],
 			["push", "origin", "HEAD:fix/pr-head"],
-			["rev-list", "--count", `${FAKE_REV_PARSE_SHA}..HEAD`],
+			["rev-list", "--count", "--first-parent", `${FAKE_REV_PARSE_SHA}..HEAD`],
 			["diff", "--numstat", `${FAKE_REV_PARSE_SHA}..HEAD`],
 		]);
 		const row = await repos.runs.require(runId);

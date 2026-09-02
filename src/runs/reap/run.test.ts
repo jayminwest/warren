@@ -63,7 +63,7 @@ describe("reapRun", () => {
 		expect(e.calls[0]?.args).toEqual(["push", "origin", "HEAD:agent/refactor-bot/run-1"]);
 		expect(e.calls[0]?.cwd).toBe("/data/sandbox/ws");
 		expect(e.calls[1]?.cmd).toBe("git");
-		expect(e.calls[1]?.args).toEqual(["rev-list", "--count", "main..HEAD"]);
+		expect(e.calls[1]?.args).toEqual(["rev-list", "--count", "--first-parent", "main..HEAD"]);
 		expect(e.calls[2]?.cmd).toBe("git");
 		expect(e.calls[2]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
 		expect(e.calls[2]?.cwd).toBe("/data/sandbox/ws");
@@ -223,7 +223,7 @@ describe("reapRun", () => {
 
 		expect(result.commitsAhead).toBe(2);
 		const revList = e.calls.find((c) => c.args[0] === "rev-list");
-		expect(revList?.args).toEqual(["rev-list", "--count", "develop..HEAD"]);
+		expect(revList?.args).toEqual(["rev-list", "--count", "--first-parent", "develop..HEAD"]);
 		await customDb.close();
 	});
 

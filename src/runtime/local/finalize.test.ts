@@ -280,7 +280,7 @@ describe("finalize — stage trail + push reporting", () => {
 		expect(result.commitsAheadBase).toBe("main");
 		expect(exec.calls.map((c) => c.args)).toEqual([
 			["push", "origin", "HEAD:warren/run-1"],
-			["rev-list", "--count", "main..HEAD"],
+			["rev-list", "--count", "--first-parent", "main..HEAD"],
 		]);
 	});
 });

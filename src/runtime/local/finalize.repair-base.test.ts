@@ -54,7 +54,7 @@ describe("finalize — ref-dispatch repair topology (warren-ba08)", () => {
 		expect(exec.calls.map((c) => c.args)).toEqual([
 			["rev-parse", "--verify", "origin/fix/pr-head"],
 			["push", "origin", "HEAD:fix/pr-head"],
-			["rev-list", "--count", `${FAKE_REV_PARSE_SHA}..HEAD`],
+			["rev-list", "--count", "--first-parent", `${FAKE_REV_PARSE_SHA}..HEAD`],
 		]);
 		// Every rev-parse / rev-list runs in the workspace.
 		expect(new Set(exec.calls.map((c) => c.cwd))).toEqual(new Set([WS]));
@@ -120,7 +120,7 @@ describe("finalize — ref-dispatch repair topology (warren-ba08)", () => {
 		expect(result.commitsAheadBase).toBe("main");
 		expect(exec.calls.map((c) => c.args)).toEqual([
 			["push", "origin", "HEAD:warren/run-1"],
-			["rev-list", "--count", "main..HEAD"],
+			["rev-list", "--count", "--first-parent", "main..HEAD"],
 		]);
 	});
 });
