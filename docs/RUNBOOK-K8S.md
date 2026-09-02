@@ -793,6 +793,61 @@ Checks run most-specific-first:
 Set any knob to `0` to turn that cap off.
 `warren_run_admission_rejections_total{reason}` makes rejections observable.
 
+### 5.6 Sizing run pods on Autopilot (warren-fe11)
+
+Autopilot **bills the request**, not the usage. Every run pod's vCPU + memory
+request is what the invoice sees, whether the container idles or saturates.
+
+**The 1:6.5 ratio rule.** Autopilot enforces `memory request ≤ 6.5 × vCPU
+request`. If a pod asks for more memory than the ratio allows, Autopilot
+*raises* the vCPU request (in 0.25 vCPU increments) until the ratio holds — and
+bills the raised amount. Minimum requests: 0.25 vCPU / 0.5 GiB. **Memory limits
+cannot exceed requests on Autopilot** — the limit clamps to the request — so on
+Autopilot there is no burstable-memory gap; the request IS the OOM ceiling.
+
+**August 2026 measurements** (Cloud Monitoring `memory/used_bytes`,
+non-evictable, per-pod peak via ALIGN_MAX, namespace `warren-runs`,
+2026-08-01 → 2026-09-02, supplied by the operator):
+
+| Container | n | p50 | p90 | p95 | max |
+|---|---|---|---|---|---|
+| agent | 470 pods | 1129 MiB | 1494 MiB | 1623 MiB | 10234 MiB |
+| workspace-init | 92 | 59 MiB | — | 390 MiB | 2310 MiB (openclaw clone) |
+
+Agent peaks bucketed: ≤2 GiB — 458 pods; 2–4 GiB — 3; 4–8 GiB — 7; >8 GiB — 2.
+All eight pods above 4 GiB belonged to the openclaw project (2.9 GB repo).
+August outcomes (~297 runs): 1 `oom_killed` (an openclaw run peaking at
+10234 MiB — its limit was 16384 MiB, so the OOM was inside a heap region the
+kernel accounting missed), 3 evicted. Live overlay:
+`WARREN_K8S_MEMORY_REQUEST_MIB=16384` and `WARREN_K8S_MEMORY_LIMIT_MIB=16384`.
+
+**Worked cost per pod-hour** (us-central1 Autopilot list rates: $0.0445/vCPU-h,
+$0.0048/GiB-h):
+
+| Request | Ratio-forced vCPU | Per pod-hour | × ~114 pod-hours/mo |
+|---|---|---|---|
+| 16384 MiB (live) | ceil(16/6.5 × 4)/4 = 2.5 vCPU | $0.1113 + $0.0768 = **$0.188** | **$21.43** |
+| 4096 MiB (proposed) | 1 vCPU (4/6.5 = 0.62) | $0.0445 + $0.0192 = **$0.0637** | **$7.26** |
+| 2048 MiB (lean option) | 1 vCPU | $0.0445 + $0.0096 = **$0.0541** | $6.17 |
+
+**Proposal: 4096 MiB request / 4096 MiB limit** (`WARREN_K8S_MEMORY_REQUEST_MIB=
+WARREN_K8S_MEMORY_LIMIT_MIB=4096`; remember the limit clamps to the request on
+Autopilot, so a separate limit env buys nothing there). It sits ~2.5× above the
+agent p95 (1623 MiB) and covers 98% of August pods. Expected delta at ~114
+run-pod-hours/month: **save ~$14.2/mo (~66%)**.
+
+**OOM risk at 4096 MiB:** 9 of 470 August pods (1.9%) peaked above it — all
+openclaw. Without a per-project memory override, every openclaw run that
+repeats its August peak OOM-kills. A per-project request override keyed off the
+existing `.warren/config.yaml` dispatch path would let openclaw keep a larger
+cap; it is noted as future work here, not built by warren-fe11. The 2048 MiB
+option is not recommended: it sits only 26% above p90 and would have OOM-killed
+12 August pods.
+
+`src/runtime/k8s/pod-memory-sample.ts` (warren-fe11) stamps a one-shot
+`run_pod_memory_sample` system event at K8s finalize with the agent container's
+last metrics.k8s.io memory reading, so future re-sizings ride measured data.
+
 ---
 
 ## 6. Observability
