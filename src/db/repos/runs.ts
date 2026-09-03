@@ -162,6 +162,7 @@ export class RunsRepo {
 			prMergedAt: null,
 			// Outcome facts (warren-ab2b): unknown until reap measures them — NULL.
 			commitsAhead: null,
+			baseSha: null,
 			filesChanged: null,
 			insertions: null,
 			deletions: null,

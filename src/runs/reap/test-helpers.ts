@@ -165,6 +165,11 @@ export interface FakeExecOpts {
 	 */
 	numstat?: string;
 	/**
+	 * Stdout for `git merge-base <base> HEAD` (warren-b19e base_sha). Default
+	 * {@link FAKE_REV_PARSE_SHA} — a plausible resolved workspace base.
+	 */
+	mergeBase?: string;
+	/**
 	 * When `true`, `git diff --cached --quiet …` throws (exit non-zero =
 	 * staged changes present). Default `false` — exits zero = no staged
 	 * delta. Used by warren-343a plot-commit tests to flip the
@@ -218,6 +223,24 @@ function handleDiffCached(stagedDelta: boolean): ExecResult {
 	return { stdout: "", stderr: "" };
 }
 
+/** warren-b19e: `git merge-base <base> HEAD` resolves the workspace base SHA. */
+function handleMergeBase(mergeBase: string): ExecResult {
+	return { stdout: `${mergeBase}\n`, stderr: "" };
+}
+
+/** The `git diff` probes; split out of `route` to keep both under the complexity budget. */
+function routeDiffProbe(
+	args: readonly string[],
+	stagedDelta: boolean,
+	numstat: string,
+): ExecResult | null {
+	if (args.includes("--cached") && args.includes("--quiet")) {
+		return handleDiffCached(stagedDelta);
+	}
+	if (args.includes("--numstat")) return { stdout: numstat, stderr: "" };
+	return null;
+}
+
 export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const calls: {
 		cmd: string;
@@ -232,11 +255,12 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const revListCount = opts.revListCount ?? "1";
 	const revParse = opts.revParse ?? FAKE_REV_PARSE_SHA;
 	const numstat = opts.numstat ?? "";
+	const mergeBase = opts.mergeBase ?? FAKE_REV_PARSE_SHA;
 	const stagedDelta = opts.stagedDelta === true;
 	const gitStatus = opts.gitStatus ?? "";
 	const failGitStatus = opts.failGitStatus ?? null;
-	// Routed `git <sub>` reads, split out of `run` to keep both under the
-	// cognitive-complexity budget.
+	// Routed `git <sub>` reads, split out of `run` (and of each other) to keep
+	// every function under the cognitive-complexity budget.
 	const route = (cmd: string, args: readonly string[]): ExecResult | null => {
 		if (isGitSub(cmd, args, "cat-file")) return handleCatFile(failCatFile);
 		if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
@@ -244,12 +268,8 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 		if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
 			return handleStatus(failGitStatus, gitStatus);
 		}
-		if (isGitSub(cmd, args, "diff") && args.includes("--cached") && args.includes("--quiet")) {
-			return handleDiffCached(stagedDelta);
-		}
-		if (isGitSub(cmd, args, "diff") && args.includes("--numstat")) {
-			return { stdout: numstat, stderr: "" };
-		}
+		if (isGitSub(cmd, args, "merge-base")) return handleMergeBase(mergeBase);
+		if (isGitSub(cmd, args, "diff")) return routeDiffProbe(args, stagedDelta, numstat);
 		return null;
 	};
 	const exec: ReapExec = {

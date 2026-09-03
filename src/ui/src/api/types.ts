@@ -67,14 +67,12 @@ export interface ProjectRow {
 	addedAt: string;
 	lastFetchedAt: string | null;
 	lastHeadSha: string | null;
-	/**
-	 * Seeds opt-in gating flag (warren-9990 / pl-a258 step 1). True iff a
+	/** Seeds opt-in gating flag (warren-9990 / pl-a258 step 1). True iff a
 	 * `.seeds/` directory existed at the clone root the last time
 	 * addProject or refreshProjectClone probed it. The PlanRun API
 	 * (warren-f923) reads this server-side to reject plan-run dispatch
 	 * against projects without the issue queue; the NewPlanRun form
-	 * disables submission when this is false.
-	 */
+	 * disables submission when this is false. */
 	hasSeeds: boolean;
 }
 
@@ -93,14 +91,12 @@ export interface RunRow {
 	 * survives a project delete as orphan rows.
 	 */
 	projectId: string | null;
-	/**
-	 * Internal runtime handles, named for burrow but populated by
+	/** Internal runtime handles, named for burrow but populated by
 	 * whichever runtime dispatched the run (warren-0965): burrow
 	 * sandbox/run ids under the burrow runtime, the pod name and pod UID
 	 * under `WARREN_RUNTIME=k8s` — NOT null there. OPTIONAL on the wire:
 	 * the public projection drops both (warren-946f), so consumers must
-	 * test presence, not `!== null` (warren-f53e).
-	 */
+	 * test presence, not `!== null` (warren-f53e). */
 	sandboxId?: string | null;
 	sandboxRunId?: string | null;
 	/**
@@ -174,6 +170,8 @@ export interface RunRow {
 	/** Dispatch-supplied clone ref (warren-afeb) / base-commit pin (warren-aaf7). Null when unset. */
 	ref: string | null;
 	baseCommit: string | null;
+	/** Resolved workspace base SHA (warren-b19e); see the SDK RunRow doc. Null = never measured. */
+	baseSha: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / #860). Null = predates the columns. */
 	provider: string | null;
 	model: string | null;
@@ -183,7 +181,7 @@ export interface RunRow {
 	/** Per-run cost in USD (warren-a7dc), the bridge's `get_session_stats` start/end delta. Null for non-pi runtimes. */
 	costUsd: number | null;
 	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
-	maxCostUsd?: number | null; // warren-f8a2: runs-list cap overlay; absent for spectators and detail GETs
+	maxCostUsd?: number | null; // warren-f8a2: cap overlay (list + detail GET, warren-b19e); absent for spectators
 	runtimeBackend?: string | null; // warren-a0f4: local|docker|k8s frozen at dispatch; operator-only overlay beside maxCostUsd
 	/** Input/output tokens consumed/produced (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;

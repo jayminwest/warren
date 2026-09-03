@@ -208,8 +208,11 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		const detailBody = await get(`/runs/${runId}`, TOKEN);
 		expect(Object.keys(detailBody)).toEqual(["run"]);
 		const detail = detailBody.run as Record<string, unknown>;
-		// Detail GETs stay the bare row: the cap overlay is a list-only join.
-		expect(Object.keys(detail).sort()).toEqual(Object.keys(stored).sort());
+		// The detail GET overlays the dispatch-context cap too (warren-b19e,
+		// operator-only, for the Spend panel's "$X of $Y cap"). No context row
+		// here, so it reads null, never absent.
+		expect(new Set(Object.keys(detail))).toEqual(new Set([...Object.keys(stored), "maxCostUsd"]));
+		expect(detail.maxCostUsd).toBeNull();
 		expect(detail.sandboxId).toBe("bur_1");
 		expect(detail.renderedAgentJson).toEqual({
 			frontmatter: { provider: "anthropic", model: "opus" },
@@ -226,6 +229,12 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		const authed = await get("/runs", TOKEN);
 		expect((authed.runs as Record<string, unknown>[])[0]?.maxCostUsd).toBe(5);
 		expect((authed.runs as Record<string, unknown>[])[0]?.runtimeBackend).toBe("k8s");
+		// warren-b19e: the detail GET carries the cap too (the Spend panel's
+		// "$X of $Y cap" denominator), still operator-only.
+		const detailWithCap = (await get(`/runs/${runId}`, TOKEN)).run as Record<string, unknown>;
+		expect(detailWithCap.maxCostUsd).toBe(5);
+		const anonDetail = (await get(`/runs/${runId}`)).run as Record<string, unknown>;
+		expect(anonDetail).not.toHaveProperty("maxCostUsd");
 		const anon = await get("/runs");
 		expect((anon.runs as Record<string, unknown>[])[0]).not.toHaveProperty("maxCostUsd");
 		expect((anon.runs as Record<string, unknown>[])[0]).not.toHaveProperty("runtimeBackend");

@@ -125,6 +125,8 @@ export const runs = pgTable(
 		ref: text("ref"),
 		// Base-commit pinning (warren-aaf7); see the sqlite schema comment.
 		baseCommit: text("base_commit"),
+		// Resolved workspace base SHA (warren-b19e); see the sqlite twin.
+		baseSha: text("base_sha"),
 		// Salvage-before-destroy (warren-cd3b); see the sqlite schema comment.
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),

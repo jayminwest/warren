@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `base_sha` text;

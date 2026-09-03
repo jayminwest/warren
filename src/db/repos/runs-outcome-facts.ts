@@ -12,12 +12,15 @@ import type { RunRow } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 
 /**
- * The four facts the reap pipeline measured at finalize. Every field is
+ * The facts the reap pipeline measured at finalize. Every numeric field is
  * `number | null`: NULL means unknown (skipped/failed finalize,
- * unmeasurable diff, pre-column row), never zero.
+ * unmeasurable diff, pre-column row), never zero. `baseSha` is the resolved
+ * workspace base SHA (warren-b19e) — the merge-base of the diff base and the
+ * workspace HEAD, read where commits_ahead is measured; null = unmeasurable.
  */
 export interface RunOutcomeFacts {
 	readonly commitsAhead: number | null;
+	readonly baseSha: string | null;
 	readonly filesChanged: number | null;
 	readonly insertions: number | null;
 	readonly deletions: number | null;
@@ -40,6 +43,7 @@ export async function setOutcomeFacts(
 	if (!current) throw new NotFoundError(`run not found: ${id}`);
 	const patch = {
 		commitsAhead: facts.commitsAhead,
+		baseSha: facts.baseSha,
 		filesChanged: facts.filesChanged,
 		insertions: facts.insertions,
 		deletions: facts.deletions,
