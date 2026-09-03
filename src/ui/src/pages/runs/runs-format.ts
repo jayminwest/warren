@@ -1,5 +1,5 @@
 import type { RunRow } from "@/api/types.ts";
-import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { formatCostUsd } from "../run-detail-format.ts";
 
 /**
  * Formatting helpers for the Direction C Runs inventory
@@ -57,6 +57,15 @@ export function projectLabel(gitUrl: string | null | undefined, fallback: string
 	if (!gitUrl) return fallback;
 	const stripped = gitUrl.replace(/^https?:\/\/github\.com\//, "");
 	return stripped.length > 0 ? stripped : gitUrl;
+}
+
+/**
+ * The branch a run works on: the explicit dispatch target, else the
+ * composed workspace branch set for every run at dispatch, else the raw
+ * clone ref. Null when the row predates the columns.
+ */
+export function branchLabelOf(row: RunRow): string | null {
+	return row.targetBranch ?? row.branch ?? row.ref ?? null;
 }
 
 /** First 7 chars of a sha-ish string, "" when absent. */
