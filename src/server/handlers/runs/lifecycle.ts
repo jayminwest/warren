@@ -55,6 +55,9 @@ export const PUBLIC_RUN_FIELDS = [
 	// warren-aaf7: the base-commit pin — a SHA of the same spectator class as
 	// ref/targetBranch (a name in the public repo's history).
 	"baseCommit",
+	// warren-b19e: the workspace HEAD SHA measured at reap — the resolved base
+	// the run actually sat on, same SHA spectator class as baseCommit.
+	"baseSha",
 	// warren-cd3b: the rescue ref is operator-recovery metadata (a branch name
 	// carrying the run id, which is already public) — safe for spectators.
 	"salvageRef",
@@ -259,10 +262,21 @@ export function getRunHandler(deps: ServerDeps): RouteHandler {
 		// warren-ab18: same compute-on-read fallback as the list handler
 		// so the RunDetail page shows cost for ghost / reboot-orphaned runs.
 		const run = await hydrateRunUsage(row, deps.repos.events);
+		let body: unknown = projectRun(run, ctx.actor);
+		// warren-b19e: the detail GET carries the same operator-only
+		// dispatch-context cap overlay the list applies (`projectRunsWithCaps`),
+		// so the Spend panel can render "$X of $Y cap". Spectators get no caps.
+		if (!isPublicOnly(ctx.actor)) {
+			const facts = await deps.repos.dispatchContext.getDispatchFactsByRunIds([id]);
+			body = {
+				...(body as Record<string, unknown>),
+				maxCostUsd: facts.get(id)?.maxCostUsd ?? null,
+			};
+		}
 		// warren-7d84: detail GETs wrap the resource, matching POST /runs
 		// ({run}) and the plan-runs family ({planRun, children, runs}) so
 		// consumers need no per-route envelope knowledge.
-		return jsonResponse(200, { run: projectRun(run, ctx.actor) });
+		return jsonResponse(200, { run: body });
 	};
 }
 

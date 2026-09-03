@@ -20,3 +20,15 @@ test("run detail page renders SpendPanel", async () => {
 	expect(src.includes("<SpendPanel run={r} />")).toBe(true);
 	expect(src.includes("BudgetPanel")).toBe(false);
 });
+
+test("base commit row shows the measured baseSha, falling back to the pin (warren-b19e)", async () => {
+	const src = await Bun.file(new URL("./side-panels.tsx", import.meta.url)).text();
+	expect(src.includes('label={run.baseSha != null ? "base commit" : "base pin"}')).toBe(true);
+	expect(src.includes("run.baseSha ?? run.baseCommit")).toBe(true);
+});
+
+test("SpendPanel renders the cap denominator only when maxCostUsd is present (warren-b19e)", async () => {
+	const src = await Bun.file(new URL("./side-panels.tsx", import.meta.url)).text();
+	expect(src.includes("OF {formatCostUsd(run.maxCostUsd ?? 0)} CAP")).toBe(true);
+	expect(src.includes("run.maxCostUsd != null")).toBe(true);
+});

@@ -107,6 +107,7 @@ async function seedSnapshotFixture(repos: Repos): Promise<void> {
 		filesChanged: 4,
 		insertions: 100,
 		deletions: 2,
+		baseSha: null,
 	});
 	await repos.runs.setPrUrl(succeeded.id, "https://github.com/o/r/pull/1");
 	await repos.runs.setPrState(succeeded.id, "merged", "2026-01-02T00:00:00.000Z");

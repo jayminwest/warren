@@ -84,8 +84,10 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 						? "not scheduled"
 						: DASH}
 			</MetaRow>
-			<MetaRow label="base commit">
-				{shortSha(run.baseCommit) !== "" ? shortSha(run.baseCommit) : DASH}
+			<MetaRow label={run.baseSha != null ? "base commit" : "base pin"}>
+				{shortSha(run.baseSha ?? run.baseCommit) !== ""
+					? shortSha(run.baseSha ?? run.baseCommit)
+					: DASH}
 			</MetaRow>
 			<MetaRow label="branch">{workspaceBranch ?? DASH}</MetaRow>
 			{showTarget ? <MetaRow label="target">{run.targetBranch}</MetaRow> : null}
@@ -94,10 +96,11 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 }
 
 export function SpendPanel({ run }: { run: RunRow }) {
-	// The run row carries no dispatch-time cap, so the export's "OF $5.00"
-	// denominator would be a fabricated number — only the measured figures
-	// render (warren-8c85, no fabricated numbers). No MEASURED chip: the
-	// CostBasisNote beside the figure already qualifies its basis.
+	// The dispatch-context cap overlay (warren-b19e) means operators see the
+	// measured spend "OF $Y cap"; spectators get no caps, so the denominator
+	// only renders when maxCostUsd is on the row (never fabricated). No
+	// MEASURED chip: the CostBasisNote beside the figure qualifies its basis.
+	const hasCap = run.maxCostUsd != null;
 	return (
 		<PanelShell title="Spend">
 			<div className="flex items-baseline justify-between gap-2">
@@ -110,13 +113,17 @@ export function SpendPanel({ run }: { run: RunRow }) {
 				</span>
 				<CostBasisNote run={run} />
 			</div>
+			{hasCap ? (
+				<p className="font-mono text-[10px] leading-3 text-(--color-text-3) md:text-[11px]">
+					OF {formatCostUsd(run.maxCostUsd ?? 0)} CAP
+				</p>
+			) : null}
 			{/*
 			 * Mobile (warren-ecd8): the mock's inline "N% OF CAP · x TOKENS" line.
-			 * The "% OF CAP" arm is unrenderable — the run row carries no
-			 * dispatch-time cap (same reason the progress bar stays out above),
-			 * and warren never fabricates numbers — so only the measured total
-			 * token count renders. The four token MetaRows stay (deliberate
-			 * divergence from the mock, which drops them).
+			 * With the cap overlay (warren-b19e) the denominator renders above when
+			 * an operator views the run; only the measured total token count
+			 * renders here. The four token MetaRows stay (deliberate divergence
+			 * from the mock, which drops them).
 			 */}
 			{totalTokens(run) !== null ? (
 				<p className="font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">

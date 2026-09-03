@@ -154,11 +154,12 @@ export class RunsRepo {
 			// Merge-watcher facts (warren-3bc6): unset until post_reap settles the PR.
 			prState: null,
 			prMergedAt: null,
-			// Outcome facts (warren-ab2b): unknown until reap measures them — NULL.
+			// Outcome facts (warren-ab2b / warren-b19e): unknown until reap measures them — NULL.
 			commitsAhead: null,
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
+			baseSha: null,
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,

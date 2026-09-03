@@ -191,7 +191,7 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		}
 	});
 
-	test("the operator body is the full row plus the cost rollup and cap overlay (warren-f8a2)", async () => {
+	test("the operator body is the full row plus the cost rollup and cap overlay (warren-f8a2 / warren-b19e)", async () => {
 		const stored = await repos.runs.require(runId);
 		const body = await get("/runs", TOKEN);
 		const list = body.runs as Record<string, unknown>[];
@@ -208,8 +208,12 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		const detailBody = await get(`/runs/${runId}`, TOKEN);
 		expect(Object.keys(detailBody)).toEqual(["run"]);
 		const detail = detailBody.run as Record<string, unknown>;
-		// Detail GETs stay the bare row: the cap overlay is a list-only join.
-		expect(Object.keys(detail).sort()).toEqual(Object.keys(stored).sort());
+		// warren-b19e: the detail GET now overlays the same operator-only cap
+		// the list applies, so the Spend panel can render "$X of $Y cap".
+		expect(new Set(Object.keys(detail).sort())).toEqual(
+			new Set([...Object.keys(stored), "maxCostUsd"]),
+		);
+		expect(detail.maxCostUsd).toBeNull();
 		expect(detail.sandboxId).toBe("bur_1");
 		expect(detail.renderedAgentJson).toEqual({
 			frontmatter: { provider: "anthropic", model: "opus" },

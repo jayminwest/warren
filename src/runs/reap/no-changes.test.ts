@@ -187,8 +187,9 @@ describe("reapRun ref-dispatch zero-commit (warren-ba08)", () => {
 		expect(result.failureReason).toBeNull();
 		expect(result.branchPushed).toBe(true);
 		expect(result.commitsAhead).toBe(2);
-		// The count and the outcome-facts diff both run against the PRE-PUSH
-		// origin tip, never the structurally-empty `fix/pr-head..HEAD` range.
+		// The count, the baseSha rev-parse, and the outcome-facts diff all run
+		// against the PRE-PUSH origin tip, never the structurally-empty
+		// `fix/pr-head..HEAD` range.
 		const measured = e.calls
 			.filter((c) => c.cmd === "git")
 			.map((c) => c.args)
@@ -199,10 +200,13 @@ describe("reapRun ref-dispatch zero-commit (warren-ba08)", () => {
 			["rev-parse", "--verify", "origin/fix/pr-head"],
 			["push", "origin", "HEAD:fix/pr-head"],
 			["rev-list", "--count", "--first-parent", `${FAKE_REV_PARSE_SHA}..HEAD`],
+			["rev-parse", "HEAD"],
 			["diff", "--numstat", `${FAKE_REV_PARSE_SHA}..HEAD`],
 		]);
 		const row = await repos.runs.require(runId);
 		expect(row.commitsAhead).toBe(2);
+		// warren-b19e: the workspace HEAD SHA the measurement ran against.
+		expect(row.baseSha).toBe(FAKE_REV_PARSE_SHA);
 		const events = await repos.events.listByRun(runId);
 		expect(events.find((ev) => ev.kind === "reap.empty_push")).toBeUndefined();
 	});

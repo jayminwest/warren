@@ -27,6 +27,7 @@
 			"branch": null,
 			"ref": null,
 			"baseCommit": null,
+			"baseSha": null,
 			"salvageRef": null,
 			"salvagePath": null,
 			"costUsd": null,
@@ -51,7 +52,8 @@
 			"commitsAhead": null,
 			"filesChanged": null,
 			"insertions": null,
-			"deletions": null
+			"deletions": null,
+			"maxCostUsd": null
 		}
 	}
 }

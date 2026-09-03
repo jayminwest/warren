@@ -105,9 +105,8 @@ export interface RunRow {
 	sandboxRunId?: string | null;
 	/**
 	 * Back-link to the seeds issue this run was dispatched against
-	 * (pl-bb70 step 3 / warren-805a). Null encodes "no seed" — manual
-	 * prompts from POST /runs without `seedId`, or legacy rows. Surfaced
-	 * as a MetaCard on RunDetail (pl-bb70 step 6 / warren-c845).
+	 * (pl-bb70 step 3 / warren-805a). Null encodes "no seed" — manual prompts
+	 * from POST /runs without `seedId`, or legacy rows. Rendered as a MetaCard.
 	 */
 	seedId: string | null;
 	/**
@@ -157,10 +156,7 @@ export interface RunRow {
 	deletions: number | null;
 	prompt: string;
 	trigger: string;
-	/**
-	 * URL of the PR reap opened (warren-f6af). Null when reap's `pr_open` sub-step
-	 * was skipped or the GitHub call errored.
-	 */
+	/** URL of the PR reap opened (warren-f6af). Null when pr_open was skipped or errored. */
 	prUrl: string | null;
 	/**
 	 * Merge-watcher PR facts (warren-3bc6): forge-reported lifecycle + merge
@@ -174,6 +170,8 @@ export interface RunRow {
 	/** Dispatch-supplied clone ref (warren-afeb) / base-commit pin (warren-aaf7). Null when unset. */
 	ref: string | null;
 	baseCommit: string | null;
+	/** Resolved workspace HEAD SHA measured at reap (warren-b19e); the base the run actually sat on. Null = never measured. */
+	baseSha: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / #860). Null = predates the columns. */
 	provider: string | null;
 	model: string | null;
@@ -183,7 +181,7 @@ export interface RunRow {
 	/** Per-run cost in USD (warren-a7dc), the bridge's `get_session_stats` start/end delta. Null for non-pi runtimes. */
 	costUsd: number | null;
 	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
-	maxCostUsd?: number | null; // warren-f8a2: runs-list cap overlay; absent for spectators and detail GETs
+	maxCostUsd?: number | null; // warren-f8a2/b19e: operator-only cap overlay (runs list + detail GET); absent for spectators
 	runtimeBackend?: string | null; // warren-a0f4: local|docker|k8s frozen at dispatch; operator-only overlay beside maxCostUsd
 	/** Input/output tokens consumed/produced (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;

@@ -351,6 +351,13 @@
 			"when": 1787855601644,
 			"tag": "0049_lively_terrax",
 			"breakpoints": true
+		},
+		{
+			"idx": 50,
+			"version": "7",
+			"when": 1788469196478,
+			"tag": "0050_short_cloak",
+			"breakpoints": true
 		}
 	]
 }

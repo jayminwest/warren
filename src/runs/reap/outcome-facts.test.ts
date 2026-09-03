@@ -8,7 +8,12 @@ import {
 } from "./outcome-facts.ts";
 import type { ReapExec } from "./types.ts";
 
-/** Exec stub routing `git diff --numstat` to a canned stdout (or a throw). */
+const HEAD_SHA = "a".repeat(40);
+
+/**
+ * Exec stub: `git rev-parse` answers a fixed HEAD SHA, `git diff --numstat`
+ * the canned stdout (or a throw). Everything else passes through empty.
+ */
 function stubExec(numstat: string | Error): {
 	exec: ReapExec;
 	calls: { cmd: string; args: readonly string[]; cwd: string }[];
@@ -19,6 +24,7 @@ function stubExec(numstat: string | Error): {
 		exec: {
 			run: async (cmd, args, opt) => {
 				calls.push({ cmd, args, cwd: opt.cwd });
+				if (args[0] === "rev-parse") return { stdout: HEAD_SHA, stderr: "" };
 				if (numstat instanceof Error) throw numstat;
 				return { stdout: numstat, stderr: "" };
 			},
@@ -82,20 +88,23 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
+			baseSha: null,
 		});
 	});
 
-	test("commitsAhead 0 is a known empty diff — zeros without a git read", async () => {
+	test("commitsAhead 0 is a known empty diff — zeros without a numstat read", async () => {
 		const { exec, calls } = stubExec(new Error("must not run"));
 		const captured: { facts: Record<string, unknown> | null } = { facts: null };
 		const stats = await recordOutcomeFacts(inputFor({ commitsAhead: 0 }, exec, captured));
 		expect(stats).toEqual({ filesChanged: 0, insertions: 0, deletions: 0 });
-		expect(calls).toHaveLength(0);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.args).toEqual(["rev-parse", "HEAD"]);
 		expect(captured.facts).toEqual({
 			commitsAhead: 0,
 			filesChanged: 0,
 			insertions: 0,
 			deletions: 0,
+			baseSha: HEAD_SHA,
 		});
 	});
 
@@ -104,14 +113,17 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		const captured: { facts: Record<string, unknown> | null } = { facts: null };
 		const stats = await recordOutcomeFacts(inputFor({}, exec, captured));
 		expect(stats).toEqual({ filesChanged: 1, insertions: 5, deletions: 2 });
-		expect(calls).toHaveLength(1);
-		expect(calls[0]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.args).toEqual(["rev-parse", "HEAD"]);
+		expect(calls[0]?.cwd).toBe("/data/sandbox/ws");
+		expect(calls[1]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
 		expect(calls[0]?.cwd).toBe("/data/sandbox/ws");
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
 			filesChanged: 1,
 			insertions: 5,
 			deletions: 2,
+			baseSha: HEAD_SHA,
 		});
 	});
 
@@ -125,6 +137,7 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
+			baseSha: HEAD_SHA,
 		});
 	});
 
@@ -141,6 +154,7 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
+			baseSha: null,
 		});
 	});
 
@@ -159,19 +173,21 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 			inputFor({ workspacePath: null, forge: forge as never }, exec, captured),
 		);
 		expect(stats).toEqual({ filesChanged: 1, insertions: 7, deletions: 3 });
-		// fetch → numstat base..tempRef → temp-ref cleanup.
-		expect(calls).toHaveLength(3);
+		// fetch → rev-parse tempRef (baseSha) → numstat → temp-ref cleanup.
+		expect(calls).toHaveLength(4);
 		expect(calls[0]?.args[0]).toBe("fetch");
 		expect(calls[0]?.args[3]).toBe("https://x-access-token:tok@github.com/x/y.git");
 		expect(calls[0]?.args[4]).toBe("agent/bot/run-1:refs/warren/outcome-facts/run-1");
 		expect(calls[0]?.cwd).toBe("/data/projects/x/y");
-		expect(calls[1]?.args).toEqual(["diff", "--numstat", "main..refs/warren/outcome-facts/run-1"]);
-		expect(calls[2]?.args).toEqual(["update-ref", "-d", "refs/warren/outcome-facts/run-1"]);
+		expect(calls[1]?.args).toEqual(["rev-parse", "refs/warren/outcome-facts/run-1"]);
+		expect(calls[2]?.args).toEqual(["diff", "--numstat", "main..refs/warren/outcome-facts/run-1"]);
+		expect(calls[3]?.args).toEqual(["update-ref", "-d", "refs/warren/outcome-facts/run-1"]);
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
 			filesChanged: 1,
 			insertions: 7,
 			deletions: 3,
+			baseSha: HEAD_SHA,
 		});
 	});
 

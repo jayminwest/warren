@@ -118,8 +118,8 @@ export const runs = sqliteTable(
 		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
 		// Provider-side sandbox id (burrow id under LocalProvider). Load-bearing:
 		// the bridge/reconnect path (`bootBridges`, `server/bridge-reconnect.ts`)
-		// reads it after a host restart to re-attach the run's live event stream.
-		// Nullable — a run that fails before dispatch never gets one.
+		// reads it after a host restart to re-attach the live event stream.
+		// Nullable: a run failing before dispatch never gets one.
 		sandboxId: text("sandbox_id"),
 		// Provider-side run/dispatch id (burrow run id under LocalProvider).
 		// Load-bearing alongside `sandbox_id` for the same resume path (it scopes
@@ -129,16 +129,14 @@ export const runs = sqliteTable(
 		// The workers + burrows placement tables were dropped in warren-3743 once
 		// LocalProvider absorbed the single-burrow runtime; new runs write NULL.
 		// The column is retained (nullable, unwritten) so historical rows keep
-		// their value. All reads tolerate NULL (preview / proxy treat null as the
-		// local worker). The `runs_worker_state_idx` index is likewise retained.
+		// their value; all reads tolerate NULL. `runs_worker_state_idx` is likewise kept.
 		workerId: text("worker_id"),
 		// Optional back-link to the seeds issue this run was dispatched against
 		// (pl-bb70 step 3, warren-805a). Threaded through POST /runs → spawnRun →
 		// runs row so the post-dispatch `updateExtensions` write (pl-bb70 step 4)
 		// has a seed to merge {role, trigger, lastRunId, lastRunAt} into.
-		// Nullable: legacy rows and runs dispatched without a seed leave it null.
-		// Plain text (no FK to seeds) — seeds live in the project workspace, not
-		// in warren's database, and the seed-id space is per-project.
+		// Nullable: legacy rows / runs dispatched without a seed leave it null.
+		// Plain text (no FK to seeds) — seeds live in the project workspace.
 		seedId: text("seed_id"),
 		renderedAgentJson: text("rendered_agent_json", { mode: "json" }).notNull(),
 		state: text("state", { enum: RUN_STATES }).notNull(),
@@ -157,8 +155,8 @@ export const runs = sqliteTable(
 		// PR URL filled in by reap's pr_open sub-step (warren-f6af) when the
 		// agent's branch push lands real commits and WARREN_AUTO_OPEN_PR is on.
 		// Null encodes "no PR was opened" — auto-open disabled, push failed,
-		// branch == defaultBranch, no commits ahead, or the GitHub call itself
-		// errored (recorded as a `reap_failed` event with step=pr_open).
+		// branch == defaultBranch, no commits ahead, or the GitHub call errored
+		// (recorded as a `reap_failed` event with step=pr_open).
 		prUrl: text("pr_url"),
 		// Operator-requested target branch (warren-1f81, #419); null = none.
 		targetBranch: text("target_branch"),
@@ -168,16 +166,18 @@ export const runs = sqliteTable(
 		// echo it. Null = the resolved default/continuation base was used.
 		ref: text("ref"),
 		// Base-commit pinning (warren-aaf7): a 40-hex commit SHA the workspace is
-		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR
-		// base). Null = the workspace cut follows `ref`/continuation/default.
+		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR base).
+		// Null = the workspace cut follows `ref`/continuation/default.
 		baseCommit: text("base_commit"),
+		// Resolved workspace HEAD SHA at reap (warren-b19e), not the dispatch pin. Null = never measured.
+		baseSha: text("base_sha"),
 		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
 		// landed, the workspace's committed work is captured BEFORE destroy:
 		// `salvage_ref` is the rescue branch pushed to origin
 		// (`warren/rescue/<runId>`) when that push landed; `salvage_path` is the
-		// durable warren-side git-bundle file (`<dataDir>/salvage/<runId>.bundle`)
-		// when a bundle was captured (pod-POSTed under k8s, host-written under
-		// local). Both null ⇒ no salvage was captured (or none was needed).
+		// durable git-bundle file (`<dataDir>/salvage/<runId>.bundle`) when a
+		// bundle was captured (pod-POSTed under k8s, host-written under local).
+		// Both null ⇒ no salvage was captured (or none was needed).
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),
 		// Per-run cost + token accounting (warren-a7dc). All nullable: the pi runtime's

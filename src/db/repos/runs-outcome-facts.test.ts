@@ -55,6 +55,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 				filesChanged: 3,
 				insertions: 40,
 				deletions: 7,
+				baseSha: null,
 			});
 			expect(updated.commitsAhead).toBe(2);
 			expect(updated.filesChanged).toBe(3);
@@ -78,6 +79,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 				filesChanged: 0,
 				insertions: 0,
 				deletions: 0,
+				baseSha: null,
 			});
 			const reread = await repo.require(run.id);
 			expect(reread.commitsAhead).toBe(0);
@@ -95,6 +97,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 				filesChanged: null,
 				insertions: null,
 				deletions: null,
+				baseSha: null,
 			});
 			const reread = await repo.require(run.id);
 			expect(reread.commitsAhead).toBe(1);
@@ -114,6 +117,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 					filesChanged: 1,
 					insertions: 1,
 					deletions: 1,
+					baseSha: null,
 				}),
 			).rejects.toThrow(NotFoundError);
 		} finally {
