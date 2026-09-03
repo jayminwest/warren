@@ -192,18 +192,28 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, issueTracker, broker, forge });
 
 	// K8s runtime background loops (pl-829f step 25 / warren-7c30); undefined under the
-	// default `local` backend. warren-c531: booted HERE (before `bootBridges`).
-	// warren-32f8: onPodWarning surfaces pod-level stalls (FailedAttachVolume & co.) onto the run's event stream.
+	// default `local` backend; booted HERE (before `bootBridges`, warren-c531).
+	// warren-32f8: onPodWarning surfaces pod-level stalls onto the run's event stream.
 	const onPodWarning = makePodWarningRunEventSink({ repos, broker, logger });
-	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger, onPodWarning });
-	if (k8sRuntime !== undefined) {
-		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
-	}
+	// warren-7116: runtime → domain edge for the workspace_ready_at stamp.
+	const onWorkspaceReady = (runId: string, at: Date): void => {
+		void repos.runs.markWorkspaceReady(runId, at).catch(() => {});
+	};
+	const k8sRuntime = bootK8sRuntime({
+		env,
+		metrics: metricsRegistry,
+		logger,
+		onPodWarning,
+		onWorkspaceReady,
+	});
+	if (k8sRuntime !== undefined) logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
 
 	// Resolve the runtime provider ONCE (warren-c531) — the SAME instance flows into the
 	// bridge registry, poller, watchdog, and `ServerDeps` (warren-f796: local vs k8s seams).
 	const localBackend =
-		resolveRuntimeKind(env) === "local" ? resolveLocalBootBackend(env) : undefined;
+		resolveRuntimeKind(env) === "local"
+			? resolveLocalBootBackend(env, { onWorkspaceReady })
+			: undefined;
 	const runtimeProvider =
 		localBackend?.runtimeProvider ??
 		resolveBootRuntimeProvider({
@@ -213,6 +223,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
 			...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
 			forge,
+			onWorkspaceReady,
 		});
 	// warren-3f8a/820e: path mode boots a dedicated preview listener; previewPorts gates it.
 	const previewSurface = bootPreviewSurface({

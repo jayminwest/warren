@@ -34,6 +34,7 @@ function run(overrides: Partial<RunRow>): RunRow {
 		branch: "warren/run_abc123",
 		ref: null,
 		baseCommit: null,
+		baseSha: null,
 		provider: null,
 		model: null,
 		salvageRef: null,

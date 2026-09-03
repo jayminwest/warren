@@ -42,7 +42,7 @@
 			"why": "The run-row \u2192 metrics-row projection (`extractProviderModel` plus the runId/projectId/agentName pick). Window parsing itself is already shared \u2014 resolveAnalyticsWindow and parseAnalyticsDateBound live once in lifecycle.ts and analytics imports them. mx-24e25f records that the runs-analytics handler deliberately mirrors the cost handler so the two payloads keep the same recognisable shape."
 		},
 		{
-			"a": "src/server/handlers/runs/analytics.ts",
+			"a": "src/server/handlers/runs/analytics.projection.ts",
 			"b": "src/ui/src/api/types.ts",
 			"why": "The RunAnalyticsTokensSection interface, declared in the handler and mirrored into the UI types. An interface, not guardable enum vocabulary; hoisting wire interfaces to src/core is warren-42f1's scope, after which this entry goes away."
 		},

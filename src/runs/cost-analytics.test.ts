@@ -11,6 +11,7 @@ function row(o: Partial<CostAnalyticsRow> & { runId: string }): CostAnalyticsRow
 		provider: o.provider ?? null,
 		model: o.model ?? null,
 		costUsd: o.costUsd ?? null,
+		costBasis: o.costBasis,
 		startedAt: o.startedAt ?? null,
 	};
 }
@@ -92,5 +93,23 @@ describe("buildCostAnalytics", () => {
 		expect(a.breakdowns.agent[0]?.key).toBe("claude-code");
 		expect(a.breakdowns.model[0]?.key).toBe("claude-sonnet-4-6");
 		expect(a.breakdowns.provider[0]?.key).toBe("anthropic");
+	});
+
+	it("buckets spend by cost basis, folding unpriced rows (warren-ea4e)", () => {
+		const a = buildCostAnalytics([
+			row({ runId: "api-1", costUsd: 2, costBasis: "api" }),
+			row({ runId: "api-2", costUsd: 1 }), // undefined basis reads as api
+			row({ runId: "sub-1", costUsd: 4, costBasis: "subscription_estimate" }),
+			row({ runId: "ghost", costUsd: null, costBasis: "subscription_estimate" }),
+		]);
+		expect(a.byCostBasis).toEqual([
+			{ key: "subscription_estimate", runs: 1, costUsd: 4 },
+			{ key: "api", runs: 2, costUsd: 3 },
+			{ key: "unpriced", runs: 1, costUsd: 0 },
+		]);
+	});
+
+	it("returns an empty byCostBasis bucket list for no rows", () => {
+		expect(buildCostAnalytics([]).byCostBasis).toEqual([]);
 	});
 });

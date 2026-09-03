@@ -7,6 +7,12 @@
  * an anonymous body for content that must never be on the wire.
  */
 
+import {
+	REDACTED_COST_PER_MERGED_PR_BUCKET_FIELDS,
+	REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS,
+	REDACTED_RUN_GROUP_FIELDS,
+	REDACTED_RUN_TOTALS_FIELDS,
+} from "../../../src/server/handlers/runs/analytics.ts";
 import { AcceptanceError } from "../lib/assert.ts";
 import {
 	FORBIDDEN_FIELD_NAMES,
@@ -131,25 +137,54 @@ export function assertNoLeak(label: string, body: string): void {
  * `GET /analytics/runs`: the USD rollups whose names collide with public
  * ones, checked structurally at the level they live on rather than by
  * substring. Field lists are imported so a re-classification reaches here.
+ * warren-97ae: also walks `outcomes.costPerMergedPr` — the `overall` shape
+ * and the byAgent/byModel/byProvider buckets — against the REDACTED
+ * constants, so the public instance-wide `costPerMergedPrUsd` is fenced by
+ * an explicit allowlist instead of the walk simply never descending there.
  */
-export function assertAnalyticsRollupsAbsent(
-	body: Record<string, unknown>,
-	totalsFields: readonly string[],
-	groupFields: readonly string[],
-): void {
-	const totals = body.totals;
-	if (totals === null || typeof totals !== "object") {
-		throw new AcceptanceError("GET /analytics/runs: expected a `totals` object in the body");
+export function assertAnalyticsRollupsAbsent(body: Record<string, unknown>): void {
+	assertObject(body.totals, "totals");
+	assertFieldsAbsent("totals", body.totals as Record<string, unknown>, REDACTED_RUN_TOTALS_FIELDS);
+	for (const groupKey of ["byAgent", "byModel", "byProvider"]) {
+		assertGroupRollupsAbsent(groupKey, body[groupKey], REDACTED_RUN_GROUP_FIELDS);
 	}
-	for (const field of totalsFields) {
-		if (field in (totals as Record<string, unknown>)) {
+	const outcomes = assertObject(body.outcomes, "outcomes") as Record<string, unknown>;
+	const costPerMergedPr = assertObject(outcomes.costPerMergedPr, "outcomes.costPerMergedPr");
+	const overall = assertObject(costPerMergedPr.overall, "outcomes.costPerMergedPr.overall");
+	assertFieldsAbsent(
+		"outcomes.costPerMergedPr.overall",
+		overall,
+		REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS,
+	);
+	for (const groupKey of ["byAgent", "byModel", "byProvider"]) {
+		assertGroupRollupsAbsent(
+			`outcomes.costPerMergedPr.${groupKey}`,
+			costPerMergedPr[groupKey],
+			REDACTED_COST_PER_MERGED_PR_BUCKET_FIELDS,
+		);
+	}
+}
+
+/** Unwrap a nested body object or fail loudly. */
+function assertObject(value: unknown, path: string): Record<string, unknown> {
+	if (value === null || typeof value !== "object") {
+		throw new AcceptanceError(`GET /analytics/runs: expected a \`${path}\` object in the body`);
+	}
+	return value as Record<string, unknown>;
+}
+
+/** Refuse every redacted-named field that leaked into a spectator object. */
+function assertFieldsAbsent(
+	path: string,
+	obj: Record<string, unknown>,
+	redactedFields: readonly string[],
+): void {
+	for (const field of redactedFields) {
+		if (field in obj) {
 			throw new AcceptanceError(
-				`GET /analytics/runs: totals.${field} is redacted for a spectator but present`,
+				`GET /analytics/runs: ${path}.${field} is redacted for a spectator but present`,
 			);
 		}
-	}
-	for (const groupKey of ["byAgent", "byModel", "byProvider"]) {
-		assertGroupRollupsAbsent(groupKey, body[groupKey], groupFields);
 	}
 }
 
@@ -163,13 +198,7 @@ function assertGroupRollupsAbsent(
 		throw new AcceptanceError(`GET /analytics/runs: expected \`${groupKey}\` to be an array`);
 	}
 	for (const bucket of buckets as readonly Record<string, unknown>[]) {
-		for (const field of groupFields) {
-			if (field in bucket) {
-				throw new AcceptanceError(
-					`GET /analytics/runs: ${groupKey}[].${field} is redacted for a spectator but present`,
-				);
-			}
-		}
+		assertFieldsAbsent(`${groupKey}[]`, bucket, groupFields);
 	}
 }
 

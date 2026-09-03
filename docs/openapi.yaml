@@ -171,6 +171,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-97ae: spectators get the reduced projection — counts, rates and timings survive; USD
+        aggregates stay redacted except the instance-wide cost/merged-PR ratio. The
+        per-agent/per-model/ per-provider buckets keep their USD figures redacted because ratio ×
+        merged count reconstructs spend.
   /events:
     get:
       operationId: listEventsHandler

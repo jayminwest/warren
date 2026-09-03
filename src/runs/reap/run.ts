@@ -32,21 +32,23 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		return buildAlreadyTerminalResult(run);
 	}
 
+	// warren-7116: runtime-terminal edge (before any reap work) — first-write-wins.
+	if (run.startedAt !== null) {
+		await input.repos.runs.markAgentEnded(run.id, now());
+	}
+
 	// State on entry is the discriminator: still `queued` means the bridge
 	// never claimed it (no events flowed from burrow) — "never started" (warren-5e53).
 	const stateOnEntry = run.state;
 
-	// warren-edc3: a terminal provider error (the agent's final model turn
-	// ended with `stopReason === "error"` + a non-empty `errorMessage`, e.g.
-	// Anthropic "credit balance too low" 400) flips an otherwise-`succeeded`
-	// run to `failed`. Burrow sees the agent exit 0 and marks the run
-	// succeeded, and the in-stream terminal detect (warren-e281 / pl-5516)
-	// keys off the `agent_end` envelope, so the error signal on the per-turn
-	// `turn_end` envelope slips through. This reap-time scan of the
-	// persisted event log is the safety net; the provider message is
-	// surfaced on the `reap.provider_error` event.
-	// warren-4001: the run row's declared provider/model (warren-2ede) ride
-	// as the fallback so an opaque harness message still names the pair.
+	// warren-edc3: a terminal provider error (final model turn ended with
+	// `stopReason === "error"` + a non-empty `errorMessage`, e.g. Anthropic
+	// "credit balance too low" 400) flips an otherwise-`succeeded` run to
+	// `failed`. The in-stream terminal detect (warren-e281 / pl-5516) keys off
+	// the `agent_end` envelope, so the per-turn `turn_end` error signal slips
+	// through; this reap-time scan of the persisted event log is the safety
+	// net. warren-4001: the run row's declared provider/model ride as the
+	// fallback so an opaque harness message still names the pair.
 	const providerError = await detectTerminalProviderError(input.repos, run.id, {
 		fallbackProvider: run.provider,
 		fallbackModel: run.model,
@@ -416,14 +418,15 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// consumer sees the settled summary (the hook warren-df3e subscribes
 	// to). No-op unless a bus is installed with a subscriber.
 	const bus = lifecycleBus();
+	// warren-bc9c: persist the push as a real event row so delivery
+	// analytics can time the push -> PR-open gap; independent of the
+	// bus guard so the row exists even with no bus installed.
+	if (state.branchPushed && branch !== null) {
+		await emit("reap.branch_pushed", { branch, baseBranch, commitsAhead: state.commitsAhead });
+	}
 	if (bus !== undefined) {
 		if (state.branchPushed && branch !== null) {
-			bus.emitBranchPushed({
-				runId: run.id,
-				branch,
-				baseBranch,
-				commitsAhead: state.commitsAhead,
-			});
+			bus.emitBranchPushed({ runId: run.id, branch, baseBranch, commitsAhead: state.commitsAhead });
 		}
 		bus.emitPostReap({
 			runId: run.id,

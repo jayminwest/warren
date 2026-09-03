@@ -35,7 +35,7 @@ function Section({
 	divider = "both",
 }: {
 	title: string;
-	description: string;
+	description?: string;
 	children: ReactNode;
 	/** Where the section's bottom hairline renders: both arms, md+ only, or never. */
 	divider?: "both" | "md" | "none";
@@ -51,7 +51,9 @@ function Section({
 			{/* Desktop header — below md the card's --color-thead bar replaces it. */}
 			<div className="hidden md:flex md:flex-col md:gap-[3px] md:px-[15px] md:pt-[15px] md:pb-[13px]">
 				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">{title}</h2>
-				<p className="text-[10px] leading-3 text-(--color-text-3)">{description}</p>
+				{description && (
+					<p className="text-[10px] leading-3 text-(--color-text-3)">{description}</p>
+				)}
 			</div>
 			<div className="flex flex-col px-3 py-3 md:px-[15px] md:py-0 md:pb-[15px]">{children}</div>
 		</section>
@@ -142,11 +144,7 @@ export function DispatchForm(props: DispatchFormProps) {
 			}}
 		>
 			<MobileCard title="Target">
-				<Section
-					title="Target"
-					description="Warren materializes this repository in a new isolated workspace."
-					divider="md"
-				>
+				<Section title="Target" description="Where the run works." divider="md">
 					<div className="flex flex-col gap-[5px] pb-[12px]">
 						<Field
 							label="Project"
@@ -199,10 +197,7 @@ export function DispatchForm(props: DispatchFormProps) {
 			</MobileCard>
 
 			<MobileCard title="Agent runtime">
-				<Section
-					title="Agent runtime"
-					description="Select the adapter and model configuration Warren will operate."
-				>
+				<Section title="Agent runtime" description="Choose the agent and model.">
 					{/*
 					 * Mobile (mock): AGENT|MODEL two-up, PROVIDER full-width. Desktop:
 					 * Agent full-width, then the Provider|Model row. The grid placements
@@ -279,11 +274,7 @@ export function DispatchForm(props: DispatchFormProps) {
 						</div>
 					</div>
 				</Section>
-				<Section
-					title="Intent"
-					description="Put the judgment in the prompt before the run starts."
-					divider="md"
-				>
+				<Section title="Intent" divider="md">
 					<div className="flex flex-col gap-[5px]">
 						<span className={labelClass}>Prompt</span>
 						<textarea
@@ -300,11 +291,7 @@ export function DispatchForm(props: DispatchFormProps) {
 			</MobileCard>
 
 			<MobileCard title="Guardrails">
-				<Section
-					title="Guardrails"
-					description="These limits remain outside the agent process."
-					divider="none"
-				>
+				<Section title="Guardrails" description="Optional limits for this run." divider="none">
 					<div className="flex gap-[12px]">
 						<Field
 							label="Cost cap (USD)"

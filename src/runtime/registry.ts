@@ -163,6 +163,13 @@ export interface RuntimeProviderDeps {
 	 */
 	readonly localSidecars?: SidecarCascade;
 	/**
+	 * Workspace-ready signal (warren-7116) — the runtime → domain edge for the
+	 * `runs.workspace_ready_at` stamp. The drive loop fires it after the
+	 * workspace is prepared; the boot wiring lands the write through the runs
+	 * repo. Only consulted for `WARREN_RUNTIME=local`.
+	 */
+	readonly onWorkspaceReady?: (runId: string, at: Date) => void;
+	/**
 	 * OPTIONAL docker spawn seams — only consulted for `WARREN_RUNTIME=docker`
 	 * (warren-3732). A test injects a scripted docker CLI here; production
 	 * leaves it unset so the seam spawns the real CLI.
@@ -207,6 +214,11 @@ export function resolveRuntimeProvider(
 				...(deps.exec !== undefined ? { exec: deps.exec } : {}),
 				...(deps.localStore !== undefined ? { store: deps.localStore } : {}),
 				...(deps.localSidecars !== undefined ? { sidecars: deps.localSidecars } : {}),
+				// warren-7116: thread the workspace-ready signal through the drive
+				// deps so the drive loop never touches the database directly.
+				...(deps.onWorkspaceReady !== undefined
+					? { drive: { onWorkspaceReady: deps.onWorkspaceReady } }
+					: {}),
 			});
 		case "k8s":
 			return buildK8sProvider(deps);

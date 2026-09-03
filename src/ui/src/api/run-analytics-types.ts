@@ -21,6 +21,22 @@ export interface RunStatSummary {
 	count: number;
 }
 
+/**
+ * Delivery-timing rollup (warren-bc9c): median-shaped gaps between
+ * dispatch, branch push, PR open, and merge. Each summary samples only
+ * the runs where both endpoints of the gap are known.
+ */
+export interface RunDeliveryMetrics {
+	/** `reap.pr_opened` ts − `reap.branch_pushed` ts. */
+	branchPushToPrOpenMs: RunStatSummary;
+	/** `runs.pr_merged_at` − `reap.pr_opened` ts. */
+	prOpenToMergeMs: RunStatSummary;
+	/** `runs.pr_merged_at` − `runs.created_at`. */
+	dispatchToMergeMs: RunStatSummary;
+	/** `runs.pr_merged_at` − `runs.ended_at`. */
+	endToMergeMs: RunStatSummary;
+}
+
 export interface RunAnalyticsTotals {
 	runs: number;
 	succeeded: number;
@@ -53,6 +69,11 @@ export interface RunAnalyticsTotals {
 	 * guard crashed `/run-analytics` for anonymous visitors (warren-e274).
 	 */
 	cost?: { total: number; avg: number | null; priced: number };
+	/**
+	 * OPTIONAL on the wire: per-run cost distribution (warren-ea4e) is
+	 * redacted for a `readPublic`-only caller alongside `cost` above.
+	 */
+	costUsd?: RunStatSummary;
 }
 
 export interface RunDayBucket {
@@ -111,10 +132,17 @@ export interface RunAnalyticsResponse {
 	byProvider: RunGroupBucket[];
 	byFailureReason: RunFailureBucket[];
 	topSeedsByContext: SeedContextBucket[];
+	/**
+	 * OPTIONAL on the wire: count of `budget.exceeded` events
+	 * (warren-ea4e), redacted for a `readPublic`-only caller.
+	 */
+	capHits?: number;
 	/** Token analytics section added by warren-1244 / pl-d1a2 step 2. */
 	tokens: RunAnalyticsTokensSection;
 	/** Outcome-joined rollup (warren-be04); USD fields optional — spectator-redacted. */
 	outcomes: RunOutcomes;
+	/** Delivery-timing rollup (warren-bc9c) — public like queueWaitMs. */
+	delivery: RunDeliveryMetrics;
 }
 
 export interface RunAnalyticsFilter {
@@ -251,9 +279,21 @@ export interface CostPerMergedPr {
 	confidence: InsightConfidence;
 }
 
+/** Autonomy rollup (warren-bc9c): merged runs needing no human in the loop. */
+export interface AutonomyRollup {
+	/** rows whose `prState` is `merged` — the rate's denominator. */
+	merged: number;
+	/** merged rows that were never steered and are first attempts. */
+	autonomous: number;
+	/** autonomous / merged, or null when nothing merged. */
+	rate: number | null;
+}
+
 export interface RunOutcomes {
 	steering: SteeringOutcomeComparison;
 	costPerMergedPr: CostPerMergedPr;
+	/** Autonomy rollup (warren-bc9c) — public, counts + a rate. */
+	autonomy: AutonomyRollup;
 }
 
 /* Context-waste proxy (warren-6d41 / pl-103e step 11). Mirrors             */

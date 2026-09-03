@@ -137,10 +137,14 @@ The image runs postgres 17. Keep the major pinned when restoring an old dump so
 **Historical: Supabase (until September 3, 2026, warren-a3ed).** Supabase Postgres was the
 production database until the cutover of September 3, 2026 (warren-c01d) moved it to the
 in-cluster component above. Its pooler-host, sslmode, uselibpqcompat, and
-shell-quoting gotchas died with the migration. See the cutover checklist (§1.5). Supabase survives only as the seven
-day rollback anchor (warren-f7e6 decommissions it).
+shell-quoting gotchas died with the migration. See the cutover checklist (§1.5). The operator deleted the Supabase project on
+September 3, 2026 (warren-f7e6), the same day as the cutover, after the live server served
+post-cutover runs from the in-cluster database. Two archives of it live in the backup bucket:
+`gs://warren-pg-backups-502318/warren/supabase-cutover-2026-09-03.dump` (the final Supabase
+state at cutover, 96 MB) and `gs://warren-pg-backups-502318/warren/supabase-archive-2026-07-13.dump`
+(the July full-history snapshot described below, 1.7 GB).
 
-**Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
+**Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover. A copy is in the backup bucket as `warren/supabase-archive-2026-07-13.dump`.
 
 #### Backups (warren-6db7)
 
@@ -205,7 +209,7 @@ gcloud compute disks create warren-pg-restored-<date> \
 ```
 
 The old disk survives deletion thanks to `reclaimPolicy: Retain`. Keep it
-until you verify the restored volume. This snapshot is the restore point for anything that predates the cutover.
+until you verify the restored volume. This snapshot is the restore point for anything that predates the cutover. A copy is in the backup bucket as `warren/supabase-archive-2026-07-13.dump`.
 
 #### The cutover checklist (warren-c4b7)
 
@@ -222,7 +226,7 @@ Every step is reversible until step 6.
    `kubectl -n warren create secret generic warren-secrets --from-literal=warren-db-url='postgres://...' --dry-run=client -o yaml | kubectl apply -f -`.
 7. **Scale up.** `kubectl -n warren scale deploy/warren --replicas=1`, then wait on `kubectl -n warren rollout status deploy/warren`.
 8. **Smoke dispatch.** Dispatch one run and watch it reach a terminal state. Confirm events stream and the delivery path works.
-9. **Rollback (if needed).** Swap `warren-secrets/warren-db-url` back to the Supabase DSN and scale up again. Steps 2 to 8 never write to Supabase, so the rollback anchor stays intact for 7 days.
+9. **Rollback (if needed).** Swap `warren-secrets/warren-db-url` back to the source DSN and scale up again. Steps 2 to 8 never write to the source, so it stays intact as a rollback anchor until you decommission it. The operator deleted the Supabase source the same day as the 2026-09-03 cutover. The archived dumps above are now the only restore path for that data.
 
 ### 1.6 Automated CI/CD (GitHub Actions)
 

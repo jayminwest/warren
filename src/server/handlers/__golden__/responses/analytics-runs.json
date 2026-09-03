@@ -1,0 +1,359 @@
+{
+	"status": 200,
+	"body": {
+		"filter": {
+			"projectId": null,
+			"from": "2026-08-01T00:00:00.000Z",
+			"to": "2026-09-01T00:00:00.000Z"
+		},
+		"totals": {
+			"runs": 3,
+			"succeeded": 1,
+			"failed": 1,
+			"cancelled": 0,
+			"active": 1,
+			"successRate": 0.5,
+			"prStateKnown": 0,
+			"prsMerged": 0,
+			"mergedPrRate": null,
+			"durationMs": {
+				"avg": 295000,
+				"median": 295000,
+				"p95": 295000,
+				"count": 2
+			},
+			"queueWaitMs": {
+				"avg": 5000,
+				"median": 5000,
+				"p95": 5000,
+				"count": 3
+			},
+			"contextTokens": {
+				"avg": 1000,
+				"median": 1000,
+				"p95": 1000,
+				"count": 2
+			},
+			"tokens": {
+				"input": 2000,
+				"output": 200,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 2200
+			},
+			"costUsd": {
+				"avg": 1.125,
+				"median": 0.75,
+				"p95": 1.5,
+				"count": 2
+			},
+			"cost": {
+				"total": 2.25,
+				"avg": 1.125,
+				"priced": 2
+			}
+		},
+		"delivery": {
+			"branchPushToPrOpenMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			},
+			"prOpenToMergeMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			},
+			"dispatchToMergeMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			},
+			"endToMergeMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			}
+		},
+		"timeSeries": [
+			{
+				"key": "2026-08-07",
+				"runs": 3,
+				"succeeded": 1,
+				"failed": 1,
+				"cancelled": 0,
+				"active": 1,
+				"contextTokensTotal": 2000
+			}
+		],
+		"byAgent": [
+			{
+				"key": "claude-code",
+				"runs": 3,
+				"succeeded": 1,
+				"failed": 1,
+				"cancelled": 0,
+				"successRate": 0.5,
+				"prStateKnown": 0,
+				"prsMerged": 0,
+				"mergedPrRate": null,
+				"contextTokensTotal": 2000,
+				"avgContextTokens": 1000,
+				"tokens": {
+					"input": 2000,
+					"output": 200,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 2200
+				},
+				"costUsd": 2.25,
+				"priced": 2,
+				"avgDurationMs": 295000
+			}
+		],
+		"byModel": [
+			{
+				"key": "sonnet",
+				"runs": 3,
+				"succeeded": 1,
+				"failed": 1,
+				"cancelled": 0,
+				"successRate": 0.5,
+				"prStateKnown": 0,
+				"prsMerged": 0,
+				"mergedPrRate": null,
+				"contextTokensTotal": 2000,
+				"avgContextTokens": 1000,
+				"tokens": {
+					"input": 2000,
+					"output": 200,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 2200
+				},
+				"costUsd": 2.25,
+				"priced": 2,
+				"avgDurationMs": 295000
+			}
+		],
+		"byProvider": [
+			{
+				"key": "anthropic",
+				"runs": 3,
+				"succeeded": 1,
+				"failed": 1,
+				"cancelled": 0,
+				"successRate": 0.5,
+				"prStateKnown": 0,
+				"prsMerged": 0,
+				"mergedPrRate": null,
+				"contextTokensTotal": 2000,
+				"avgContextTokens": 1000,
+				"tokens": {
+					"input": 2000,
+					"output": 200,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 2200
+				},
+				"costUsd": 2.25,
+				"priced": 2,
+				"avgDurationMs": 295000
+			}
+		],
+		"byFailureReason": [
+			{
+				"key": "crashed",
+				"runs": 1
+			}
+		],
+		"topSeedsByContext": [],
+		"tokenTimeSeries": [
+			{
+				"date": "2026-08-07",
+				"input": 2000,
+				"output": 200,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 2200
+			}
+		],
+		"tokenByModelSeries": [
+			{
+				"key": "sonnet",
+				"series": [
+					{
+						"date": "2026-08-07",
+						"input": 2000,
+						"output": 200,
+						"cacheRead": 0,
+						"cacheWrite": 0,
+						"total": 2200
+					}
+				]
+			}
+		],
+		"tokenByProviderSeries": [
+			{
+				"key": "anthropic",
+				"series": [
+					{
+						"date": "2026-08-07",
+						"input": 2000,
+						"output": 200,
+						"cacheRead": 0,
+						"cacheWrite": 0,
+						"total": 2200
+					}
+				]
+			}
+		],
+		"tokens": {
+			"totals": {
+				"input": 2000,
+				"output": 200,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 2200
+			},
+			"byModel": [
+				{
+					"key": "sonnet",
+					"tokens": {
+						"input": 2000,
+						"output": 200,
+						"cacheRead": 0,
+						"cacheWrite": 0,
+						"total": 2200
+					}
+				}
+			],
+			"byProvider": [
+				{
+					"key": "anthropic",
+					"tokens": {
+						"input": 2000,
+						"output": 200,
+						"cacheRead": 0,
+						"cacheWrite": 0,
+						"total": 2200
+					}
+				}
+			],
+			"timeSeries": [
+				{
+					"date": "2026-08-07",
+					"input": 2000,
+					"output": 200,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 2200
+				}
+			],
+			"byModelTimeSeries": [
+				{
+					"key": "sonnet",
+					"series": [
+						{
+							"date": "2026-08-07",
+							"input": 2000,
+							"output": 200,
+							"cacheRead": 0,
+							"cacheWrite": 0,
+							"total": 2200
+						}
+					]
+				}
+			],
+			"byProviderTimeSeries": [
+				{
+					"key": "anthropic",
+					"series": [
+						{
+							"date": "2026-08-07",
+							"input": 2000,
+							"output": 200,
+							"cacheRead": 0,
+							"cacheWrite": 0,
+							"total": 2200
+						}
+					]
+				}
+			]
+		},
+		"outcomes": {
+			"steering": {
+				"steered": {
+					"runs": 0,
+					"terminal": 0,
+					"succeeded": 0,
+					"successRate": null,
+					"prStateKnown": 0,
+					"prsMerged": 0,
+					"mergedPrRate": null
+				},
+				"unsteered": {
+					"runs": 3,
+					"terminal": 2,
+					"succeeded": 1,
+					"successRate": 0.5,
+					"prStateKnown": 0,
+					"prsMerged": 0,
+					"mergedPrRate": null
+				},
+				"mergedPrRateDelta": null,
+				"confidence": "low"
+			},
+			"costPerMergedPr": {
+				"overall": {
+					"costUsd": 2.25,
+					"priced": 2,
+					"prStateKnown": 0,
+					"prsMerged": 0,
+					"costPerMergedPrUsd": null
+				},
+				"byAgent": [
+					{
+						"key": "claude-code",
+						"costUsd": 2.25,
+						"priced": 2,
+						"prStateKnown": 0,
+						"prsMerged": 0,
+						"costPerMergedPrUsd": null
+					}
+				],
+				"byModel": [
+					{
+						"key": "sonnet",
+						"costUsd": 2.25,
+						"priced": 2,
+						"prStateKnown": 0,
+						"prsMerged": 0,
+						"costPerMergedPrUsd": null
+					}
+				],
+				"byProvider": [
+					{
+						"key": "anthropic",
+						"costUsd": 2.25,
+						"priced": 2,
+						"prStateKnown": 0,
+						"prsMerged": 0,
+						"costPerMergedPrUsd": null
+					}
+				],
+				"confidence": "low"
+			},
+			"autonomy": {
+				"merged": 0,
+				"autonomous": 0,
+				"rate": null
+			}
+		},
+		"capHits": 2
+	}
+}

@@ -34,6 +34,7 @@ import {
 	listForAnalytics,
 	listWithUnresolvedPr,
 } from "./runs-queries.ts";
+import { markAgentEnded, markReaped, markWorkspaceReady } from "./runs-stage.ts";
 import { countNonTerminal } from "./runs-stats.ts";
 import { clearBurrowIdForWorkspace } from "./runs-workspace.ts";
 
@@ -142,6 +143,11 @@ export class RunsRepo {
 			createdAt: (input.now ?? new Date()).getTime(),
 			startedAt: null,
 			endedAt: null,
+			// Stage timestamps (warren-7116); every edge stamps post-insert.
+			workspaceReadyAt: null,
+			agentReadyAt: null,
+			agentEndedAt: null,
+			reapedAt: null,
 			prompt: input.prompt,
 			trigger: input.trigger,
 			prUrl: null,
@@ -156,6 +162,7 @@ export class RunsRepo {
 			prMergedAt: null,
 			// Outcome facts (warren-ab2b): unknown until reap measures them — NULL.
 			commitsAhead: null,
+			baseSha: null,
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
@@ -287,6 +294,19 @@ export class RunsRepo {
 	/** Null sandboxId after workspace destroy (warren-9b77); body in runs-workspace.ts. */
 	clearBurrowIdForWorkspace(sandboxId: string): Promise<void> {
 		return clearBurrowIdForWorkspace(this.adapter, sandboxId);
+	}
+
+	/** Stage-timestamp writers (warren-7116); bodies live in runs-stage.ts. */
+	markWorkspaceReady(id: string, at: Date = new Date()): Promise<void> {
+		return markWorkspaceReady(this.adapter, id, at);
+	}
+
+	markAgentEnded(id: string, at: Date = new Date()): Promise<void> {
+		return markAgentEnded(this.adapter, id, at);
+	}
+
+	markReaped(id: string, at: Date = new Date()): Promise<void> {
+		return markReaped(this.adapter, id, at);
 	}
 
 	async markRunning(id: string, now: Date = new Date()): Promise<RunRow> {
@@ -452,10 +472,10 @@ export class RunsRepo {
 			await tx.runWrite(
 				txDb
 					.update(runs)
-					.set({ state: "running", startedAt })
+					.set({ state: "running", startedAt, agentReadyAt: startedAt })
 					.where(and(eq(runs.id, id), eq(runs.state, "queued"))),
 			);
-			return { ...row, state: "running", startedAt };
+			return { ...row, state: "running", startedAt, agentReadyAt: startedAt };
 		});
 	}
 }

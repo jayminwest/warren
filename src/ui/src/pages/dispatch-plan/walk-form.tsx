@@ -110,10 +110,7 @@ function TargetSection(p: SectionProps) {
 	const d = p.draft;
 	return (
 		<MobileCard title="Target">
-			<Section
-				title="Target"
-				description="Every child run materializes this repository in its own isolated workspace."
-			>
+			<Section title="Target" description="Where the child runs work.">
 				<div className="flex flex-col gap-[5px] pb-[12px]">
 					<Field
 						label="Project"
@@ -175,7 +172,7 @@ function sourcePlanHint(p: SectionProps): string | undefined {
 	if (p.draft.sourceMode === "issues") return "EXPLICIT ISSUE LIST — ORDER IS THE WALK ORDER";
 	if (p.draft.planId.trim().length === 0) return undefined;
 	if (p.openChildCount !== null) return `READY · ${p.openChildCount} OPEN CHILDREN`;
-	return "WALK ORDER COMES FROM THE PLAN";
+	return "ORDER FROM THE PLAN";
 }
 
 function SourcePlanControl({ p }: { p: SectionProps }) {
@@ -383,10 +380,7 @@ function GuardrailsSection(p: SectionProps) {
 	const d = p.draft;
 	return (
 		<MobileCard title="Guardrails">
-			<Section
-				title="Guardrails"
-				description="Per-child limits. They remain outside the agent process."
-			>
+			<Section title="Guardrails" description="Optional limits, applied per child run.">
 				<div className="flex gap-[12px]">
 					<Field
 						label="Cost cap per child (USD)"

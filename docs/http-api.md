@@ -27,7 +27,7 @@ Total routes: **53**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/analytics/cost` | `listCostAnalyticsHandler` |  |
-| `GET` | `/analytics/runs` | `listRunAnalyticsHandler` |  |
+| `GET` | `/analytics/runs` | `listRunAnalyticsHandler` | warren-97ae: spectators get the reduced projection — counts, rates and timings survive; USD aggregates stay redacted except the instance-wide cost/merged-PR ratio. The per-agent/per-model/ per-provider buckets keep their USD figures redacted because ratio × merged count reconstructs spend. |
 | `GET` | `/analytics/behavior` | `listBehaviorAnalyticsHandler` |  |
 | `GET` | `/analytics/dispatch` | `listDispatchAnalyticsHandler` |  |
 

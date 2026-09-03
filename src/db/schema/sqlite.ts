@@ -107,14 +107,10 @@ export const runs = sqliteTable(
 		// is a soft cache anyway — spawn resolves `(agentName, projectId)`
 		// with global fallback at the application layer.
 		agentName: text("agent_name").notNull(),
-		// Nullable, ON DELETE CASCADE (warren-41b3). Deleting a project
-		// removes its runs (and, via events.run_id CASCADE, their event
-		// transcripts) rather than orphaning them with project_id = NULL.
-		// The prior SET NULL intent (warren-5f19) preserved run history
-		// across de-registration, but that leaked unattributable private
-		// transcripts on public instances and grew the events table without
-		// bound — 58% of production runs and 81% of events were orphans.
-		// Removing the orphan class outright is the fail-closed fix.
+		// Nullable, ON DELETE CASCADE (warren-41b3). The prior SET NULL intent
+		// (warren-5f19) preserved run history across de-registration but leaked
+		// unattributable private transcripts and grew events without bound —
+		// removing the orphan class outright is the fail-closed fix.
 		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
 		// Provider-side sandbox id (burrow id under LocalProvider). Load-bearing:
 		// the bridge/reconnect path (`bootBridges`, `server/bridge-reconnect.ts`)
@@ -125,12 +121,9 @@ export const runs = sqliteTable(
 		// Load-bearing alongside `sandbox_id` for the same resume path (it scopes
 		// cancel / steer / status against the sandbox). Nullable, same reason.
 		sandboxRunId: text("sandbox_run_id"),
-		// Retired multi-worker placement copy (warren-135b / pl-9ba1 step 2).
-		// The workers + burrows placement tables were dropped in warren-3743 once
-		// LocalProvider absorbed the single-burrow runtime; new runs write NULL.
-		// The column is retained (nullable, unwritten) so historical rows keep
-		// their value. All reads tolerate NULL (preview / proxy treat null as the
-		// local worker). The `runs_worker_state_idx` index is likewise retained.
+		// Retired multi-worker placement copy (warren-135b / pl-9ba1 step 2); the
+		// placement tables were dropped in warren-3743 and new runs write NULL.
+		// Retained (nullable, unwritten) for historical rows; reads tolerate NULL.
 		workerId: text("worker_id"),
 		// Optional back-link to the seeds issue this run was dispatched against
 		// (pl-bb70 step 3, warren-805a). Threaded through POST /runs → spawnRun →
@@ -145,13 +138,17 @@ export const runs = sqliteTable(
 		failureReason: text("failure_reason", { enum: RUN_FAILURE_REASONS }),
 		// The queued instant (warren-0af9 / pl-103e step 1): epoch ms stamped by
 		// RunsRepo.create at insert, so queue wait is `started_at - created_at`.
-		// Epoch-ms integer rather than the ISO8601 TEXT of started_at/ended_at
-		// per the pl-103e spec. Nullable: rows written before the column existed
-		// carry NULL, which analytics must read as "unknown" (excluded from
-		// queue-wait denominators), never as zero wait.
+		// Epoch-ms integer per the pl-103e spec. Pre-column rows carry NULL,
+		// read as "unknown" (excluded from queue-wait denominators), never zero.
 		createdAt: integer("created_at"),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
+		// Stage timestamps (warren-7116): the four observed run edges; full shape
+		// + NULL semantics documented on the RunsRepo stage writers (runs-stage.ts).
+		workspaceReadyAt: text("workspace_ready_at"),
+		agentReadyAt: text("agent_ready_at"),
+		agentEndedAt: text("agent_ended_at"),
+		reapedAt: text("reaped_at"),
 		prompt: text("prompt").notNull(),
 		trigger: text("trigger").notNull(),
 		// PR URL filled in by reap's pr_open sub-step (warren-f6af) when the
@@ -171,6 +168,9 @@ export const runs = sqliteTable(
 		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR
 		// base). Null = the workspace cut follows `ref`/continuation/default.
 		baseCommit: text("base_commit"),
+		// Resolved workspace base SHA (warren-b19e): the merge-base read at reap
+		// where commits_ahead is measured — covers the unpinned case. Null = never measured.
+		baseSha: text("base_sha"),
 		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
 		// landed, the workspace's committed work is captured BEFORE destroy:
 		// `salvage_ref` is the rescue branch pushed to origin

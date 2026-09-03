@@ -158,8 +158,7 @@ export function buildSetupSteps(input: SetupStepInput): readonly SetupStep[] {
 		{
 			id: "dispatch-run",
 			title: "Dispatch your first run",
-			blurb:
-				"Start from the ready-made task — the agent reads this repo and opens a PR refreshing AGENTS.md. Runs work on their own branch, so nothing ever touches main.",
+			blurb: "Start from the ready-made task. The agent works on its own branch and opens a PR.",
 			state: dispatchStepState(input.projectCount, input.runCount),
 			href: dispatchStepHref(input),
 			external: false,

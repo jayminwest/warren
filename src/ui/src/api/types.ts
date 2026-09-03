@@ -67,14 +67,12 @@ export interface ProjectRow {
 	addedAt: string;
 	lastFetchedAt: string | null;
 	lastHeadSha: string | null;
-	/**
-	 * Seeds opt-in gating flag (warren-9990 / pl-a258 step 1). True iff a
+	/** Seeds opt-in gating flag (warren-9990 / pl-a258 step 1). True iff a
 	 * `.seeds/` directory existed at the clone root the last time
 	 * addProject or refreshProjectClone probed it. The PlanRun API
 	 * (warren-f923) reads this server-side to reject plan-run dispatch
 	 * against projects without the issue queue; the NewPlanRun form
-	 * disables submission when this is false.
-	 */
+	 * disables submission when this is false. */
 	hasSeeds: boolean;
 }
 
@@ -93,14 +91,12 @@ export interface RunRow {
 	 * survives a project delete as orphan rows.
 	 */
 	projectId: string | null;
-	/**
-	 * Internal runtime handles, named for burrow but populated by
+	/** Internal runtime handles, named for burrow but populated by
 	 * whichever runtime dispatched the run (warren-0965): burrow
 	 * sandbox/run ids under the burrow runtime, the pod name and pod UID
 	 * under `WARREN_RUNTIME=k8s` — NOT null there. OPTIONAL on the wire:
 	 * the public projection drops both (warren-946f), so consumers must
-	 * test presence, not `!== null` (warren-f53e).
-	 */
+	 * test presence, not `!== null` (warren-f53e). */
 	sandboxId?: string | null;
 	sandboxRunId?: string | null;
 	/**
@@ -145,12 +141,12 @@ export interface RunRow {
 	createdAt: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
-	/**
-	 * Reap-time measured outcome facts (warren-ab2b / pl-103e): commits the
-	 * pushed branch was ahead of the base, plus the parsed diff totals.
-	 * Null = unknown (pre-column rows, unmeasured finalize) — render as
-	 * "unknown", never as zero.
-	 */
+	/** Stage timestamps (warren-7116): the four observed run edges — null = never observed. */
+	workspaceReadyAt: string | null;
+	agentReadyAt: string | null;
+	agentEndedAt: string | null;
+	reapedAt: string | null;
+	/** Reap-time measured outcome facts (warren-ab2b): null = unknown, never zero. */
 	commitsAhead: number | null;
 	filesChanged: number | null;
 	insertions: number | null;
@@ -163,8 +159,8 @@ export interface RunRow {
 	 */
 	prUrl: string | null;
 	/**
-	 * Merge-watcher PR facts (warren-3bc6): forge-reported lifecycle + merge
-	 * instant. Null reads as "unknown" (historical rows, no PR), never "not merged".
+	 * Merge-watcher PR facts (warren-3bc6): forge-reported lifecycle + merge instant.
+	 * Null reads as "unknown" (historical rows, no PR), never "not merged".
 	 */
 	prState: PullRequestLifecycle | null;
 	prMergedAt: string | null;
@@ -174,6 +170,8 @@ export interface RunRow {
 	/** Dispatch-supplied clone ref (warren-afeb) / base-commit pin (warren-aaf7). Null when unset. */
 	ref: string | null;
 	baseCommit: string | null;
+	/** Resolved workspace base SHA (warren-b19e); see the SDK RunRow doc. Null = never measured. */
+	baseSha: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / #860). Null = predates the columns. */
 	provider: string | null;
 	model: string | null;
@@ -183,7 +181,7 @@ export interface RunRow {
 	/** Per-run cost in USD (warren-a7dc), the bridge's `get_session_stats` start/end delta. Null for non-pi runtimes. */
 	costUsd: number | null;
 	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
-	maxCostUsd?: number | null; // warren-f8a2: runs-list cap overlay; absent for spectators and detail GETs
+	maxCostUsd?: number | null; // warren-f8a2: cap overlay (list + detail GET, warren-b19e); absent for spectators
 	runtimeBackend?: string | null; // warren-a0f4: local|docker|k8s frozen at dispatch; operator-only overlay beside maxCostUsd
 	/** Input/output tokens consumed/produced (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;
@@ -517,8 +515,8 @@ export interface DefaultsConfig {
 }
 
 export interface WarrenConfigResponse {
-	/** Parsed triggers, or `null` when the file is absent or malformed. */
-	triggers: Trigger[] | null;
+	/** Parsed triggers, or `null`; absent on the readPublic envelope (warren-b754). */
+	triggers?: Trigger[] | null;
 	/** Parsed defaults, or `null` when the file is absent or malformed. */
 	defaults: DefaultsConfig | null;
 	/**
@@ -526,8 +524,8 @@ export interface WarrenConfigResponse {
 	 * or the legacy `.warren/defaults.json`), or `null` when neither exists.
 	 */
 	sourceFile: string | null;
-	/** Per-file failures collected during this load. Empty on full success. */
-	errors: WarrenConfigFileError[];
+	/** Per-file failures; empty on success, absent on the readPublic envelope. */
+	errors?: WarrenConfigFileError[];
 	/**
 	 * Non-fatal advisories (warren-5840) — e.g. `defaults.json` deprecation.
 	 * Surfaced separately from `errors` so the UI / doctor can render them

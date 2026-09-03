@@ -58,13 +58,21 @@ export interface LocalBootBackend {
  * Call this ONLY under `WARREN_RUNTIME=local`; the k8s boot path resolves the
  * `K8sProvider` directly.
  */
-export function resolveLocalBootBackend(env: EnvLike): LocalBootBackend {
+export function resolveLocalBootBackend(
+	env: EnvLike,
+	deps: { onWorkspaceReady?: (runId: string, at: Date) => void } = {},
+): LocalBootBackend {
 	const store = new LocalRunStore();
 	const sidecarRegistry = new LocalSidecarRegistry({
 		profileFor: (sandboxId) => store.getBySandboxId(sandboxId)?.profile ?? null,
 	});
 	const runtimeProvider = resolveRuntimeProvider(
-		{ serverEnv: env, localStore: store, localSidecars: sidecarRegistry },
+		{
+			serverEnv: env,
+			localStore: store,
+			localSidecars: sidecarRegistry,
+			...(deps.onWorkspaceReady !== undefined ? { onWorkspaceReady: deps.onWorkspaceReady } : {}),
+		},
 		env,
 	);
 	const caps = runtimeProvider.capabilities;

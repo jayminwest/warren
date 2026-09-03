@@ -109,6 +109,11 @@ export interface RunRow {
 	createdAt: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
+	/** Stage timestamps (warren-7116): workspace ready / agent ready (first event, same instant as startedAt) / agent ended (runtime-terminal) / reaped (terminal transition). Null = never observed. */
+	workspaceReadyAt: string | null;
+	agentReadyAt: string | null;
+	agentEndedAt: string | null;
+	reapedAt: string | null;
 	/**
 	 * Reap-time measured outcome facts (warren-ab2b / pl-103e): commits the
 	 * pushed branch was ahead of the base, plus the parsed `git diff
@@ -142,6 +147,13 @@ export interface RunRow {
 	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace was cut at. Null when unset. */
 	baseCommit: string | null;
 	/**
+	 * Resolved workspace base SHA (warren-b19e): the merge-base of the
+	 * reap-measured diff base and the workspace HEAD, stamped at finalize/reap
+	 * where commits_ahead is measured. Covers the unpinned case `baseCommit`
+	 * misses. Null = never measured (pre-column rows, skipped finalize).
+	 */
+	baseSha: string | null;
+	/**
 	 * Declared provider/model frozen at dispatch (warren-2ede / #860).
 	 * Null on rows predating the columns — read as "unknown".
 	 */
@@ -164,6 +176,10 @@ export interface RunRow {
 	 * `local` | `docker` | `k8s`. Operator-only runs-list overlay; absent
 	 * for spectators and detail GETs, null when no dispatch-context row. */
 	runtimeBackend?: string | null;
+	/** Per-run USD spend cap (warren-f8a2 list / warren-b19e detail GET):
+	 * from the dispatch-context row; operator-only overlay, absent for
+	 * spectators, null when no dispatch-context row. */
+	maxCostUsd?: number | null;
 	tokensInput: number | null;
 	tokensOutput: number | null;
 	tokensCacheRead: number | null;

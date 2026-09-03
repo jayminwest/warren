@@ -14,53 +14,49 @@
 
 import type { RuntimeId } from "../../../core/wire.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
-import type { RunRow } from "../../../runs/index.ts";
+import type { EventRow, RunRow } from "../../../runs/index.ts";
 import {
 	buildRunMetrics,
 	buildRunOutcomes,
-	type CostPerMergedPr,
-	type CostPerMergedPrBucket,
-	type DimensionTokenSeries,
 	type DirectoryToolCallRow,
 	hydrateRunsUsage,
-	type RunGroupBucket,
 	type RunMetrics,
 	type RunMetricsRow,
 	type RunOutcomes,
-	type RunTotals,
-	type TokenBreakdown,
-	type TokenDayBucket,
 	type ToolCallMiningRow,
 } from "../../../runs/index.ts";
-import { isPublicOnly, pickFields } from "../../projection.ts";
 import { jsonResponse } from "../../response.ts";
-import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
+import type { RouteHandler, ServerDeps } from "../../types.ts";
+import {
+	projectRunAnalytics,
+	type RunAnalyticsBody,
+	type RunAnalyticsTokensSection,
+} from "./analytics.projection.ts";
 import {
 	extractProviderModel,
 	parseAnalyticsDateBound,
 	resolveAnalyticsWindow as resolveAnalyticsWindowBounds,
 } from "./lifecycle.ts";
 
-/**
- * Structured token section added to `GET /analytics/runs` (warren-1244 / pl-d1a2).
- * Groups all token analytics — aggregate totals, per-model/provider summaries,
- * and daily time series — into a single nested object so the UI can render
- * token charts without picking fields off multiple top-level keys.
- */
-export interface RunAnalyticsTokensSection {
-	/** Aggregate token breakdown across all runs in the window. */
-	readonly totals: TokenBreakdown;
-	/** Per-model aggregate token totals, sorted by total tokens desc. */
-	readonly byModel: readonly { readonly key: string; readonly tokens: TokenBreakdown }[];
-	/** Per-provider aggregate token totals, sorted by total tokens desc. */
-	readonly byProvider: readonly { readonly key: string; readonly tokens: TokenBreakdown }[];
-	/** Overall daily token series, one bucket per calendar day (YYYY-MM-DD). */
-	readonly timeSeries: readonly TokenDayBucket[];
-	/** Per-model daily token series, top-5 + OTHER_KEY fold + NONE_KEY. */
-	readonly byModelTimeSeries: readonly DimensionTokenSeries[];
-	/** Per-provider daily token series, top-5 + OTHER_KEY fold + NONE_KEY. */
-	readonly byProviderTimeSeries: readonly DimensionTokenSeries[];
-}
+// The projection surface (field allowlists, spectator types, and the
+// projector) lives in analytics.projection.ts; re-exported here so every
+// existing import path keeps resolving.
+export {
+	PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS,
+	PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS,
+	PUBLIC_RUN_ANALYTICS_FIELDS,
+	PUBLIC_RUN_GROUP_FIELDS,
+	PUBLIC_RUN_TOTALS_FIELDS,
+	type PublicRunAnalytics,
+	type PublicRunOutcomes,
+	REDACTED_COST_PER_MERGED_PR_BUCKET_FIELDS,
+	REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS,
+	REDACTED_RUN_ANALYTICS_FIELDS,
+	REDACTED_RUN_GROUP_FIELDS,
+	REDACTED_RUN_TOTALS_FIELDS,
+	type RunAnalyticsBody,
+	type RunAnalyticsTokensSection,
+} from "./analytics.projection.ts";
 
 /** Resolved `?from`/`?to`/`?projectId` analytics window. */
 interface AnalyticsWindow {
@@ -103,7 +99,18 @@ export function parseAnalyticsWindow(ctx: { url: URL }): {
  * genuinely declares no provider/model stay null, group under NONE_KEY
  * ("unknown"), and are excluded from the real buckets' denominators.
  */
-export function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
+export function toMetricsRows(
+	rows: readonly RunRow[],
+	deliveryEvents: readonly EventRow[] = [],
+): RunMetricsRow[] {
+	// warren-bc9c: newest event ts per (runId, kind) for the two delivery
+	// markers; ordered scan makes the last write the newest.
+	const branchPushedAt = new Map<string, string>();
+	const prOpenedAt = new Map<string, string>();
+	for (const e of deliveryEvents) {
+		if (e.kind === "reap.branch_pushed") branchPushedAt.set(e.runId, e.ts);
+		else if (e.kind === "reap.pr_opened") prOpenedAt.set(e.runId, e.ts);
+	}
 	return rows.map((r) => {
 		const fallback =
 			r.provider === null || r.model === null ? extractProviderModel(r.renderedAgentJson) : {};
@@ -124,12 +131,20 @@ export function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 			startedAt: r.startedAt,
 			endedAt: r.endedAt,
 			createdAt: r.createdAt,
-			// warren-bd57: the merge-watcher column feeds landed-work rates
+			// warren-bd57: the merge-watcher columns feed landed-work rates
 			// directly — no rendered_agent_json re-parse in this path.
 			prState: r.prState,
+			// warren-bc9c: autonomy + delivery inputs.
+			parentRunId: r.parentRunId,
+			retryOf: r.retryOf,
+			prMergedAt: r.prMergedAt,
+			branchPushedAt: branchPushedAt.get(r.id) ?? null,
+			prOpenedAt: prOpenedAt.get(r.id) ?? null,
 		};
 	});
 }
+
+const ANALYTICS_DELIVERY_EVENT_KINDS = ["reap.branch_pushed", "reap.pr_opened"] as const;
 
 /**
  * Fetch + hydrate the `runs` rows for an analytics window and compute the
@@ -145,7 +160,13 @@ export async function loadRunMetrics(
 	const rowsRaw = await deps.repos.runs.listForAnalytics(filter);
 	// Hydrate so terminal runs with bridge-died usage still count.
 	const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events, deps.repos.runs);
-	return { rows, metrics: buildRunMetrics(toMetricsRows(rows)) };
+	// warren-bc9c: the persisted `reap.branch_pushed` / `reap.pr_opened`
+	// timestamps feed the delivery block; one capped query for the window.
+	const deliveryEvents = await deps.repos.events.listEventsByKindsForRuns(
+		rows.map((r) => r.id),
+		ANALYTICS_DELIVERY_EVENT_KINDS,
+	);
+	return { rows, metrics: buildRunMetrics(toMetricsRows(rows, deliveryEvents)) };
 }
 
 /**
@@ -226,209 +247,6 @@ function buildTokensSection(metrics: RunMetrics): RunAnalyticsTokensSection {
 	};
 }
 
-/** The full `GET /analytics/runs` body an operator receives. */
-export interface RunAnalyticsBody extends RunMetrics {
-	readonly filter: { projectId: string | null; from: string | null; to: string | null };
-	readonly tokens: RunAnalyticsTokensSection;
-	/** Outcome-joined rollup (warren-be04): steering deltas + cost per merged PR. */
-	readonly outcomes: RunOutcomes;
-}
-
-/**
- * The `GET /analytics/runs` sections a `readPublic`-only spectator sees
- * (warren-4f6c / pl-b82d step 15). Public analytics is a run-count and
- * state-distribution view: how much work this instance does, how much of
- * it lands, and how many tokens it burns doing so.
- *
- * Three allowlists, one per nesting level, so a field added to `RunMetrics`,
- * `RunTotals` or `RunGroupBucket` tomorrow is absent from the public body
- * until someone classifies it — see `src/server/projection.ts`.
- */
-export const PUBLIC_RUN_ANALYTICS_FIELDS = [
-	"filter",
-	"totals",
-	"timeSeries",
-	"byAgent",
-	"byModel",
-	"byProvider",
-	"byFailureReason",
-	"tokenTimeSeries",
-	"tokenByModelSeries",
-	"tokenByProviderSeries",
-	"tokens",
-	// warren-be04: rates + counts are public (same call as the warren-bd57
-	// landed-work fields); the cost halves inside are redacted one level
-	// down — see PUBLIC_COST_PER_MERGED_PR_*_FIELDS below.
-	"outcomes",
-] as const satisfies readonly (keyof RunAnalyticsBody)[];
-
-/**
- * The complement of `PUBLIC_RUN_ANALYTICS_FIELDS`.
- *
- * - `topSeedsByContext` — a leaderboard of the instance's own issue ids
- *   ranked by context burn. Reads as internal backlog triage, and the
- *   seed ids only mean anything to the operator.
- */
-export const REDACTED_RUN_ANALYTICS_FIELDS = [
-	"topSeedsByContext",
-] as const satisfies readonly (keyof RunAnalyticsBody)[];
-
-/** `RunTotals` minus the windowed USD rollup. */
-export const PUBLIC_RUN_TOTALS_FIELDS = [
-	"runs",
-	"succeeded",
-	"failed",
-	"cancelled",
-	"active",
-	"successRate",
-	"durationMs",
-	// warren-0af9: queue wait is a load-shape signal (how backed-up the
-	// instance is), not a private fact — same posture as durationMs.
-	"queueWaitMs",
-	// warren-bd57: how much dispatched work actually lands is the public
-	// posture's own headline ("how much of it lands") — a rate, not a
-	// private fact.
-	"prStateKnown",
-	"prsMerged",
-	"mergedPrRate",
-	"contextTokens",
-	"tokens",
-] as const satisfies readonly (keyof RunTotals)[];
-
-/**
- * - `cost` — the windowed `{total, avg, priced}` USD rollup. Same call as
- *   `costTotalUsd` on `GET /runs` (warren-946f): per-run cost on a run
- *   detail is a deliberate exception, an aggregate headline is not.
- */
-export const REDACTED_RUN_TOTALS_FIELDS = ["cost"] as const satisfies readonly (keyof RunTotals)[];
-
-/** `RunGroupBucket` minus the per-group USD rollup. */
-export const PUBLIC_RUN_GROUP_FIELDS = [
-	"key",
-	"runs",
-	"succeeded",
-	"failed",
-	"cancelled",
-	"successRate",
-	// warren-bd57: per-bucket landed-work rate, public on the same call as
-	// the totals fields.
-	"prStateKnown",
-	"prsMerged",
-	"mergedPrRate",
-	"contextTokensTotal",
-	"avgContextTokens",
-	"tokens",
-	"avgDurationMs",
-] as const satisfies readonly (keyof RunGroupBucket)[];
-
-/**
- * - `costUsd` / `priced` — per-agent / per-model / per-provider spend.
- *   Summing them reconstructs the aggregate `totals.cost` the projection
- *   just dropped, so they go together or not at all.
- */
-export const REDACTED_RUN_GROUP_FIELDS = [
-	"costUsd",
-	"priced",
-] as const satisfies readonly (keyof RunGroupBucket)[];
-
-/**
- * `CostPerMergedPrBucket` minus its USD figures (warren-be04). The merged
- * counts and resolved denominators are public on the warren-bd57 call;
- * the cost numerator, the priced-run count, and the resulting ratio are
- * cost figures and go the way of `totals.cost`.
- */
-export const PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS = [
-	"key",
-	"prStateKnown",
-	"prsMerged",
-] as const satisfies readonly (keyof CostPerMergedPrBucket)[];
-
-export const REDACTED_COST_PER_MERGED_PR_BUCKET_FIELDS = [
-	"costUsd",
-	"priced",
-	"costPerMergedPrUsd",
-] as const satisfies readonly (keyof CostPerMergedPrBucket)[];
-
-/** The keyless `overall` shape shares the bucket's classification minus `key`. */
-export const PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS = [
-	"prStateKnown",
-	"prsMerged",
-] as const satisfies readonly (keyof CostPerMergedPr["overall"])[];
-
-export const REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS = [
-	"costUsd",
-	"priced",
-	"costPerMergedPrUsd",
-] as const satisfies readonly (keyof CostPerMergedPr["overall"])[];
-
-/** The `GET /analytics/runs` body as a `readPublic`-only caller sees it. */
-type PublicCostPerMergedPrBucket = Pick<
-	CostPerMergedPrBucket,
-	(typeof PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS)[number]
->;
-
-/** `RunOutcomes` as a spectator sees it: steering intact, USD figures gone. */
-export type PublicRunOutcomes = Omit<RunOutcomes, "costPerMergedPr"> & {
-	readonly costPerMergedPr: Omit<
-		CostPerMergedPr,
-		"overall" | "byAgent" | "byModel" | "byProvider"
-	> & {
-		readonly overall: Pick<
-			CostPerMergedPr["overall"],
-			(typeof PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS)[number]
-		>;
-		readonly byAgent: readonly PublicCostPerMergedPrBucket[];
-		readonly byModel: readonly PublicCostPerMergedPrBucket[];
-		readonly byProvider: readonly PublicCostPerMergedPrBucket[];
-	};
-};
-
-export type PublicRunAnalytics = Omit<
-	Pick<RunAnalyticsBody, (typeof PUBLIC_RUN_ANALYTICS_FIELDS)[number]>,
-	"totals" | "byAgent" | "byModel" | "byProvider" | "outcomes"
-> & {
-	readonly totals: Pick<RunTotals, (typeof PUBLIC_RUN_TOTALS_FIELDS)[number]>;
-	readonly byAgent: readonly Pick<RunGroupBucket, (typeof PUBLIC_RUN_GROUP_FIELDS)[number]>[];
-	readonly byModel: readonly Pick<RunGroupBucket, (typeof PUBLIC_RUN_GROUP_FIELDS)[number]>[];
-	readonly byProvider: readonly Pick<RunGroupBucket, (typeof PUBLIC_RUN_GROUP_FIELDS)[number]>[];
-	readonly outcomes: PublicRunOutcomes;
-};
-
-/**
- * Narrow the analytics body for `actor`. The operator gets the body
- * untouched, so the public body is provably the operator body minus
- * fields — one construction site, no drift.
- */
-function projectRunAnalytics(
-	body: RunAnalyticsBody,
-	actor: Actor | undefined,
-): RunAnalyticsBody | PublicRunAnalytics {
-	if (!isPublicOnly(actor)) return body;
-	const groups = (buckets: readonly RunGroupBucket[]) =>
-		buckets.map((b) => pickFields(b, PUBLIC_RUN_GROUP_FIELDS));
-	const costBuckets = (buckets: readonly CostPerMergedPrBucket[]) =>
-		buckets.map((b) => pickFields(b, PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS));
-	const costPerMergedPr = body.outcomes.costPerMergedPr;
-	const outcomes: PublicRunOutcomes = {
-		steering: body.outcomes.steering,
-		costPerMergedPr: {
-			overall: pickFields(costPerMergedPr.overall, PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS),
-			byAgent: costBuckets(costPerMergedPr.byAgent),
-			byModel: costBuckets(costPerMergedPr.byModel),
-			byProvider: costBuckets(costPerMergedPr.byProvider),
-			confidence: costPerMergedPr.confidence,
-		},
-	};
-	return {
-		...pickFields(body, PUBLIC_RUN_ANALYTICS_FIELDS),
-		totals: pickFields(body.totals, PUBLIC_RUN_TOTALS_FIELDS),
-		byAgent: groups(body.byAgent),
-		byModel: groups(body.byModel),
-		byProvider: groups(body.byProvider),
-		outcomes,
-	};
-}
-
 /**
  * `GET /analytics/runs?from=&to=&projectId=` (warren-0692 / pl-ad0f step 2;
  * tokens section added by warren-1244 / pl-d1a2 step 3).
@@ -449,7 +267,16 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const tokens = buildTokensSection(metrics);
 		const outcomes = await loadRunOutcomes(deps, rows, metrics);
-		const body: RunAnalyticsBody = { filter: echo, ...metrics, tokens, outcomes };
+		// warren-ea4e: the cap-hit count comes from the event log, not a run
+		// column — there is no cost-cap failure reason to group on.
+		const capHitEvents = await deps.repos.events.listByKind("budget.exceeded");
+		const body: RunAnalyticsBody = {
+			filter: echo,
+			...metrics,
+			tokens,
+			outcomes,
+			capHits: capHitEvents.length,
+		};
 		return jsonResponse(200, projectRunAnalytics(body, ctx.actor));
 	};
 }

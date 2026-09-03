@@ -1,0 +1,102 @@
+{
+	"status": 200,
+	"body": {
+		"filter": {
+			"projectId": null,
+			"from": "2026-08-01T00:00:00.000Z",
+			"to": "2026-09-01T00:00:00.000Z"
+		},
+		"totals": {
+			"runs": 3,
+			"priced": 2,
+			"costUsd": 2.25
+		},
+		"breakdowns": {
+			"date": [
+				{
+					"key": "2026-08-07",
+					"costUsd": 2.25,
+					"runs": 3,
+					"priced": 2
+				}
+			],
+			"project": [
+				{
+					"key": "project_golden_ea4e",
+					"costUsd": 2.25,
+					"runs": 3,
+					"priced": 2
+				}
+			],
+			"plan": [
+				{
+					"key": "__none__",
+					"costUsd": 2.25,
+					"runs": 3,
+					"priced": 2
+				}
+			],
+			"run": [
+				{
+					"key": "run_golden_ea4e_api",
+					"costUsd": 1.5,
+					"runs": 1,
+					"priced": 1
+				},
+				{
+					"key": "run_golden_ea4e_sub",
+					"costUsd": 0.75,
+					"runs": 1,
+					"priced": 1
+				},
+				{
+					"key": "run_golden_ea4e_ghost",
+					"costUsd": 0,
+					"runs": 1,
+					"priced": 0
+				}
+			],
+			"agent": [
+				{
+					"key": "claude-code",
+					"costUsd": 2.25,
+					"runs": 3,
+					"priced": 2
+				}
+			],
+			"model": [
+				{
+					"key": "sonnet",
+					"costUsd": 2.25,
+					"runs": 3,
+					"priced": 2
+				}
+			],
+			"provider": [
+				{
+					"key": "anthropic",
+					"costUsd": 2.25,
+					"runs": 3,
+					"priced": 2
+				}
+			]
+		},
+		"byCostBasis": [
+			{
+				"key": "api",
+				"runs": 1,
+				"costUsd": 1.5
+			},
+			{
+				"key": "subscription_estimate",
+				"runs": 1,
+				"costUsd": 0.75
+			},
+			{
+				"key": "unpriced",
+				"runs": 1,
+				"costUsd": 0
+			}
+		]
+	}
+}

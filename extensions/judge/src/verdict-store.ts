@@ -231,10 +231,18 @@ export class VerdictStore {
 		return result.changes > 0 ? Number(result.lastInsertRowid) : null;
 	}
 
-	/** The export page: rows after `sinceId`, oldest first. */
-	rowsSince(sinceId: number, limit: number): StoreRow[] {
+	/**
+	 * The export page: rows after `sinceId`. Oldest first by default;
+	 * `order: "desc"` serves the newest page (the client's newest-window
+	 * fetch, warren-f282) with rows in descending id order.
+	 */
+	rowsSince(
+		sinceId: number,
+		limit: number,
+		order: "asc" | "desc" = "asc",
+	): StoreRow[] {
 		const rows = this.#db
-			.query("SELECT * FROM verdict_rows WHERE id > ? ORDER BY id LIMIT ?")
+			.query(`SELECT * FROM verdict_rows WHERE id > ? ORDER BY id ${order === "desc" ? "DESC" : "ASC"} LIMIT ?`)
 			.all(sinceId, limit) as unknown as RawRow[];
 		return rows.map(toStoreRow);
 	}

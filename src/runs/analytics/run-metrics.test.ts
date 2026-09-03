@@ -30,6 +30,11 @@ const ROW_DEFAULTS: Omit<RunMetricsRow, "runId"> = {
 	endedAt: null,
 	createdAt: null,
 	prState: null,
+	parentRunId: null,
+	retryOf: null,
+	prMergedAt: null,
+	branchPushedAt: null,
+	prOpenedAt: null,
 };
 
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
@@ -131,20 +136,6 @@ describe("buildRunMetrics", () => {
 		expect(m.totals.active).toBe(2);
 		// 2 succeeded / 4 terminal
 		expect(m.totals.successRate).toBeCloseTo(0.5);
-	});
-
-	it("excludes null token/cost rows from averages rather than counting them as zero", () => {
-		const m = buildRunMetrics([
-			row({ runId: "a", tokensInput: 1000, costUsd: 2 }),
-			row({ runId: "b", tokensInput: 3000, costUsd: 4 }),
-			row({ runId: "c" }), // null tokens + null cost — should not drag averages down
-		]);
-		// context avg over the two priced rows = 2000, not 4000/3
-		expect(m.totals.contextTokens.avg).toBeCloseTo(2000);
-		expect(m.totals.contextTokens.count).toBe(2);
-		expect(m.totals.cost.total).toBeCloseTo(6);
-		expect(m.totals.cost.avg).toBeCloseTo(3);
-		expect(m.totals.cost.priced).toBe(2);
 	});
 
 	it("excludes pre-migration rows from queue-wait denominators rather than counting zero", () => {
@@ -455,5 +446,39 @@ describe("buildRunMetrics", () => {
 			expect(bucket.prStateKnown).toBe(0);
 			expect(bucket.mergedPrRate).toBeNull();
 		}
+	});
+});
+
+describe("buildRunMetrics delivery block (warren-bc9c)", () => {
+	it("summarizes the four delivery gaps over rows with known endpoints", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				startedAt: "2026-05-01T00:00:10.000Z",
+				endedAt: "2026-05-01T00:20:00.000Z",
+				createdAt: 1_775_000_000_000, // well before the delivery timestamps
+				branchPushedAt: "2026-05-01T00:20:10.000Z",
+				prOpenedAt: "2026-05-01T00:21:10.000Z",
+				prMergedAt: "2026-05-01T00:31:10.000Z",
+				prState: "merged",
+			}),
+			row({ runId: "b" }),
+		]);
+		expect(m.delivery.branchPushToPrOpenMs.median).toBe(60_000);
+		expect(m.delivery.prOpenToMergeMs.median).toBe(600_000);
+		expect(m.delivery.endToMergeMs.median).toBe(670_000);
+		expect(m.delivery.dispatchToMergeMs.count).toBe(1);
+	});
+
+	it("excludes unknown endpoints from each sample instead of counting zero", () => {
+		const m = buildRunMetrics([
+			row({ runId: "a", prMergedAt: "2026-05-01T00:31:10.000Z", prState: "merged" }),
+			row({ runId: "b", branchPushedAt: "2026-05-01T00:20:10.000Z" }),
+		]);
+		expect(m.delivery.prOpenToMergeMs.count).toBe(0);
+		expect(m.delivery.prOpenToMergeMs.median).toBeNull();
+		expect(m.delivery.branchPushToPrOpenMs.count).toBe(0);
+		expect(m.delivery.dispatchToMergeMs.count).toBe(0);
+		expect(m.delivery.endToMergeMs.count).toBe(0);
 	});
 });

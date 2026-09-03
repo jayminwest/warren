@@ -207,6 +207,10 @@ export async function transitionToTerminal(
 		await repos.runs.markRunning(runId, now);
 	}
 	const finalized = await repos.runs.finalize(runId, outcome, now, failureReason);
+	// warren-7116: `reaped_at` stamps the same instant as `ended_at` — the
+	// terminal transition IS the reap completing. First-write-wins so an
+	// already-stamped row (defensive) keeps its original observation.
+	await repos.runs.markReaped(runId, now);
 	// warren-b33e: hydrate cost/tokens from events at write time so the
 	// row never enters the null-cost state that forces a read-time
 	// re-aggregation on every list call. Best-effort inside.

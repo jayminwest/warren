@@ -108,6 +108,12 @@ export const runs = pgTable(
 		createdAt: bigint("created_at", { mode: "number" }),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
+		// Mirror of sqlite stage timestamps (warren-7116); see sqlite.ts for
+		// the full shape + NULL-semantics intent.
+		workspaceReadyAt: text("workspace_ready_at"),
+		agentReadyAt: text("agent_ready_at"),
+		agentEndedAt: text("agent_ended_at"),
+		reapedAt: text("reaped_at"),
 		prompt: text("prompt").notNull(),
 		trigger: text("trigger").notNull(),
 		prUrl: text("pr_url"),
@@ -119,6 +125,8 @@ export const runs = pgTable(
 		ref: text("ref"),
 		// Base-commit pinning (warren-aaf7); see the sqlite schema comment.
 		baseCommit: text("base_commit"),
+		// Resolved workspace base SHA (warren-b19e); see the sqlite twin.
+		baseSha: text("base_sha"),
 		// Salvage-before-destroy (warren-cd3b); see the sqlite schema comment.
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),

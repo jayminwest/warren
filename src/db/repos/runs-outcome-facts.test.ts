@@ -52,6 +52,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 		try {
 			const updated = await repo.setOutcomeFacts(run.id, {
 				commitsAhead: 2,
+				baseSha: null,
 				filesChanged: 3,
 				insertions: 40,
 				deletions: 7,
@@ -75,6 +76,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 		try {
 			await repo.setOutcomeFacts(run.id, {
 				commitsAhead: 0,
+				baseSha: null,
 				filesChanged: 0,
 				insertions: 0,
 				deletions: 0,
@@ -92,6 +94,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 		try {
 			await repo.setOutcomeFacts(run.id, {
 				commitsAhead: 1,
+				baseSha: null,
 				filesChanged: null,
 				insertions: null,
 				deletions: null,
@@ -111,6 +114,7 @@ describe("RunsRepo.setOutcomeFacts (warren-ab2b)", () => {
 			await expect(
 				repo.setOutcomeFacts("run-missing", {
 					commitsAhead: 1,
+					baseSha: null,
 					filesChanged: 1,
 					insertions: 1,
 					deletions: 1,

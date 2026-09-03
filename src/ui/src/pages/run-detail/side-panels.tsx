@@ -3,12 +3,13 @@ import type { RunRow } from "@/api/types.ts";
 import { CostBasisNote } from "@/components/cost-basis-note.tsx";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd, formatTokens } from "@/pages/run-detail-format.ts";
-import { formatDuration, shortSha } from "@/pages/runs/runs-format.ts";
+import { shortSha } from "@/pages/runs/runs-format.ts";
+import { formatRunElapsed } from "./run-detail-format.ts";
 
 /**
  * The Direction C run-detail side column's fact cards (warren-8c85 /
  * pl-7e38 step 4), translated from docs/ui-revamp/screens/run-detail.jsx:
- * Runtime, Budget, and Run definition panels as label/value grids, plus
+ * Runtime, Spend, and Run definition panels as label/value grids, plus
  * the Prompt card with a Copy action. All values bind the real run row
  * — absent facts render "—", never a fabricated figure.
  */
@@ -65,6 +66,8 @@ function totalTokens(run: RunRow): number | null {
 
 export function RuntimePanel({ run }: { run: RunRow }) {
 	const handle = run.sandboxRunId ?? run.sandboxId ?? null;
+	const workspaceBranch = run.branch ?? run.targetBranch ?? run.ref;
+	const showTarget = run.targetBranch !== null && run.targetBranch !== workspaceBranch;
 	return (
 		<PanelShell
 			title="Runtime"
@@ -83,24 +86,33 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 						: DASH}
 			</MetaRow>
 			<MetaRow label="base commit">
-				{shortSha(run.baseCommit) !== "" ? shortSha(run.baseCommit) : DASH}
+				{run.baseSha !== null ? (
+					shortSha(run.baseSha)
+				) : run.baseCommit !== null ? (
+					// warren-b19e: the pin is a fallback — the dispatch-time cut
+					// point, not the resolved base the diff was measured against.
+					<span>
+						{shortSha(run.baseCommit)} <span className="text-(--color-text-3)">base pin</span>
+					</span>
+				) : (
+					DASH
+				)}
 			</MetaRow>
-			<MetaRow label="branch">{run.targetBranch ?? run.ref ?? DASH}</MetaRow>
+			<MetaRow label="branch">{workspaceBranch ?? DASH}</MetaRow>
+			{showTarget ? <MetaRow label="target">{run.targetBranch}</MetaRow> : null}
 		</PanelShell>
 	);
 }
 
-export function BudgetPanel({ run }: { run: RunRow }) {
-	// The run row carries no dispatch-time cap, so the export's "OF $5.00"
-	// denominator would be a fabricated number — only the measured figures
-	// render (warren-8c85, no fabricated numbers).
+export function SpendPanel({ run }: { run: RunRow }) {
+	// warren-b19e: the detail GET overlays the dispatch-context spend cap
+	// (operator-only), so the "$X of $Y cap" denominator is real when the
+	// run carries a cap — and unrenderable when it does not (warren-8c85, no
+	// fabricated numbers). No MEASURED chip: the CostBasisNote beside the
+	// figure already qualifies.
+	const cap = run.maxCostUsd ?? null;
 	return (
-		<PanelShell
-			title="Budget"
-			trailing={
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">MEASURED</span>
-			}
-		>
+		<PanelShell title="Spend">
 			<div className="flex items-baseline justify-between gap-2">
 				<span className="font-mono text-[16px] leading-5 font-semibold tracking-[-0.04em] text-(--color-text) md:text-[22px] md:leading-7 md:font-medium">
 					{run.costUsd !== null
@@ -109,18 +121,24 @@ export function BudgetPanel({ run }: { run: RunRow }) {
 							: formatCostUsd(run.costUsd)
 						: DASH}
 				</span>
+				{cap !== null ? (
+					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+						of {formatCostUsd(cap)} cap
+					</span>
+				) : null}
 				<CostBasisNote run={run} />
 			</div>
 			{/*
 			 * Mobile (warren-ecd8): the mock's inline "N% OF CAP · x TOKENS" line.
-			 * The "% OF CAP" arm is unrenderable — the run row carries no
-			 * dispatch-time cap (same reason the progress bar stays out above),
-			 * and warren never fabricates numbers — so only the measured total
-			 * token count renders. The four token MetaRows stay (deliberate
-			 * divergence from the mock, which drops them).
+			 * The "% OF CAP" arm renders only when the detail GET overlay supplied
+			 * a dispatch-time cap (warren-b19e); without one it stays out — warren
+			 * never fabricates numbers — so only the measured total token count
+			 * renders. The four token MetaRows stay (deliberate divergence from
+			 * the mock, which drops them).
 			 */}
-			{totalTokens(run) !== null ? (
+			{cap !== null && totalTokens(run) !== null ? (
 				<p className="font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+					{Math.round(((run.costUsd ?? 0) / cap) * 100)}% OF CAP ·{" "}
 					{formatTokens(totalTokens(run) ?? 0)} TOKENS
 				</p>
 			) : null}
@@ -150,7 +168,7 @@ export function RunDefinitionPanel({ run, projectName }: { run: RunRow; projectN
 			<MetaRow label="trigger">{run.trigger}</MetaRow>
 			<MetaRow label="tracker">{run.seedId ?? "no tracker item"}</MetaRow>
 			<MetaRow label="started">{formatTimestamp(run.startedAt)}</MetaRow>
-			<MetaRow label="elapsed">{formatDuration(run, Date.now())}</MetaRow>
+			<MetaRow label="elapsed">{formatRunElapsed(run, Date.now())}</MetaRow>
 			{run.parentRunId !== null ? (
 				<MetaRow label={run.cloneKind === "replicate" ? "re-run of" : "continued from"}>
 					{run.parentRunId}
