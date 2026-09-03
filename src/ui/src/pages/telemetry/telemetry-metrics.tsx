@@ -137,6 +137,10 @@ export function TelemetryMetricStrip() {
 	const verdicts = useJudgeVerdicts();
 
 	const outcomes = runs.data?.outcomes;
+	// warren-97ae: the instance-wide ratio is public for spectators (the
+	// per-agent/per-model/per-provider buckets keep their USD figures
+	// redacted), so overall.costPerMergedPrUsd is always present once
+	// outcomes load.
 	const costPerMergedPr = outcomes?.costPerMergedPr.overall.costPerMergedPrUsd;
 
 	const judgeSummary =
@@ -157,8 +161,8 @@ export function TelemetryMetricStrip() {
 				note={
 					outcomes === undefined
 						? "loading run outcomes…"
-						: costPerMergedPr === undefined
-							? "redacted for spectators"
+						: costPerMergedPr === undefined || costPerMergedPr === null
+							? "no priced runs in window"
 							: "all spend over merges · failed runs included"
 				}
 				title="Windowed USD rollup divided by merged PRs (GET /analytics/runs outcomes)"
