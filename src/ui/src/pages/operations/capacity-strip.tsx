@@ -69,7 +69,7 @@ export function CapacityStrip({
 	if (overview === undefined) {
 		return (
 			<div className="rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3.5 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
-				loading control-plane snapshot…
+				loading snapshot…
 			</div>
 		);
 	}
@@ -108,7 +108,7 @@ export function CapacityStrip({
 			label: "SPEND · 24H",
 			value: spend.last24hUsd.toFixed(2),
 			unit: "USD",
-			detail: `$${spend.totalUsd.toFixed(2)} all-time · ${spend.last24hRuns} runs in window`,
+			detail: `${spend.last24hRuns} runs in window`,
 		});
 	}
 	if (delivery !== undefined) {

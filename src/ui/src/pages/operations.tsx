@@ -67,7 +67,7 @@ export function OperationsPage() {
 						Operations
 					</h1>
 					<p className="text-[11px] leading-3.5 text-(--color-text-2) md:text-[12px] md:leading-4">
-						Control-plane state and workload activity across this instance.
+						Server health and current run activity.
 					</p>
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
