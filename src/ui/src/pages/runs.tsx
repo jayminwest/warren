@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
@@ -46,6 +47,8 @@ const MOBILE_PAGE_STEP = 8;
 const DEFAULT_MOBILE_COUNT = 8;
 
 export function RunsPage() {
+	const caps = useCapabilities();
+	const isOperator = caps.can("readOperator");
 	const [filters, setFilters] = useState<PageFilters>(NO_FILTERS);
 	const [pageSize, setPageSize] = useState<number>(() => {
 		if (typeof window === "undefined") return DEFAULT_PAGE_SIZE;
@@ -249,7 +252,7 @@ export function RunsPage() {
 			<div className="hidden min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface) md:flex">
 				{listState ?? (
 					<div className="hidden md:block">
-						<RunsTable rows={rows} projectIndex={projectIndex} now={now} />
+						<RunsTable rows={rows} projectIndex={projectIndex} now={now} isOperator={isOperator} />
 					</div>
 				)}
 				{totalRuns > 0 ? (

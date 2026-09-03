@@ -2,17 +2,15 @@ import type { OpsOverviewResponse } from "@/api/ops-types.ts";
 import { cn, relativeTime } from "@/lib/utils.ts";
 
 /**
- * Control-plane services panel (warren-d903). Derived service-health
- * facts from the ops snapshot (db reachable, runtime provider kind,
- * lifecycle-stream wiring) plus the `/healthz` liveness the shell already
- * polls. The public projection omits the services section, so a
- * spectator sees the API-server row only — the liveness probe every
- * capability level can read.
+ * Services panel (warren-d903). Derived service-health facts from the
+ * ops snapshot (db reachable, lifecycle-stream wiring) plus the
+ * `/healthz` liveness the shell already polls. The public projection
+ * omits the services section, so a spectator sees the API row only.
  */
 
 function ServiceRow({ name, detail, ok }: { name: string; detail: string; ok: boolean | null }) {
 	return (
-		<div className="flex min-h-[43px] flex-1 items-center gap-2 border-b border-(--color-border) px-3 py-1.5 last:border-b-0">
+		<div className="flex min-h-[43px] items-center gap-2 border-b border-(--color-border) px-3 py-1.5 last:border-b-0">
 			<span
 				className={cn(
 					"h-1.5 w-1.5 shrink-0 rounded-full",
@@ -41,9 +39,7 @@ export function ServicesPanel({
 	return (
 		<div className="flex min-w-0 flex-[1.8] flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
 			<div className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
-				<span className="text-[11px] leading-3.5 font-semibold text-(--color-text)">
-					Control-plane services
-				</span>
+				<span className="text-[11px] leading-3.5 font-semibold text-(--color-text)">Services</span>
 				<span className="flex-1" />
 				{overview ? (
 					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
@@ -53,33 +49,22 @@ export function ServicesPanel({
 			</div>
 			<div className="flex flex-1 flex-col">
 				<ServiceRow
-					name="API server"
-					detail={health === "unknown" ? "liveness unknown" : "GET /healthz liveness"}
+					name="API"
+					detail={
+						health === "unknown" ? "state unknown" : health === "ok" ? "reachable" : "unreachable"
+					}
 					ok={health === "ok" ? true : health === "down" ? false : null}
 				/>
 				{services === undefined ? null : (
 					<>
 						<ServiceRow
 							name="Database"
-							detail={
-								services.dbReachable
-									? "aggregate queries reachable"
-									: "unreachable — snapshot degraded"
-							}
+							detail={services.dbReachable ? "reachable" : "unreachable"}
 							ok={services.dbReachable}
 						/>
 						<ServiceRow
-							name="Runtime provider"
-							detail={`WARREN_RUNTIME=${services.runtime}`}
-							ok={null}
-						/>
-						<ServiceRow
-							name="Lifecycle stream"
-							detail={
-								services.lifecycleStream
-									? "GET /events/stream wired at boot"
-									: "not wired — fallback polls only"
-							}
+							name="Event stream"
+							detail={services.lifecycleStream ? "connected" : "polling"}
 							ok={services.lifecycleStream ? true : null}
 						/>
 					</>
