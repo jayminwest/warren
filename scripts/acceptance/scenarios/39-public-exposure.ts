@@ -76,6 +76,7 @@ import {
 	MAX_STREAMS_GLOBAL,
 	MAX_STREAMS_PER_CLIENT,
 } from "./39-public-exposure.limits.ts";
+import { writeSdStub } from "./39-public-exposure.sd-stub.ts";
 
 /**
  * Floor on how many mutating (non-GET) routes the policy table must declare
@@ -87,8 +88,7 @@ import {
  * `POST /agents/refresh` with the canopy library tier (15 → 14).
  */
 const MIN_MUTATING_BLOCKED_ROUTES = 13;
-/** How long a refused boot gets to exit non-zero before we call it a hang. */
-const BOOT_REFUSAL_TIMEOUT_MS = 20_000;
+const BOOT_REFUSAL_TIMEOUT_MS = 20_000; // refused-boot hang floor
 
 interface WhoamiBody {
 	readonly identity: string;
@@ -118,6 +118,8 @@ export const scenario: Scenario = {
 		assertNoLeak("token-mode anonymous GET /runs", await tokenModeRes.text());
 
 		const scenarioRoot = await mkdtemp(join(tmpdir(), "warren-acceptance-39-"));
+		// warren-b754: ready-plans is `readPublic`; the stub answers every seeds read empty.
+		const sdStubPath = await writeSdStub(scenarioRoot);
 		// Inherit the outer harness's insteadOf redirects so the seeded
 		// project's GitHub URL never reaches the network if anything on the
 		// boot path decides to fetch it.
@@ -130,9 +132,7 @@ export const scenario: Scenario = {
 				tmpRoot: scenarioRoot,
 				instanceToken: ctx.token,
 			});
-			ctx.logger.info(
-				`scenario-39: seeded public instance (project=${ids.projectId} run=${ids.runId} plan-run=${ids.planRunId})`,
-			);
+			ctx.logger.info(`scenario-39: seeded public instance (${JSON.stringify(ids)})`);
 
 			handle = await bootInProc({
 				tmpRoot: scenarioRoot,
@@ -152,6 +152,10 @@ export const scenario: Scenario = {
 					// No triggers on the seeded project; keep the tick loop out of
 					// the way for the life of the scenario.
 					WARREN_SCHEDULER_TICK_MS: "3600000",
+					// warren-b754: empty-envelope tracker for the ready-plans sweep;
+					// the tick keeps the plan-run coordinator off the seeded row too.
+					WARREN_SD_BINARY: sdStubPath,
+					WARREN_PLAN_RUN_TICK_MS: "3600000",
 				},
 			});
 			const base = handle.warrenUrl;

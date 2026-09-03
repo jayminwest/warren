@@ -16,7 +16,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
-import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { formatError } from "@/lib/format-error.ts";
 import {
 	DispatchDefaultsPanel,
@@ -33,16 +32,16 @@ import { mainColumnClasses, sideRailClasses } from "@/pages/project-detail-layou
  * Left rail: dispatch defaults (`.warren/config.yaml`), cron triggers
  * (`.warren/triggers.yaml`, with the run-trigger action), and ready
  * plans (`.seeds` queue). Right rail: clone-state facts and recent
- * runs. The three operator reads are `readOperator`-gated — a spectator
- * gets the public project facts and the run back-links only, and the
- * operator panels disappear rather than degrade (warren-f53e).
+ * runs. The warren-config and ready-plans reads are `readPublic` —
+ * a spectator sees the narrowed config envelope and the ready-plan
+ * list, while the triggers panel (prompt text) and every mutation
+ * control stay operator-only (warren-f53e / warren-b754).
  *
  * The panels live in `project-detail.panels.tsx` so this page and that
  * module both stay inside the 500-line budget (check:size).
  */
 export function ProjectDetailPage() {
 	const { id = "" } = useParams<{ id: string }>();
-	const caps = useCapabilities();
 
 	const project = useQuery({
 		queryKey: ["projects", id],
@@ -50,16 +49,14 @@ export function ProjectDetailPage() {
 		enabled: id.length > 0,
 	});
 
-	// `GET /projects/:id/warren-config` carries trigger prompt text and
-	// quality-gate command strings and is readOperator, so a spectator
-	// never fires it (warren-f53e).
+	// `GET /projects/:id/warren-config` is `readPublic` (warren-b754):
+	// spectators get the narrowed envelope (no triggers, no errors),
+	// so the defaults panel renders for every audience.
 	const warrenConfig = useQuery({
 		queryKey: ["projects", id, "warren-config"],
 		queryFn: ({ signal }) => projectsApi.warrenConfig(id, signal),
-		enabled: id.length > 0 && caps.can("readOperator"),
+		enabled: id.length > 0,
 	});
-
-	const isOperator = caps.can("readOperator");
 
 	return (
 		<div className="flex min-h-full flex-col px-3.5 pt-[22px] pb-12 md:px-6">
@@ -80,20 +77,20 @@ export function ProjectDetailPage() {
 				<Alert variant="danger" title="Project not found" />
 			) : (
 				<div className="flex min-w-0 flex-1 flex-col gap-4 lg:flex-row">
-					{isOperator ? (
-						<div className={mainColumnClasses()}>
-							<DispatchDefaultsPanel
-								query={warrenConfig.data}
-								isLoading={warrenConfig.isLoading}
-								error={warrenConfig.error}
-							/>
+					<div className={mainColumnClasses()}>
+						<DispatchDefaultsPanel
+							query={warrenConfig.data}
+							isLoading={warrenConfig.isLoading}
+							error={warrenConfig.error}
+						/>
+						{/* Triggers carry executable prompt text and their read is
+						 * still `readOperator` — a spectator gets no panel. */}
+						<OperatorOnly capability="readOperator">
 							<TriggersPanel projectId={id} />
-							<ReadyPlansPanel projectId={id} />
-						</div>
-					) : null}
-					{/* A spectator gets no operator panels, so no empty flex-1
-					    main column — the rail fills the row (warren-cd42). */}
-					<div className={sideRailClasses(isOperator)}>
+						</OperatorOnly>
+						<ReadyPlansPanel projectId={id} />
+					</div>
+					<div className={sideRailClasses()}>
 						<ProjectFactsPanel project={project.data} />
 						<RecentRunsPanel projectId={id} />
 					</div>

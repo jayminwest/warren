@@ -42,13 +42,13 @@ import {
 	getProjectHandler,
 	getProjectSeedHandler,
 	getProjectTriggersHandler,
-	getProjectWarrenConfigHandler,
 	listProjectSeedPlansHandler,
 	listProjectsHandler,
 	listReadyPlansHandler,
 	refreshProjectHandler,
 	runProjectTriggerHandler,
 } from "./projects.ts";
+import { getProjectWarrenConfigHandler } from "./projects.warren-config.ts";
 import {
 	cancelRunHandler,
 	createRunHandler,
@@ -108,11 +108,12 @@ interface RouteEntry {
  *   auth-exempt, warren-682a). `/analytics/cost` is the instance-wide USD
  *   rollup (per-run cost on a run detail is a deliberate exception).
  *   `/analytics/behavior`, `/analytics/dispatch` (dispatch-context log),
- *   the per-project seeds / ready-plans reads, `/projects/:id/triggers`,
- *   `/projects/:id/warren-config` (trigger prompt text, `qualityGate`
- *   command strings, admission caps), `/preview/config` (discloses
- *   `WARREN_PREVIEW_HOST`), and the judge export proxy (warren-1b40) all
- *   surface operator internals. `GET /runs/:id/inbox` is here for a stronger
+ *   the per-project seeds read, `/projects/:id/triggers` (trigger prompt
+ *   text), `/preview/config` (discloses `WARREN_PREVIEW_HOST`), and the
+ *   judge export proxy (warren-1b40) all surface operator internals.
+ *   The ready-plans read (warren-b754) and the narrowed
+ *   `/projects/:id/warren-config` envelope (redacted defaults, no
+ *   triggers — warren-b754) are `readPublic` instead. `GET /runs/:id/inbox` is here for a stronger
  *   reason than disclosure: it MUTATES on read (`src/runs/inbox.ts` claims
  *   unread rows and flips them to delivered), so an anonymous poll would
  *   silently drain the operator's steering queue.
@@ -191,7 +192,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{
 		method: "GET",
 		pattern: "/projects/:id/warren-config",
-		policy: "readOperator",
+		policy: "readPublic",
 		build: getProjectWarrenConfigHandler,
 	},
 	{
@@ -211,7 +212,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{
 		method: "GET",
 		pattern: "/projects/:id/ready-plans",
-		policy: "readOperator",
+		policy: "readPublic",
 		build: listReadyPlansHandler,
 	},
 	{
