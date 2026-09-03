@@ -1,0 +1,39 @@
+# Postgres ingress NetworkPolicy (warren-9f5a).
+#
+# Ingress to the postgres pod ONLY from the warren control-plane pods in
+# namespace `warren` (labels match deploy/k8s/base/deployment.yaml). Agent run
+# pods never get the DB URL (RUNBOOK-K8S §1.5, blast-radius minimization), and
+# this policy is the network-level backstop for that: a pod in `warren-runs`
+# matches nothing here, so its traffic is denied.
+#
+# policyTypes is explicit (see the base networkpolicy.yaml rationale). There is
+# deliberately NO egress section: an absent egress list with only Ingress in
+# policyTypes leaves egress unrestricted, which is what a database wants (DNS,
+# none) without this component inventing rules.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress-from-control-plane
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/component: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: warren
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: warren
+              app.kubernetes.io/component: control-plane
+      ports:
+        - protocol: TCP
+          port: 5432

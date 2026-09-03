@@ -70,6 +70,7 @@ domains:
   packaging: {}
   warren-deploy: {}
   infra: {}
+  postgres: {}
   usage-hydrate: {}
 governance:
   max_entries: 100
