@@ -152,8 +152,7 @@ export function SetupPage() {
 					Welcome to warren
 				</h1>
 				<p className="text-[13px] leading-[18px] text-(--color-text-2)">
-					Three quick steps take this instance from empty to its first finished piece of work. Your
-					progress is saved — come back any time.
+					Three quick steps to your first finished run. Your progress is saved — come back any time.
 				</p>
 			</div>
 			<div className="flex flex-col gap-2.5">

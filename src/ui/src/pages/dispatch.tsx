@@ -27,9 +27,7 @@ export function DispatchPage() {
 				<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
 					Dispatch run
 				</h1>
-				<p className="max-w-prose text-[12px] leading-4 text-(--color-text-2)">
-					Define one managed agent workload and inspect its resolved runtime policy.
-				</p>
+				<p className="max-w-prose text-[12px] leading-4 text-(--color-text-2)">Start a run.</p>
 				{s.initialState.continueFromRunId !== undefined ? (
 					<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">
 						↪ CONTINUATION FROM {s.initialState.continueFromRunId}

@@ -83,8 +83,9 @@ because traffic stays inside the cluster network. Runbook:
 A backup CronJob layer lives under `deploy/k8s/components/postgres/backup/`
 (warren-6db7): nightly `pg_dump` to GCS, disk snapshots, and `reclaimPolicy:
 Retain`. The component is the production database since the 2026-09-03 cutover
-(warren-c01d); the former Supabase Postgres remains only as a 7-day rollback
-anchor (warren-f7e6).
+(warren-c01d). The operator deleted the former Supabase project on 2026-09-03
+(warren-f7e6) and archived its final dump in the backup bucket (see
+`docs/RUNBOOK-K8S.md`).
 
 ## Public exposure (GKE) — static IP, TLS, DNS
 
