@@ -378,46 +378,29 @@ costs too much to share a disk of small mirrors.
 
 **The default init path is a blobless partial clone** (`--filter=blob:none`,
 warren-3b44): when `WARREN_K8S_REPO_CACHE_PVC` is unset,
-`workspace-init` clones directly with blob filtering and no shared storage.
-The cost is lazy blob fetches — `git log -p` and `git blame` fetch blobs on
-demand, so history-walking commands run slower than against a full clone.
+`workspace-init` clones directly with blob filtering and needs no shared
+storage. The cost is lazy blob fetches: `git log -p` and `git blame` fetch
+blobs on demand, so history-walking commands run slower than against a full
+clone.
 
-**Filestore was tried and removed on cost.** A `warren-repo-cache` Filestore
-Basic HDD instance (1 TiB tier minimum — GKE has no smaller RWX tier) ran
-2026-08-27 → 2026-09 at ~$200/mo to cache a 2.9 GB openclaw mirror, then was
-deleted once the partial clone shipped (warren-3b44). Do not re-provision
+**Filestore failed on cost.** The live cluster ran a `warren-repo-cache`
+Filestore Basic HDD instance from 2026-08-27 to 2026-09. The Basic HDD tier
+starts at 1 TiB, with no smaller RWX tier on GKE, and the instance cost
+~$200/mo to cache a 2.9 GB openclaw mirror. The partial clone shipped
+(warren-3b44), and the operator deleted the instance. Do not re-provision
 Filestore for this cache.
 
 **Single-node clusters may opt back in** via an overlay that adds the claim and
-re-sets the env:
-
-```yaml
-# overlays/<yours>/kustomization.yaml (excerpt)
-patches:
-  - target:
-      kind: Deployment
-      name: warren
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value: {name: WARREN_K8S_REPO_CACHE_PVC, value: warren-repo-cache}
-  - patch: |
-      apiVersion: v1
-      kind: PersistentVolumeClaim
-      metadata: {name: warren-repo-cache, namespace: warren-runs}
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources: {requests: {storage: 50Gi}}
-```
+re-sets the env. See the recipe below.
 
 When enabled on a single-node cluster, the init container mounts the claim at
 `/repo-cache` (override with `WARREN_K8S_REPO_CACHE_PATH`) and keeps a per-repo
 bare mirror under it. A run is then a `git fetch` + fast local clone instead of
 a full network clone (design §4.3, R2). The run workspace itself still lives on
-the per-pod `emptyDir` — the PVC is a *shared clone cache*, never the working
+the per-pod `emptyDir`: the PVC is a *shared clone cache*, never the working
 tree.
 
-Single-node recipe — add the claim and re-set the env:
+Single-node recipe: add the claim and re-set the env:
 
 ```yaml
 # overlays/<yours>/kustomization.yaml (excerpt)
@@ -443,7 +426,7 @@ mirror never blocks a run. On local-path the PVC stays `Pending`
 (WaitForFirstConsumer) until the first run pod mounts it — expected, not an
 error.
 
-**RWO caveat — single-node only.** The claim is
+**RWO caveat: single-node only.** The claim is
 `ReadWriteOnce`, so only pods on the PVC's node can mount it. This is the
 deadlock that made the cache opt-in. It is only safe while every run pod
 schedules on one node.
@@ -451,7 +434,7 @@ schedules on one node.
 The mirror cache is only sensible for a single-node cluster with an RWO class.
 Before scaling out, migrate the claim to a `ReadWriteMany` class (GKE Filestore
 CSI; Longhorn on bare metal) and pin it via an overlay `storageClassName`
-(design R2) — or simply leave the cache off, which is the cheaper default and
+(design R2), or simply leave the cache off, which is the cheaper default and
 what the live cluster does (see the Filestore record above before sizing any
 RWX claim).
 

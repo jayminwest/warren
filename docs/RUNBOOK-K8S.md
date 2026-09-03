@@ -767,23 +767,24 @@ Direct clones cost seconds against 5–20min runs.
 RWX storage (like GKE Filestore, 1TiB minimum) costs too much to share a disk of small mirrors.
 
 **The default init path is now a blobless partial clone** (`--filter=blob:none`, warren-3b44).
-When `WARREN_K8S_REPO_CACHE_PVC` is unset, `src/runtime/k8s/workspace-init.ts` clones directly with blob filtering, so no shared storage exists and no cache PVC is provisioned.
-The trade is lazy blob fetches: git operations that walk history with content — `git log -p`, `git blame` — fetch blobs on demand from the remote, so they are slower than against a full clone.
-Commits, diffs of the working tree, and push/finalize are unaffected.
+With `WARREN_K8S_REPO_CACHE_PVC` unset, `src/runtime/k8s/workspace-init.ts` clones directly with blob filtering, so the run needs no shared storage and no cache PVC.
+The trade is lazy blob fetches: content-walking git operations such as `git log -p` and `git blame` fetch blobs on demand from the remote. They run slower than against a full clone.
+Commits, working-tree diffs, and push/finalize behave as before.
 
-The Filestore RWX cache was tried on the live cluster and removed.
-A `warren-repo-cache` Filestore Basic HDD instance (1 TiB tier minimum, no smaller RWX tier exists) ran 2026-08-27 → 2026-09 at ~$200/mo to cache a 2.9 GB openclaw mirror.
-The partial clone replaced it (warren-3b44); the instance was deleted this session.
+**The Filestore RWX cache failed on cost.** The live cluster ran a `warren-repo-cache` Filestore Basic HDD instance from 2026-08-27 to 2026-09.
+The Basic HDD tier starts at 1 TiB, and GKE offers no smaller RWX tier. It cost ~$200/mo to cache a 2.9 GB openclaw mirror.
+The partial clone replaced it (warren-3b44), and the operator deleted the instance.
 Do not re-provision Filestore for this cache.
 
-The mirror cache stays opt-in and is only sensible for **single-node clusters with an RWO class** (the warren-554f caveat).
-Single-node clusters may opt back in via an overlay that adds the claim and re-sets the env — see `deploy/k8s/README.md` "Repo cache (opt-in)".
-Before adding a second node, either turn the cache back off or migrate the claim to a `ReadWriteMany` class (design R2) — but note the Filestore record above before sizing that claim.
+Keep the mirror cache opt-in, sensible only for **single-node clusters with an RWO class** (the warren-554f caveat).
+Single-node clusters may opt back in via an overlay that adds the claim and re-sets the env (see `deploy/k8s/README.md`, "Repo cache (opt-in)").
+Before adding a second node, turn the cache back off or migrate the claim to a `ReadWriteMany` class (design R2). Check the cost record above first.
 
 When enabled, `warren-repo-cache` is a **shared clone cache**, never a working tree — the working tree is the per-pod `emptyDir`.
 The init container keeps a per-repo bare mirror at `/repo-cache` (`<sha256(url)>.git`, `git clone --mirror`, then `git fetch` on reuse).
 A run then costs a `git fetch` plus a fast local clone instead of a full network clone (warren-e908, design §4.3 / R2).
-The cost trade flips only when a repo is large **and** the cluster is single-node: the live cluster's openclaw runs (~2.9GB, ~20min Init on a fresh clone in 2026-08) are now served by the default partial clone, not the cache.
+The cost trade flips only when a repo is large **and** the cluster is single-node.
+The live cluster's openclaw runs (~2.9GB, ~20min Init on a fresh clone in 2026-08) now use the default partial clone, not the cache.
 
 The number of distinct repos times their object-store size bounds growth — run count does not.
 If the cache fills: expand the PVC, or clear `WARREN_K8S_REPO_CACHE_PVC` to turn the cache off (runs then clone fresh — slower, with no disk growth).

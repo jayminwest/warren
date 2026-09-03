@@ -691,6 +691,10 @@ on re-use), and local-clones the run workspace out of the mirror onto the
 `emptyDir` (see `src/runtime/k8s/workspace-init.ts`). Any cache failure falls
 back to a direct network clone, so a wedged mirror never blocks a run. The RWX
 storage-class migration above is still OUTSTANDING and gates going multi-node.
+Note (warren-afb3): the live cluster ran a Filestore RWX cache from 2026-08-27
+to 2026-09 and deleted it on cost (~$200/mo, 1 TiB Basic HDD minimum, against a
+2.9 GB repo). The default init path is now a blobless partial clone
+(warren-3b44). The mirror cache stays opt-in for single-node clusters only.
 
 **R3 — Cold-start latency.** A fresh pod + image pull + git clone adds 10–60s
 to run start time (depending on image cache hit and repo size). Currently burrow
