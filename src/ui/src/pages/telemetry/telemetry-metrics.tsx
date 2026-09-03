@@ -107,7 +107,6 @@ function dispatchMergeCell(medianMs: number | undefined | null) {
 	);
 }
 
-
 /** Copy + tone for the JUDGE PASS cell (warren-f282): the pass rate is
  * neutral (default text colour) when judged coverage is below 80%, and
  * the note carries the 'N of M judged' denominator honestly. */
