@@ -418,6 +418,22 @@ provisioning.
 A one-off pre-warm Job that mounts the claim moves the wait off the first
 real run. The same Job can also seed the mirror of a large repo.
 
+## Repo variables rendered by deploy-gke (opt-in, warren-ff6f)
+
+Besides `WARREN_K8S_REPO_CACHE_PVC`, the `deploy-gke.yml` render step reads
+three more GitHub repo variables and, for each one that is set, appends a
+strategic-merge Deployment env patch to the `gke-live` kustomization (same
+pattern as the repo-cache block; unset variables add nothing):
+
+- `WARREN_K8S_SPOT` — set to `1`/`true` to pin run pods onto GKE Spot nodes
+  (warren-2e2e). Never applies to the control-plane Deployment.
+- `WARREN_K8S_MEMORY_REQUEST_MIB` — run-pod memory request in MiB (default
+  `2048`).
+- `WARREN_K8S_MEMORY_LIMIT_MIB` — run-pod memory limit in MiB (default
+  `4096`).
+
+See docs/RUNBOOK-K8S.md §3 for full semantics of each knob.
+
 ## Known follow-ups
 
 - **`/readyz` probes.** Deployment probes use the auth-exempt `/healthz`. Deeper

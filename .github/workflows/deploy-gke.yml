@@ -308,6 +308,9 @@ jobs:
           GIT_AUTHOR_EMAIL: ${{ vars.WARREN_GIT_AUTHOR_EMAIL || 'warren@users.noreply.github.com' }}
           INGRESS_HOST: ${{ vars.WARREN_INGRESS_HOST }}
           REPO_CACHE_PVC: ${{ vars.WARREN_K8S_REPO_CACHE_PVC }}
+          K8S_SPOT: ${{ vars.WARREN_K8S_SPOT }}
+          K8S_MEMORY_REQUEST_MIB: ${{ vars.WARREN_K8S_MEMORY_REQUEST_MIB }}
+          K8S_MEMORY_LIMIT_MIB: ${{ vars.WARREN_K8S_MEMORY_LIMIT_MIB }}
         run: |
           set -euo pipefail
           mkdir -p deploy/k8s/overlays/gke-live
@@ -397,6 +400,36 @@ jobs:
                               value: ${REPO_CACHE_PVC}
           EOF
           fi
+          # Opt-in repo variables (warren-ff6f), one strategic-merge patch
+          # per non-empty variable, same shape as the repo-cache block above.
+          # WARREN_K8S_SPOT pins run pods onto GKE Spot nodes (warren-2e2e);
+          # the memory knobs record the imperatively-set control-plane sizing
+          # in git so a fresh apply cannot silently drop them. Unset variables
+          # append nothing.
+          for kv in \
+            "WARREN_K8S_SPOT=${K8S_SPOT}" \
+            "WARREN_K8S_MEMORY_REQUEST_MIB=${K8S_MEMORY_REQUEST_MIB}" \
+            "WARREN_K8S_MEMORY_LIMIT_MIB=${K8S_MEMORY_LIMIT_MIB}"; do
+            name="${kv%%=*}"
+            value="${kv#*=}"
+            [ -n "${value}" ] || continue
+            cat >> deploy/k8s/overlays/gke-live/kustomization.yaml <<EOF
+            - patch: |
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: warren
+                  namespace: warren
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: warren
+                          env:
+                            - name: ${name}
+                              value: ${value}
+          EOF
+          done
           echo "----- rendered gke-live kustomization -----"
           cat deploy/k8s/overlays/gke-live/kustomization.yaml
 
