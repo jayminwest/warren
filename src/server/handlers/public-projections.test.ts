@@ -356,6 +356,10 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		);
 		expect(outcomes.costPerMergedPr.overall.costUsd).toBe(987.6543);
 		expect(totals.cost).toEqual({ total: 987.6543, avg: 987.6543, priced: 1 });
+		// warren-ea4e: the per-run cost distribution and the cap-hit count are
+		// operator fields — present here, redacted below.
+		expect(totals.costUsd).toEqual({ avg: 987.6543, median: 987.6543, p95: 987.6543, count: 1 });
+		expect(body.capHits).toBe(0);
 		expect(body.topSeedsByContext).toHaveLength(1);
 	});
 
@@ -366,6 +370,10 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		const totals = body.totals as Record<string, unknown>;
 		expect(Object.keys(totals).sort()).toEqual([...PUBLIC_RUN_TOTALS_FIELDS].sort());
 		expect(totals).not.toHaveProperty("cost");
+		// warren-ea4e: the per-run cost distribution rides the same redaction
+		// as the aggregate, and the cap-hit count is operator-only too.
+		expect(totals).not.toHaveProperty("costUsd");
+		expect(body).not.toHaveProperty("capHits");
 		// warren-be04: outcomes survives — steering tallies and merged counts
 		// are public — but every USD figure inside is redacted.
 		const outcomes = body.outcomes as {

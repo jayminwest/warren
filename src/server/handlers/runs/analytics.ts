@@ -232,6 +232,12 @@ export interface RunAnalyticsBody extends RunMetrics {
 	readonly tokens: RunAnalyticsTokensSection;
 	/** Outcome-joined rollup (warren-be04): steering deltas + cost per merged PR. */
 	readonly outcomes: RunOutcomes;
+	/**
+	 * Count of `budget.exceeded` events (warren-ea4e). `RUN_FAILURE_REASONS`
+	 * carries no cost-cap member, so the event scan is the only signal a
+	 * run stopped because it hit its spend cap.
+	 */
+	readonly capHits: number;
 }
 
 /**
@@ -271,6 +277,9 @@ export const PUBLIC_RUN_ANALYTICS_FIELDS = [
  */
 export const REDACTED_RUN_ANALYTICS_FIELDS = [
 	"topSeedsByContext",
+	// warren-ea4e: how often runs stop on their spend cap reads as an
+	// operator's burn-control posture, not a spectator fact.
+	"capHits",
 ] as const satisfies readonly (keyof RunAnalyticsBody)[];
 
 /** `RunTotals` minus the windowed USD rollup. */
@@ -299,8 +308,13 @@ export const PUBLIC_RUN_TOTALS_FIELDS = [
  * - `cost` — the windowed `{total, avg, priced}` USD rollup. Same call as
  *   `costTotalUsd` on `GET /runs` (warren-946f): per-run cost on a run
  *   detail is a deliberate exception, an aggregate headline is not.
+ * - `costUsd` — the per-run cost distribution (warren-ea4e): a cost
+ *   figure for every run in the window, so it rides the same redaction.
  */
-export const REDACTED_RUN_TOTALS_FIELDS = ["cost"] as const satisfies readonly (keyof RunTotals)[];
+export const REDACTED_RUN_TOTALS_FIELDS = [
+	"cost",
+	"costUsd",
+] as const satisfies readonly (keyof RunTotals)[];
 
 /** `RunGroupBucket` minus the per-group USD rollup. */
 export const PUBLIC_RUN_GROUP_FIELDS = [
@@ -449,7 +463,16 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const tokens = buildTokensSection(metrics);
 		const outcomes = await loadRunOutcomes(deps, rows, metrics);
-		const body: RunAnalyticsBody = { filter: echo, ...metrics, tokens, outcomes };
+		// warren-ea4e: the cap-hit count comes from the event log, not a run
+		// column — there is no cost-cap failure reason to group on.
+		const capHitEvents = await deps.repos.events.listByKind("budget.exceeded");
+		const body: RunAnalyticsBody = {
+			filter: echo,
+			...metrics,
+			tokens,
+			outcomes,
+			capHits: capHitEvents.length,
+		};
 		return jsonResponse(200, projectRunAnalytics(body, ctx.actor));
 	};
 }

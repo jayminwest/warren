@@ -22,6 +22,7 @@ export function emptyMetrics(): RunMetrics {
 			queueWaitMs: { avg: null, median: null, p95: null, count: 0 },
 			contextTokens: { avg: null, median: null, p95: null, count: 0 },
 			tokens: ZERO_TOKENS,
+			costUsd: { avg: null, median: null, p95: null, count: 0 },
 			cost: { total: 0, avg: null, priced: 0 },
 		},
 		timeSeries: [],

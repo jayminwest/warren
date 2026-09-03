@@ -53,6 +53,11 @@ export interface RunAnalyticsTotals {
 	 * guard crashed `/run-analytics` for anonymous visitors (warren-e274).
 	 */
 	cost?: { total: number; avg: number | null; priced: number };
+	/**
+	 * OPTIONAL on the wire: per-run cost distribution (warren-ea4e) is
+	 * redacted for a `readPublic`-only caller alongside `cost` above.
+	 */
+	costUsd?: RunStatSummary;
 }
 
 export interface RunDayBucket {
@@ -111,6 +116,11 @@ export interface RunAnalyticsResponse {
 	byProvider: RunGroupBucket[];
 	byFailureReason: RunFailureBucket[];
 	topSeedsByContext: SeedContextBucket[];
+	/**
+	 * OPTIONAL on the wire: count of `budget.exceeded` events
+	 * (warren-ea4e), redacted for a `readPublic`-only caller.
+	 */
+	capHits?: number;
 	/** Token analytics section added by warren-1244 / pl-d1a2 step 2. */
 	tokens: RunAnalyticsTokensSection;
 	/** Outcome-joined rollup (warren-be04); USD fields optional — spectator-redacted. */

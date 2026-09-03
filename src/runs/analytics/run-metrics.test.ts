@@ -147,6 +147,18 @@ describe("buildRunMetrics", () => {
 		expect(m.totals.cost.priced).toBe(2);
 	});
 
+	it("summarizes the per-run cost distribution over priced rows only (warren-ea4e)", () => {
+		const m = buildRunMetrics([
+			row({ runId: "a", costUsd: 1 }),
+			row({ runId: "b", costUsd: 2 }),
+			row({ runId: "c", costUsd: 4 }),
+			row({ runId: "d", costUsd: 8 }),
+			row({ runId: "e" }), // unpriced — excluded from the sample
+		]);
+		// nearest-rank percentiles, same convention as durationMs
+		expect(m.totals.costUsd).toEqual({ avg: 3.75, median: 2, p95: 8, count: 4 });
+	});
+
 	it("excludes pre-migration rows from queue-wait denominators rather than counting zero", () => {
 		const createdAt = Date.parse("2026-01-01T00:00:00Z");
 		const m = buildRunMetrics([

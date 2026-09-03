@@ -8,7 +8,8 @@ import {
 	RUN_ANALYTICS_OTHER_KEY,
 	runAnalyticsApi,
 } from "@/api/client.ts";
-import type { CostPerMergedPrBucket } from "@/api/run-analytics-types.ts";
+import type { CostPerMergedPrBucket, RunStatSummary } from "@/api/run-analytics-types.ts";
+import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import {
 	cacheHitShare,
@@ -275,6 +276,118 @@ function mergedPrBucketLabel(key: string): string {
 	return key;
 }
 
+function CostPerRunContent({ costUsd }: { costUsd: RunStatSummary | undefined }) {
+	if (costUsd === undefined) return null;
+	if (costUsd.count === 0) return <PanelEmpty text="No priced runs in this window." />;
+	return (
+		<>
+			<SpendRow name="Median" costUsd={formatCostUsd(costUsd.median ?? 0)} />
+			<SpendRow name="p95" costUsd={formatCostUsd(costUsd.p95 ?? 0)} />
+			<p className="text-[12px] leading-4 text-(--color-text-2)">
+				{`${String(costUsd.count)} priced ${costUsd.count === 1 ? "run" : "runs"} in this window.`}
+			</p>
+		</>
+	);
+}
+
+/**
+ * Per-run cost distribution (warren-ea4e) from /analytics/runs
+ * totals.costUsd — median and p95 across the window's priced runs.
+ */
+function CostPerRunPanel({ from, to }: { from: string; to: string }) {
+	const runs = useRunAnalytics(from, to);
+	const costUsd = runs.data?.totals?.costUsd;
+
+	return (
+		<TelemetryPanel title="Cost per run" meta="PRICED RUNS ONLY">
+			{runs.isError ? (
+				<PanelError error={runs.error as Error | null} />
+			) : costUsd === undefined && !runs.isLoading ? (
+				<PanelEmpty text="Cost figures unavailable for this view." />
+			) : (
+				<CostPerRunContent costUsd={costUsd} />
+			)}
+		</TelemetryPanel>
+	);
+}
+
+function CapHitsContent({ capHits }: { capHits: number }) {
+	return (
+		<>
+			<div
+				className={cn(
+					"font-mono text-[22px] leading-[26px]",
+					capHits === 0 ? "text-(--color-text-3)" : "text-(--color-text)",
+				)}
+			>
+				{String(capHits)}
+			</div>
+			<p className="text-[12px] leading-4 text-(--color-text-2)">
+				{capHits === 0
+					? "No run stopped on its spend cap in this window's history."
+					: `${String(capHits)} ${capHits === 1 ? "run" : "runs"} stopped on their spend cap.`}
+			</p>
+		</>
+	);
+}
+
+/**
+ * Budget-cap hits (warren-ea4e) from /analytics/runs capHits — the count
+ * of `budget.exceeded` events, the only cost-cap stop signal on the wire.
+ */
+function CapHitsPanel({ from, to }: { from: string; to: string }) {
+	const runs = useRunAnalytics(from, to);
+	const capHits = runs.data?.capHits;
+
+	return (
+		<TelemetryPanel title="Budget cap hits" meta="BUDGET.EXCEEDED EVENTS">
+			{runs.isError ? (
+				<PanelError error={runs.error as Error | null} />
+			) : capHits === undefined && !runs.isLoading ? (
+				<PanelEmpty text="Cap-hit count unavailable for this view." />
+			) : capHits === undefined ? null : (
+				<CapHitsContent capHits={capHits} />
+			)}
+		</TelemetryPanel>
+	);
+}
+
+/** Human label for a byCostBasis bucket key. */
+function costBasisLabel(key: string): string {
+	if (key === "api") return "API (billed)";
+	if (key === "subscription_estimate") return "Subscription (estimated)";
+	return "Unpriced";
+}
+
+/**
+ * Spend by cost basis (warren-ea4e) from /analytics/cost byCostBasis —
+ * API-billed vs subscription-estimated vs unpriced runs in the window.
+ */
+function CostBasisPanel({ from, to }: { from: string; to: string }) {
+	const cost = useCostAnalytics(from, to);
+	const buckets = cost.data?.byCostBasis;
+
+	return (
+		<TelemetryPanel title="Spend by cost basis" meta="API VS SUBSCRIPTION">
+			{cost.isError ? (
+				<PanelError error={cost.error as Error | null} />
+			) : buckets === undefined && !cost.isLoading ? (
+				<PanelEmpty text="Cost basis unavailable for this view." />
+			) : buckets === undefined ? null : buckets.length === 0 ? (
+				<PanelEmpty text="No spend recorded in this window." />
+			) : (
+				buckets.map((b) => (
+					<SpendRow
+						key={b.key}
+						name={`${costBasisLabel(b.key)} · ${String(b.runs)}`}
+						costUsd={formatCostUsd(b.costUsd)}
+					/>
+				))
+			)}
+		</TelemetryPanel>
+	);
+}
+
 /** Cost per merged PR for one dimension (byModel / byProvider). */
 function CostPerMergedPrPanel({
 	from,
@@ -318,6 +431,9 @@ export function TelemetryEconomicsSidePanels() {
 	const { from, to } = useTelemetryWindow();
 	return (
 		<>
+			<CostPerRunPanel from={from} to={to} />
+			<CapHitsPanel from={from} to={to} />
+			<CostBasisPanel from={from} to={to} />
 			<SpendOverTimePanel from={from} to={to} />
 			<SpendByPanel
 				from={from}

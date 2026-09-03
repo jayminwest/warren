@@ -318,6 +318,7 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 				provider: r.provider ?? fallback.provider ?? null,
 				model: r.model ?? fallback.model ?? null,
 				costUsd: r.costUsd,
+				costBasis: r.costBasis,
 				startedAt: r.startedAt,
 			};
 		});

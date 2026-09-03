@@ -637,6 +637,15 @@ export interface CostAnalyticsResponse {
 	filter: { projectId: string | null; from: string | null; to: string | null };
 	totals: { runs: number; priced: number; costUsd: number };
 	breakdowns: Record<CostDimension, CostBucket[]>;
+	/**
+	 * Spend split by how the runs were priced (warren-ea4e): `api`,
+	 * `subscription_estimate`, and `unpriced` (rows with no costUsd).
+	 */
+	byCostBasis: {
+		key: "api" | "subscription_estimate" | "unpriced";
+		runs: number;
+		costUsd: number;
+	}[];
 }
 
 export interface CostAnalyticsFilter {

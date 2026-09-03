@@ -42,6 +42,12 @@ export interface CostAnalyticsRow {
 	readonly provider: string | null;
 	readonly model: string | null;
 	readonly costUsd: number | null;
+	/**
+	 * How the run was priced (warren-ea4e) — a `RunCostBasis` value or
+	 * null when the caller cannot supply one. `undefined` reads as
+	 * "api", the column default legacy rows carry.
+	 */
+	readonly costBasis?: string | null;
 	readonly startedAt: string | null;
 }
 
@@ -61,6 +67,17 @@ export interface CostAnalytics {
 		readonly costUsd: number;
 	};
 	readonly breakdowns: Readonly<Record<Dimension, readonly CostBucket[]>>;
+	/**
+	 * Spend split by how the runs were priced (warren-ea4e): `api` (a
+	 * bill), `subscription_estimate` (an API-priced estimate of
+	 * subscription usage), and `unpriced` (rows carrying no costUsd at
+	 * all). Buckets sorted by costUsd desc, then key ascending.
+	 */
+	readonly byCostBasis: readonly {
+		readonly key: "api" | "subscription_estimate" | "unpriced";
+		readonly runs: number;
+		readonly costUsd: number;
+	}[];
 }
 
 const DIMENSIONS: readonly Dimension[] = [
@@ -72,6 +89,33 @@ const DIMENSIONS: readonly Dimension[] = [
 	"model",
 	"provider",
 ];
+
+function buildByCostBasis(rows: readonly CostAnalyticsRow[]): CostAnalytics["byCostBasis"] {
+	const acc = new Map<
+		"api" | "subscription_estimate" | "unpriced",
+		{ runs: number; costUsd: number }
+	>();
+	for (const r of rows) {
+		// An unpriced row (no costUsd) folds into "unpriced" regardless of
+		// its declared basis — the basis qualifies a number the row lacks.
+		const key =
+			r.costUsd === null
+				? "unpriced"
+				: r.costBasis === "subscription_estimate"
+					? "subscription_estimate"
+					: "api";
+		const bucket = acc.get(key);
+		if (bucket === undefined) {
+			acc.set(key, { runs: 1, costUsd: r.costUsd ?? 0 });
+		} else {
+			bucket.runs += 1;
+			bucket.costUsd += r.costUsd ?? 0;
+		}
+	}
+	return [...acc.entries()]
+		.map(([key, v]) => ({ key, runs: v.runs, costUsd: v.costUsd }))
+		.sort((a, b) => (b.costUsd !== a.costUsd ? b.costUsd - a.costUsd : a.key < b.key ? -1 : 1));
+}
 
 /**
  * Build all eight breakdowns from `rows`. O(rows × dimensions) — a
@@ -93,7 +137,7 @@ export function buildCostAnalytics(rows: readonly CostAnalyticsRow[]): CostAnaly
 	for (const dim of DIMENSIONS) {
 		breakdowns[dim] = bucketsFor(rows, dim);
 	}
-	return { totals, breakdowns };
+	return { totals, breakdowns, byCostBasis: buildByCostBasis(rows) };
 }
 
 function bucketsFor(rows: readonly CostAnalyticsRow[], dim: Dimension): readonly CostBucket[] {
