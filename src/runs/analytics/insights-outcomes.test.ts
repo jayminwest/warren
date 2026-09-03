@@ -24,6 +24,12 @@ export function emptyMetrics(): RunMetrics {
 			tokens: ZERO_TOKENS,
 			cost: { total: 0, avg: null, priced: 0 },
 		},
+		delivery: {
+			branchPushToPrOpenMs: { avg: null, median: null, p95: null, count: 0 },
+			prOpenToMergeMs: { avg: null, median: null, p95: null, count: 0 },
+			dispatchToMergeMs: { avg: null, median: null, p95: null, count: 0 },
+			endToMergeMs: { avg: null, median: null, p95: null, count: 0 },
+		},
 		timeSeries: [],
 		byAgent: [],
 		byModel: [],
@@ -86,6 +92,7 @@ describe("buildInsights (outcome-joined kinds, warren-be04)", () => {
 				mergedPrRateDelta: null,
 				confidence: "low",
 			},
+			autonomy: { merged: 0, autonomous: 0, rate: null },
 			costPerMergedPr: {
 				overall: { costUsd: 0, priced: 0, prStateKnown: 0, prsMerged: 0, costPerMergedPrUsd: null },
 				byAgent: [],

@@ -1,0 +1,320 @@
+{
+	"filter": {
+		"projectId": null,
+		"from": "2026-05-01T00:00:00.000Z",
+		"to": "2026-06-01T00:00:00.000Z"
+	},
+	"totals": {
+		"runs": 1,
+		"succeeded": 1,
+		"failed": 0,
+		"cancelled": 0,
+		"active": 0,
+		"successRate": 1,
+		"durationMs": {
+			"avg": 300000,
+			"median": 300000,
+			"p95": 300000,
+			"count": 1
+		},
+		"queueWaitMs": {
+			"avg": 0,
+			"median": 0,
+			"p95": 0,
+			"count": 1
+		},
+		"prStateKnown": 1,
+		"prsMerged": 1,
+		"mergedPrRate": 1,
+		"contextTokens": {
+			"avg": 0,
+			"median": 0,
+			"p95": 0,
+			"count": 1
+		},
+		"tokens": {
+			"input": 0,
+			"output": 0,
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"total": 0
+		}
+	},
+	"timeSeries": [
+		{
+			"key": "2026-05-20",
+			"runs": 1,
+			"succeeded": 1,
+			"failed": 0,
+			"cancelled": 0,
+			"active": 0,
+			"contextTokensTotal": 0
+		}
+	],
+	"byAgent": [
+		{
+			"key": "claude-code",
+			"runs": 1,
+			"succeeded": 1,
+			"failed": 0,
+			"cancelled": 0,
+			"successRate": 1,
+			"prStateKnown": 1,
+			"prsMerged": 1,
+			"mergedPrRate": 1,
+			"contextTokensTotal": 0,
+			"avgContextTokens": 0,
+			"tokens": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 0
+			},
+			"avgDurationMs": 300000
+		}
+	],
+	"byModel": [
+		{
+			"key": "sonnet",
+			"runs": 1,
+			"succeeded": 1,
+			"failed": 0,
+			"cancelled": 0,
+			"successRate": 1,
+			"prStateKnown": 1,
+			"prsMerged": 1,
+			"mergedPrRate": 1,
+			"contextTokensTotal": 0,
+			"avgContextTokens": 0,
+			"tokens": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 0
+			},
+			"avgDurationMs": 300000
+		}
+	],
+	"byProvider": [
+		{
+			"key": "anthropic",
+			"runs": 1,
+			"succeeded": 1,
+			"failed": 0,
+			"cancelled": 0,
+			"successRate": 1,
+			"prStateKnown": 1,
+			"prsMerged": 1,
+			"mergedPrRate": 1,
+			"contextTokensTotal": 0,
+			"avgContextTokens": 0,
+			"tokens": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 0
+			},
+			"avgDurationMs": 300000
+		}
+	],
+	"byFailureReason": [],
+	"tokenTimeSeries": [
+		{
+			"date": "2026-05-20",
+			"input": 0,
+			"output": 0,
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"total": 0
+		}
+	],
+	"tokenByModelSeries": [
+		{
+			"key": "sonnet",
+			"series": [
+				{
+					"date": "2026-05-20",
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 0
+				}
+			]
+		}
+	],
+	"tokenByProviderSeries": [
+		{
+			"key": "anthropic",
+			"series": [
+				{
+					"date": "2026-05-20",
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 0
+				}
+			]
+		}
+	],
+	"tokens": {
+		"totals": {
+			"input": 0,
+			"output": 0,
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"total": 0
+		},
+		"byModel": [
+			{
+				"key": "sonnet",
+				"tokens": {
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 0
+				}
+			}
+		],
+		"byProvider": [
+			{
+				"key": "anthropic",
+				"tokens": {
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"total": 0
+				}
+			}
+		],
+		"timeSeries": [
+			{
+				"date": "2026-05-20",
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"total": 0
+			}
+		],
+		"byModelTimeSeries": [
+			{
+				"key": "sonnet",
+				"series": [
+					{
+						"date": "2026-05-20",
+						"input": 0,
+						"output": 0,
+						"cacheRead": 0,
+						"cacheWrite": 0,
+						"total": 0
+					}
+				]
+			}
+		],
+		"byProviderTimeSeries": [
+			{
+				"key": "anthropic",
+				"series": [
+					{
+						"date": "2026-05-20",
+						"input": 0,
+						"output": 0,
+						"cacheRead": 0,
+						"cacheWrite": 0,
+						"total": 0
+					}
+				]
+			}
+		]
+	},
+	"delivery": {
+		"branchPushToPrOpenMs": {
+			"avg": 60000,
+			"median": 60000,
+			"p95": 60000,
+			"count": 1
+		},
+		"prOpenToMergeMs": {
+			"avg": 50030000,
+			"median": 50030000,
+			"p95": 50030000,
+			"count": 1
+		},
+		"dispatchToMergeMs": {
+			"avg": 50400000,
+			"median": 50400000,
+			"p95": 50400000,
+			"count": 1
+		},
+		"endToMergeMs": {
+			"avg": 50100000,
+			"median": 50100000,
+			"p95": 50100000,
+			"count": 1
+		}
+	},
+	"outcomes": {
+		"steering": {
+			"steered": {
+				"runs": 0,
+				"terminal": 0,
+				"succeeded": 0,
+				"successRate": null,
+				"prStateKnown": 0,
+				"prsMerged": 0,
+				"mergedPrRate": null
+			},
+			"unsteered": {
+				"runs": 1,
+				"terminal": 1,
+				"succeeded": 1,
+				"successRate": 1,
+				"prStateKnown": 1,
+				"prsMerged": 1,
+				"mergedPrRate": 1
+			},
+			"mergedPrRateDelta": null,
+			"confidence": "low"
+		},
+		"autonomy": {
+			"merged": 1,
+			"autonomous": 1,
+			"rate": 1
+		},
+		"costPerMergedPr": {
+			"overall": {
+				"prStateKnown": 1,
+				"prsMerged": 1
+			},
+			"byAgent": [
+				{
+					"key": "claude-code",
+					"prStateKnown": 1,
+					"prsMerged": 1
+				}
+			],
+			"byModel": [
+				{
+					"key": "sonnet",
+					"prStateKnown": 1,
+					"prsMerged": 1
+				}
+			],
+			"byProvider": [
+				{
+					"key": "anthropic",
+					"prStateKnown": 1,
+					"prsMerged": 1
+				}
+			],
+			"confidence": "low"
+		}
+	}
+}

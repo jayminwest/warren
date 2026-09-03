@@ -6,7 +6,7 @@
 
 // Row type re-export at the domain seam (warren-02c9): the drizzle schema
 // stays the source of the inferred type; handlers import `RunRow` from here.
-export type { RunRow } from "../db/schema.ts";
+export type { EventRow, RunRow } from "../db/schema.ts";
 export {
 	buildCommandMining,
 	type CategoryBucket,

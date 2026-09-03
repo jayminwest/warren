@@ -31,6 +31,12 @@ function emptyMetrics(): RunMetrics {
 			tokens: ZERO_TOKENS,
 			cost: { total: 0, avg: null, priced: 0 },
 		},
+		delivery: {
+			branchPushToPrOpenMs: { avg: null, median: null, p95: null, count: 0 },
+			prOpenToMergeMs: { avg: null, median: null, p95: null, count: 0 },
+			dispatchToMergeMs: { avg: null, median: null, p95: null, count: 0 },
+			endToMergeMs: { avg: null, median: null, p95: null, count: 0 },
+		},
 		timeSeries: [],
 		byAgent: [],
 		byModel: [],
