@@ -118,7 +118,7 @@ const SECRET_PATTERN = new RegExp(
 		// Google API keys.
 		"AIza[0-9A-Za-z_-]{35}",
 		// URL userinfo credentials: `scheme://user:pass@host`. This is where a
-		// Postgres / Supabase DSN (WARREN_DB_URL) hides its password. Anchored on
+		// Postgres DSN (WARREN_DB_URL) hides its password. Anchored on
 		// the `:pass@` shape so an ordinary URL without userinfo never matches.
 		// Redacted whole (scheme + userinfo + `@`), leaving the host in the clear.
 		String.raw`\w+://[^\s:@/]+:[^\s@/]+@`,

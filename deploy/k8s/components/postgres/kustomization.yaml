@@ -3,7 +3,8 @@
 # An opt-in kustomize Component: an overlay pulls it in with
 # `components: [../../components/postgres]` (see deploy/k8s/README.md).
 # Nothing in base or any committed overlay includes it — an operator who
-# never adds the line keeps Supabase (RUNBOOK-K8S §1.5).
+# never adds the line keeps the default SQLite-on-PVC fallback (see
+# deploy/k8s/base/secrets.yaml).
 #
 # The Secret here is a PLACEHOLDER template in the style of
 # deploy/k8s/base/secrets.yaml: never apply it as-is, create the real Secret

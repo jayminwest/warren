@@ -1,8 +1,8 @@
-# Postgres StatefulSet (warren-9f5a). In-cluster replacement candidate for
-# Supabase (RUNBOOK-K8S §1.5); the Supabase text stays until warren-a3ed.
+# In-cluster Postgres StatefulSet (warren-9f5a); the production database since
+# the 2026-09-03 cutover (warren-c01d, RUNBOOK-K8S §1.5).
 #
-# Image major MUST track the Supabase source (17 today) so `pg_restore` of the
-# cutover dump (warren-c4b7) is same-major.
+# Image major is pinned to 17 so a same-major `pg_restore` of a pre-cutover dump
+# (warren-c4b7) stays possible.
 #
 # storageClassName is deliberately OMITTED on the volumeClaimTemplate: omitting
 # it binds the GKE default StorageClass (standard-rwo on Autopilot) and keeps

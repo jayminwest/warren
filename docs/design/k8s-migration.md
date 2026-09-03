@@ -15,6 +15,14 @@
 **Author:** derived from postmortem `notes/2026-07-07-warren-deployed-oom-crash-loop-postmortem.md`  
 **Scope:** Warren control plane + run dispatch
 
+## Scope status
+
+| Scope | Delivery | Evidence |
+|---|---|---|
+| K8s runtime (pod-per-run, init container, event streaming) | `shipped` | v0.10.0 |
+| State DB: Supabase Postgres (as designed here) | `superseded` | Moved in-cluster on September 3, 2026 (warren-c01d, runbook §1.5) |
+| State DB: in-cluster Postgres Component | `shipped` | warren-9f5a + warren-6db7 (backups), cutover warren-c01d |
+
 ---
 
 ## Motivation
@@ -483,6 +491,10 @@ scrape if running standalone Prometheus on Hetzner).
 
 ### 6.1 Supabase Postgres stays
 
+> **Superseded September 3, 2026.** The database moved in-cluster on that date
+> (warren-c01d, runbook §1.5). The table above records the change. Text below
+> records the history.
+
 The `WARREN_DB_URL` pointing at Supabase Postgres is unchanged. All migrations
 under `src/db/migrations/postgres/` apply as-is. No data migration required.
 
@@ -782,7 +794,7 @@ get/watch for log streaming. No cluster-level permissions needed.
 | Event streaming | Pod log stream → warren bridge (same NDJSON parsing) |
 | Steering | `run_inbox` Postgres table + agent HTTP poll (5s latency) |
 | Cluster | K3s on Hetzner AX41-NVMe bare metal (€52/month) |
-| State DB | Supabase Postgres (unchanged) |
+| State DB | Supabase Postgres (moved in-cluster September 3, 2026, warren-c01d) |
 | Burrow repo | Archived after step 6 |
 | Fly deployment | Retired at step 5 |
 | Fly secrets | Migrated to K8s Secrets at step 2 |

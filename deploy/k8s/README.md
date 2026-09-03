@@ -80,8 +80,11 @@ Then point `warren-secrets/warren-db-url` at
 because traffic stays inside the cluster network. Runbook:
 `docs/RUNBOOK-K8S.md` §1.5, "In-cluster Postgres".
 
-A backup CronJob layer lands under `deploy/k8s/components/postgres/backup/`
-(warren-6db7). Do not run this component in production before that exists.
+A backup CronJob layer lives under `deploy/k8s/components/postgres/backup/`
+(warren-6db7): nightly `pg_dump` to GCS, disk snapshots, and `reclaimPolicy:
+Retain`. The component is the production database since the 2026-09-03 cutover
+(warren-c01d); the former Supabase Postgres remains only as a 7-day rollback
+anchor (warren-f7e6).
 
 ## Public exposure (GKE) — static IP, TLS, DNS
 

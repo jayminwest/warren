@@ -120,7 +120,7 @@ Set `WARREN_DB_URL=postgres://...` deliberately.
 Agent run pods never get the DB URL — only the control plane does (§3, blast-radius minimization).
 Run pods talk to warren over HTTP and never to the DB, so a database cutover does not touch them.
 
-**In-cluster Postgres (opt-in Component, warren-9f5a).**
+**In-cluster Postgres (Component, warren-9f5a; the production database since 2026-09-03).**
 The kustomize Component `deploy/k8s/components/postgres/` runs Postgres inside the cluster: a
 StatefulSet on the postgres 17 image (one replica, 250m/1Gi requests, 1/2Gi limits, 10Gi PVC with
 `pg_isready` readiness), a ClusterIP Service on 5432, and a placeholder Secret template
@@ -130,18 +130,15 @@ A NetworkPolicy admits ingress only from the warren control-plane pods in namesp
 Run pods in `warren-runs` stay denied.
 The PVC omits `storageClassName`, so the GKE default `standard-rwo` binds.
 
-The image major must match the Supabase source (17 today) so the cutover `pg_restore` is same-major.
-This path is not production-ready until the backup CronJob layer lands
-(`deploy/k8s/components/postgres/backup/`, warren-6db7).
+The image runs postgres 17. Keep the major pinned when restoring an old dump so
+`pg_restore` stays same-major. The backup CronJob layer under
+`deploy/k8s/components/postgres/backup/` (warren-6db7) is the restore path.
 
-**Supabase rollback anchor (warren-4e36).**
-Supabase Postgres is the reference backend until warren-a3ed completes the cutover, and it is the
-rollback target for the whole cutover window (7 days).
-Three of its gotchas each cost a deploy session:
-
-- **The URL must carry `sslmode=require&uselibpqcompat=true`.** Without the compat flag, `pg-connection-string` reads `sslmode=require` as verify-full and rejects the pooler certificate chain with `SELF_SIGNED_CERT_IN_CHAIN`.
-- **Point at the session pooler host, not the direct host.** `db.<ref>.supabase.co` resolves over IPv6 only, and GKE Autopilot pods speak IPv4 by default. Use `aws-1-<region>.pooler.supabase.com:5432` with the tenant username form `postgres.<ref>`. The older `aws-0-` pooler generation answers "tenant not found".
-- **Single-quote the value in a shell.** The `&` in the query string forks the command otherwise.
+**Historical: Supabase (until September 3, 2026, warren-a3ed).** Supabase Postgres was the
+production database until the cutover of September 3, 2026 (warren-c01d) moved it to the
+in-cluster component above. Its pooler-host, sslmode, uselibpqcompat, and
+shell-quoting gotchas died with the migration. See the cutover checklist (§1.5). Supabase survives only as the seven
+day rollback anchor (warren-f7e6 decommissions it).
 
 **Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
 
