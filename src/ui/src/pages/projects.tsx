@@ -83,7 +83,7 @@ export function ProjectsPage() {
 						Projects
 					</h1>
 					<p className="text-[12px] leading-4 text-(--color-text-2)">
-						Repositories this instance can materialize into run workspaces.
+						Repositories warren can dispatch runs against.
 					</p>
 				</div>
 				<OperatorOnly capability="admin">
