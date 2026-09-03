@@ -264,7 +264,7 @@ function AgentEconomicsTable() {
 	const maxCostPerPr = rows.reduce((m, r) => Math.max(m, r.costPerMergedPrUsd ?? 0), 0);
 
 	return (
-		<TelemetryPanel title="Agent economics" meta="SUCCESS FROM RUN STATE · QUALITY FROM THE JUDGE">
+		<TelemetryPanel title="Agent economics" meta="COST AND OUTCOMES PER AGENT">
 			{runs.isError ? (
 				<p className="text-sm text-(--color-danger)">
 					Failed to load run analytics. {(runs.error as Error | null)?.message ?? ""}
@@ -311,11 +311,6 @@ function AgentEconomicsTable() {
 					</div>
 				</>
 			)}
-			<p className="text-[12px] leading-4 text-(--color-text-2)">
-				Avg duration is the mean run duration in the window. Cost per merged PR is undefined ("—")
-				for agents with no merged PRs — no merge, no denominator. Judge pass reads the extension's
-				verdict export; without the judge, that column stays quiet.
-			</p>
 		</TelemetryPanel>
 	);
 }
