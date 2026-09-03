@@ -18,10 +18,10 @@ import { EventTail } from "@/pages/run-detail/event-tail.tsx";
 import { PhaseRail, PhaseRailStrip } from "@/pages/run-detail/phase-rail.tsx";
 import { PreviewPanel } from "@/pages/run-detail/preview-panel.tsx";
 import {
-	BudgetPanel,
 	PromptPanel,
 	RunDefinitionPanel,
 	RuntimePanel,
+	SpendPanel,
 } from "@/pages/run-detail/side-panels.tsx";
 import { CancelRunButton, SteerForm } from "@/pages/run-detail/steering-panel.tsx";
 import { extractReapSummary, isBridgeStalled } from "@/pages/run-detail-format.ts";
@@ -32,7 +32,7 @@ import { formatDuration, projectLabel } from "@/pages/runs/runs-format.ts";
  * pl-7e38 step 4), translated from docs/ui-revamp/screens/run-detail.jsx:
  * breadcrumb + identity header, the five-cell lifecycle phase rail, the
  * structured event tail (main column), and the side column's Runtime /
- * Budget / Preview / Run definition / Prompt / Steering panels. Live
+ * Spend / Preview / Run definition / Prompt / Steering panels. Live
  * tailing rides the existing NDJSON stream reader (useEventStream);
  * operator affordances (cancel, re-run, steer, preview login/teardown)
  * ride OperatorOnly so the WARREN_AUTH=public spectator projection stays
@@ -372,7 +372,7 @@ export function RunDetailPage() {
 				);
 
 	return (
-		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6">
+		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6 xl:h-full">
 			<nav className="hidden shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:block">
 				RUNS / {r.id.toUpperCase()}
 			</nav>
@@ -400,7 +400,7 @@ export function RunDetailPage() {
 
 			{/*
 			 * Mobile section order (warren-3399): below md the stack reads
-			 * Runtime → Budget → Event stream → Steering, with Prompt / Run
+			 * Runtime → Spend → Event stream → Steering, with Prompt / Run
 			 * definition / Preview collapsed into details disclosures — the
 			 * 375px mock omits them entirely; collapsing keeps the data
 			 * reachable. Breakpoint decision: the two-column row still cuts
@@ -409,9 +409,13 @@ export function RunDetailPage() {
 			 * desktop-weight stacked layout. `max-xl:contents` promotes the
 			 * aside's children into this flex container below xl so the
 			 * order-* utilities can interleave panels with the event column.
+			 * At xl the row is height-bound (xl:h-full up top, this wrapper
+			 * xl:h-full + xl:overflow-hidden) so the Event Stream scrolls
+			 * internally instead of stretching the page (warren-57fb); the
+			 * stacked layout below xl keeps growing.
 			 */}
-			<div className="flex min-h-0 flex-1 flex-col gap-3 xl:flex-row">
-				<div className="flex min-w-0 flex-1 flex-col gap-3 order-3 md:order-none">
+			<div className="flex min-h-0 flex-1 flex-col gap-3 xl:h-full xl:min-h-0 xl:flex-row xl:overflow-hidden">
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 order-3 md:order-none">
 					<EventTail
 						events={stream.events}
 						status={stream.status}
@@ -424,7 +428,7 @@ export function RunDetailPage() {
 						<RuntimePanel run={r} />
 					</div>
 					<div className="order-2 md:order-none">
-						<BudgetPanel run={r} />
+						<SpendPanel run={r} />
 					</div>
 					<div className="hidden md:contents">
 						{r.previewState !== null ? <PreviewPanel run={r} /> : null}
