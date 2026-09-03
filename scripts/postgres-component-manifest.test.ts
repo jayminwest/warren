@@ -1,5 +1,6 @@
 // Renders deploy/k8s/components/postgres with `kubectl kustomize` and asserts
-// the four objects come out (warren-9f5a, plan pl-6076). The 10Gi claim is a
+// the eight objects come out: the four from warren-9f5a plus the backup layer
+// from warren-6db7 (SA, ConfigMap, CronJob, suspended Job). The 10Gi claim is a
 // volumeClaimTemplate inside the StatefulSet, not a fifth top-level object.
 //
 // The component is opt-in: nothing in base includes it, so the render wraps it
@@ -63,7 +64,7 @@ function renderComponent(): K8sDoc[] {
 
 describe("deploy/k8s/components/postgres", () => {
 	test(
-		"kubectl kustomize of an including overlay renders all four objects",
+		"kubectl kustomize of an including overlay renders all eight objects",
 		() => {
 			if (!hasKubectl()) {
 				console.warn("kubectl not found — skipping kustomize render check");
@@ -73,14 +74,73 @@ describe("deploy/k8s/components/postgres", () => {
 			const byName = (kind: string, name: string) =>
 				docs.some((d) => d.kind === kind && d.metadata?.name === name);
 
-			expect(docs).toHaveLength(4);
+			// Four database objects (warren-9f5a) + four backup objects (warren-6db7).
+			expect(docs).toHaveLength(8);
 			expect(byName("StatefulSet", "postgres")).toBeTrue();
 			expect(byName("Service", "postgres")).toBeTrue();
 			expect(byName("Secret", "postgres-credentials")).toBeTrue();
 			expect(byName("NetworkPolicy", "postgres-ingress-from-control-plane")).toBeTrue();
+			expect(byName("ServiceAccount", "postgres-backup")).toBeTrue();
+			expect(byName("ConfigMap", "postgres-backup-config")).toBeTrue();
+			expect(byName("CronJob", "postgres-backup")).toBeTrue();
+			expect(byName("Job", "postgres-restore")).toBeTrue();
 			for (const d of docs) {
 				expect(d.metadata?.namespace).toBe("warren");
 			}
+		},
+		{ timeout: 2 * KUBECTL_TIMEOUT_MS + 5_000 },
+	);
+
+	test(
+		"backup CronJob runs pg_dump nightly with Forbid concurrency and the restore Job is suspended",
+		() => {
+			if (!hasKubectl()) {
+				console.warn("kubectl not found — skipping kustomize render check");
+				return;
+			}
+			const docs = renderComponent() as Array<Record<string, unknown>>;
+			const cron = docs.find(
+				(d) => d.kind === "CronJob" && (d.metadata as { name?: string }).name === "postgres-backup",
+			) as {
+				spec?: {
+					schedule?: string;
+					concurrencyPolicy?: string;
+					successfulJobsHistoryLimit?: number;
+					failedJobsHistoryLimit?: number;
+					jobTemplate?: {
+						spec?: {
+							backoffLimit?: number;
+							template?: { spec?: { serviceAccountName?: string } };
+						};
+					};
+				};
+			};
+			expect(cron.spec?.schedule).toBe("0 3 * * *");
+			expect(cron.spec?.concurrencyPolicy).toBe("Forbid");
+			expect(cron.spec?.successfulJobsHistoryLimit).toBe(3);
+			expect(cron.spec?.failedJobsHistoryLimit).toBe(3);
+			expect(cron.spec?.jobTemplate?.spec?.backoffLimit).toBe(0);
+			expect(cron.spec?.jobTemplate?.spec?.template?.spec?.serviceAccountName).toBe(
+				"postgres-backup",
+			);
+
+			const restore = docs.find(
+				(d) => d.kind === "Job" && (d.metadata as { name?: string }).name === "postgres-restore",
+			) as { spec?: { suspend?: boolean } };
+			expect(restore.spec?.suspend).toBe(true);
+
+			const sa = docs.find(
+				(d) =>
+					d.kind === "ServiceAccount" &&
+					(d.metadata as { name?: string }).name === "postgres-backup",
+			) as {
+				metadata?: {
+					annotations?: Record<string, string>;
+				};
+			};
+			expect(sa.metadata?.annotations?.["iam.gke.io/gcp-service-account"]).toBe(
+				"postgres-backup@warren-502318.iam.gserviceaccount.com",
+			);
 		},
 		{ timeout: 2 * KUBECTL_TIMEOUT_MS + 5_000 },
 	);

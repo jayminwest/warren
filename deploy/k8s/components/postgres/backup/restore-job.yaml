@@ -1,0 +1,114 @@
+# Parameterised restore Job (warren-6db7) — SUSPENDED template, not a
+# standing workload. It restores a named dump from
+# $BACKUP_BUCKET_URL/$BACKUP_OBJECT_PREFIX/<dump-name> into the postgres
+# Service with pg_restore --clean --if-exists --no-owner.
+#
+# ⚠️ Run against an IDLE warren only: --clean drops every object in the
+# target database first, so a live control plane would lose in-flight rows.
+# Scale the warren Deployment to zero first (RUNBOOK-K8S §7.6 drain), then
+# restore, then scale back up.
+#
+# Same two-container split as the CronJob: google/cloud-sdk:slim fetches the
+# dump onto an emptyDir, postgres:17 runs pg_restore against postgres.warren.svc.
+#
+# Use (dump-name WITHOUT the .dump suffix):
+#
+#   kubectl -n warren scale job postgres-restore --replicas=0 2>/dev/null # noop
+#   kubectl -n warren set env job/postgres-restore RESTORE_DUMP=20260903
+#   kubectl -n warren apply -f deploy/k8s/components/postgres/backup/restore-job.yaml
+#   kubectl -n warren patch job postgres-restore --type merge \
+#     -p '{"spec":{"suspend":false}}'
+#   kubectl -n warren logs job/postgres-restore -c restore -f
+#
+# Or create a throwaway Job from this one without touching the template:
+#   kubectl -n warren create job --from=job/postgres-restore restore-<date>
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-restore
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: backup
+spec:
+  suspend: true # idle template — patch suspend=false to run (see header)
+  backoffLimit: 0 # fail loudly on the first error
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: backup
+    spec:
+      restartPolicy: Never
+      serviceAccountName: postgres-backup
+      initContainers:
+        - name: fetch
+          image: google/cloud-sdk:slim
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              test -n "$RESTORE_DUMP" || { echo "set RESTORE_DUMP=<date> first"; exit 1; }
+              gcloud storage cp \
+                "$BACKUP_BUCKET_URL/$BACKUP_OBJECT_PREFIX/$RESTORE_DUMP.dump" \
+                /dump/restore.dump
+              ls -lh /dump/restore.dump
+          env:
+            - name: RESTORE_DUMP
+              value: "" # REQUIRED — kubectl set env job/postgres-restore RESTORE_DUMP=<date>
+            - name: BACKUP_BUCKET_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-backup-config
+                  key: backup-bucket-url
+            - name: BACKUP_OBJECT_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-backup-config
+                  key: backup-object-prefix
+          volumeMounts:
+            - name: restore
+              mountPath: /dump
+      containers:
+        - name: restore
+          image: postgres:17
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              pg_restore --clean --if-exists --no-owner \
+                -h postgres.warren.svc -p 5432 \
+                -U "$PGUSER" -d "$PGDATABASE" \
+                /dump/restore.dump
+          env:
+            - name: PGHOST
+              value: postgres.warren.svc
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-db
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-user
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-password
+          volumeMounts:
+            - name: restore
+              mountPath: /dump
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: restore
+          emptyDir:
+            sizeLimit: 12Gi

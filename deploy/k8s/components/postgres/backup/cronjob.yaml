@@ -1,0 +1,113 @@
+# Nightly logical backup CronJob (warren-6db7): pg_dump -Fc of the public and
+# drizzle schemas to gs://warren-pg-backups-502318/warren/<date>.dump.
+#
+# Image approach: pg_dump 17 and the gcloud storage CLI do not ship in one
+# image, so the pod is two containers sharing an emptyDir. The init container
+# (postgres:17) runs pg_dump into the emptyDir; the main container
+# (google/cloud-sdk:slim, which has gcloud storage but no postgres client)
+# uploads the finished file. Splitting them means the DB only needs the
+# same-major pg_dump for a consistent dump, and the upload container never
+# needs a postgres client — vs. one image that would have to be built and
+# pinned by us, or gsutil piped into pg_dump through a shell, which couples
+# dump and upload failures into one opaque exit code.
+#
+# Failure posture: both steps are plain execs, so a non-zero exit anywhere
+# fails the container and the Job shows Failed — kubectl get cronjob /
+# `kubectl logs` names the offender. No retries mask a broken dump.
+#
+# The dump targets schemas public + drizzle only (the warren-owned data),
+# --no-owner --no-privileges so pg_restore into any database does not try to
+# recreate roles.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 3 * * *" # nightly 03:00 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # fail loudly; tomorrow's run is the retry
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgres
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          serviceAccountName: postgres-backup
+          initContainers:
+            - name: dump
+              image: postgres:17
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  OUT=/backup/warren-$(date +%Y%m%d).dump
+                  pg_dump -Fc -n public -n drizzle --no-owner --no-privileges \
+                    -f "$OUT"
+                  ls -lh "$OUT"
+              env:
+                - name: PGHOST
+                  value: postgres.warren.svc
+                - name: PGPORT
+                  value: "5432"
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: postgres-db
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: postgres-user
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: postgres-password
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: google/cloud-sdk:slim
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  gcloud storage cp "/backup/warren-$(date +%Y%m%d).dump" \
+                    "$BACKUP_BUCKET_URL/$BACKUP_OBJECT_PREFIX/$(date +%Y%m%d).dump"
+                  echo "uploaded: $BACKUP_BUCKET_URL/$BACKUP_OBJECT_PREFIX/$(date +%Y%m%d).dump"
+              env:
+                - name: BACKUP_BUCKET_URL
+                  valueFrom:
+                    configMapKeyRef:
+                      name: postgres-backup-config
+                      key: backup-bucket-url
+                - name: BACKUP_OBJECT_PREFIX
+                  valueFrom:
+                    configMapKeyRef:
+                      name: postgres-backup-config
+                      key: backup-object-prefix
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+          volumes:
+            - name: backup
+              emptyDir:
+                sizeLimit: 12Gi # dumps compress well under the 10Gi DB

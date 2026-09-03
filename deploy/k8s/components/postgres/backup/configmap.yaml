@@ -1,0 +1,18 @@
+# Backup tuning knobs (warren-6db7). The bucket lives behind a ConfigMap key
+# so another operator can point the same manifests at their own bucket without
+# editing the CronJob. The live values match the operator-provisioned
+# substrate (warren-32bd): bucket warren-pg-backups-502318, objects under the
+# warren/ prefix.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-backup-config
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: backup
+data:
+  # Destination bucket URL — objects land under warren/<date>.dump.
+  backup-bucket-url: "gs://warren-pg-backups-502318"
+  # Object prefix inside the bucket (no leading/trailing slash).
+  backup-object-prefix: "warren"

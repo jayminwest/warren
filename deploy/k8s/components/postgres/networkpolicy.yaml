@@ -34,6 +34,16 @@ spec:
             matchLabels:
               app.kubernetes.io/name: warren
               app.kubernetes.io/component: control-plane
+        # The backup CronJob and the restore Job (backup/, warren-6db7) run
+        # pg_dump / pg_restore against the Service from inside this namespace
+        # and carry the postgres/backup label pair.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: warren
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/component: backup
       ports:
         - protocol: TCP
           port: 5432
