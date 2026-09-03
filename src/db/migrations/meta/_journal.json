@@ -386,6 +386,13 @@
 			"when": 1787855601342,
 			"tag": "0054_young_gunslinger",
 			"breakpoints": true
+		},
+		{
+			"idx": 55,
+			"version": "6",
+			"when": 1788467234824,
+			"tag": "0055_handy_la_nuit",
+			"breakpoints": true
 		}
 	]
 }
