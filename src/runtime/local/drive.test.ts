@@ -143,14 +143,16 @@ function driveWith(
 		profile?: SandboxProfile;
 		spawn?: (profile: SandboxProfile, command: SpawnCommand) => Promise<SpawnResult>;
 		startProxy?: (opts: StartProxyOptions) => Promise<ProxyHandle>;
+		onWorkspaceReady?: (runId: string, at: Date) => void;
 	} = {},
 ): Promise<void> {
-	const { profile = PROFILE, spawn, startProxy, midRunInboxPollMs } = extra;
+	const { profile = PROFILE, spawn, startProxy, midRunInboxPollMs, onWorkspaceReady } = extra;
 	return driveLocalRun(store, record, spec, profile, {
 		spawn: spawn ?? (() => Promise.resolve(fake.proc)),
 		registry: { get: (id) => (id === adapter.runtimeId ? adapter : undefined) },
 		...(startProxy !== undefined ? { startProxy } : {}),
 		...(midRunInboxPollMs !== undefined ? { midRunInboxPollMs } : {}),
+		...(onWorkspaceReady !== undefined ? { onWorkspaceReady } : {}),
 	});
 }
 
@@ -174,6 +176,19 @@ function makeFakeProxy(
 }
 
 describe("driveLocalRun", () => {
+	test("fires the workspace-ready signal once after prepareSpawn (warren-7116)", async () => {
+		const store = new LocalRunStore();
+		const record = makeRecord(store);
+		const fake = makeFakeProc({ stdoutLines: [], exitCode: 0 });
+		const signals: Array<{ runId: string; at: Date }> = [];
+		await driveWith(store, record, makeSpec(), fake, makeAdapter(), {
+			onWorkspaceReady: (runId, at) => void signals.push({ runId, at }),
+		});
+		expect(signals).toHaveLength(1);
+		expect(signals[0]?.runId).toBe("run_drive1");
+		expect(signals[0]?.at).toBeInstanceOf(Date);
+	});
+
 	test("persists parsed stdout events and terminalizes succeeded on exit 0", async () => {
 		const store = new LocalRunStore();
 		const record = makeRecord(store);
