@@ -10,6 +10,8 @@ import {
 import type { RunRow } from "@/api/types.ts";
 import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { ECONOMICS_FILL_RAMP } from "@/pages/telemetry/economics-helpers.ts";
+import { SpendRow, TelemetryEconomicsSidePanels } from "@/pages/telemetry/economics-panels.tsx";
 import { formatDuration } from "@/pages/telemetry/format.ts";
 import { type JudgeStoreRow, useJudgeVerdicts } from "@/pages/telemetry/judge-verdicts.ts";
 import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
@@ -28,30 +30,6 @@ import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
 /** Project rows the spend list renders before folding the tail. */
 const PROJECT_ROWS = 5;
-
-function SpendRow({ name, costUsd, href }: { name: string; costUsd: string; href?: string }) {
-	const label =
-		href === undefined ? (
-			<span className="min-w-0 truncate font-mono text-[11px] leading-[14px] text-(--color-text-2)">
-				{name}
-			</span>
-		) : (
-			<Link
-				to={href}
-				className="min-w-0 truncate font-mono text-[11px] leading-[14px] text-(--color-text-2) underline-offset-2 hover:underline"
-			>
-				{name}
-			</Link>
-		);
-	return (
-		<div className="flex w-full items-center justify-between gap-3">
-			{label}
-			<span className="shrink-0 font-mono text-[11px] leading-[14px] text-(--color-text)">
-				{costUsd}
-			</span>
-		</div>
-	);
-}
 
 function projectLabel(bucket: CostBucket, urls: Map<string, string>): string {
 	if (bucket.key === COST_ANALYTICS_NONE_KEY) return "(unattributed)";
@@ -194,9 +172,6 @@ function EconomicsAgentRow({
 	);
 }
 
-/** Mock mobile/telemetry.jsx :272-315 fill ramp for the spend rows. */
-const ECONOMICS_FILL_RAMP = ["opacity-80", "opacity-60", "opacity-50", "opacity-45"] as const;
-
 /**
  * Below-md arm (warren-756e): one meter row per agent — 80px label,
  * track filled by cost-per-merged-PR share (bar width relative to the
@@ -321,6 +296,8 @@ export function TelemetryEconomicsTab() {
 		<div className="flex flex-col gap-4">
 			<SpendPanel from={from} to={to} />
 			<AgentEconomicsTable />
+			{/* warren-cc6c: the slices /analytics/cost + /analytics/runs already serve. */}
+			<TelemetryEconomicsSidePanels />
 		</div>
 	);
 }
