@@ -35,9 +35,10 @@ export interface ConsoleStats {
 	readonly projectsCount: number | null;
 	readonly agentsCount: number | null;
 	/**
-	 * Ops-overview spend rate, USD per hour (`spend.last24hUsd / 24`).
-	 * Null while loading, for spectators (spend is operator-only), or
-	 * when `services.dbReachable` is false — the shell shows "—".
+	 * Ops-overview spend rate, USD per hour (`spend.windowUsd /
+	 * windowHours` over the default 24h window). Null while loading, for
+	 * spectators (the USD sums are operator-only), or when
+	 * `services.dbReachable` is false — the shell shows "—".
 	 */
 	readonly burnUsdPerHour: number | null;
 	/** Boot-resolved runtime kind off `GET /instance`; null while loading. */
@@ -97,9 +98,11 @@ export function useConsoleStats(): ConsoleStats {
 	});
 	// Shared ["ops-overview"] key: deduped with the Operations page's
 	// identical poll, so the topbar BURN figure adds no extra request.
+	// The explicit "24h" window keeps the key prefix-compatible with the
+	// Operations page's windowed queries (warren-7194).
 	const opsOverview = useQuery({
-		queryKey: ["ops-overview"],
-		queryFn: ({ signal }) => opsApi.overview(signal),
+		queryKey: ["ops-overview", "24h"],
+		queryFn: ({ signal }) => opsApi.overview("24h", signal),
 		refetchInterval: 30_000,
 	});
 	// Shared ["instance", "facts"] key: deduped with use-dispatch-state.ts.

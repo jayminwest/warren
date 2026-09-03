@@ -82,25 +82,6 @@ export function activeWorkloads(
  */
 export const LIFECYCLE_ORDER: readonly RunState[] = RUN_STATES;
 
-/** Priority classes the steering inbox defines, most severe first. */
-const PRIORITY_ORDER = ["urgent", "high", "normal", "low"] as const;
-
-/** Known-first priority entries for the interventions panel, unknowns appended. */
-export function priorityEntries(
-	pendingByPriority: Readonly<Record<string, number>>,
-): { priority: string; count: number }[] {
-	const entries: { priority: string; count: number }[] = [];
-	for (const priority of PRIORITY_ORDER) {
-		const count = pendingByPriority[priority];
-		if (count !== undefined && count > 0) entries.push({ priority, count });
-	}
-	for (const [priority, count] of Object.entries(pendingByPriority)) {
-		if (PRIORITY_ORDER.includes(priority as (typeof PRIORITY_ORDER)[number])) continue;
-		if (count > 0) entries.push({ priority, count });
-	}
-	return entries;
-}
-
 /** `https://host/owner/name.git` / `git@host:owner/name.git` → `owner/name`. */
 export function shortRepo(gitUrl: string): string {
 	const withoutGit = gitUrl.endsWith(".git") ? gitUrl.slice(0, -4) : gitUrl;
