@@ -12,6 +12,20 @@
 			"nonTerminal": 3,
 			"total": 9
 		},
+		"window": "24h",
+		"spend": {
+			"windowRuns": 4
+		},
+		"delivery": {
+			"branchesPushed": 4,
+			"prsOpened": 3,
+			"prsMerged": 2
+		},
+		"services": {
+			"runtime": "local",
+			"dbReachable": true,
+			"lifecycleStream": true
+		},
 		"generatedAt": "2026-08-27T00:00:00.000Z"
 	}
 }

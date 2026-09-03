@@ -38,10 +38,10 @@ async function depsFor(repos: Repos, db: WarrenDb): Promise<ServerDeps> {
 	};
 }
 
-function ctxFor(actor?: RouteContext["actor"]): RouteContext {
+function ctxFor(actor?: RouteContext["actor"], query = ""): RouteContext {
 	return {
-		request: new Request("http://localhost/ops/overview"),
-		url: new URL("http://localhost/ops/overview"),
+		request: new Request(`http://localhost/ops/overview${query}`),
+		url: new URL(`http://localhost/ops/overview${query}`),
 		params: {},
 		logger: silentLogger,
 		requestId: "test-request-id",
@@ -60,14 +60,14 @@ async function seedSnapshotFixture(repos: Repos): Promise<void> {
 		defaultBranch: "main",
 	});
 	// Two queued runs, one running, one succeeded-with-delivery, one failed.
-	const queuedA = await repos.runs.create({
+	await repos.runs.create({
 		agentName: "pi",
 		projectId: project.id,
 		prompt: "a",
 		renderedAgentJson: {},
 		trigger: "manual",
 	});
-	const queuedB = await repos.runs.create({
+	await repos.runs.create({
 		agentName: "pi",
 		projectId: project.id,
 		prompt: "b",
@@ -115,10 +115,6 @@ async function seedSnapshotFixture(repos: Repos): Promise<void> {
 	await repos.runs.finalize(succeeded.id, "succeeded");
 	await repos.runs.markRunning(failed.id);
 	await repos.runs.finalize(failed.id, "failed", new Date(), "crashed");
-
-	// Interventions: two unread steering messages, different priorities.
-	await repos.runInbox.enqueue({ runId: queuedA.id, body: "nudge", priority: "normal" });
-	await repos.runInbox.enqueue({ runId: queuedB.id, body: "urgent nudge", priority: "high" });
 }
 
 describe("GET /ops/overview handler", () => {
@@ -141,17 +137,14 @@ describe("GET /ops/overview handler", () => {
 		const res = await opsOverviewHandler(deps)(ctxFor(OPERATOR_ACTOR));
 		expect(res.status).toBe(200);
 		const body = await bodyOf(res);
+		expect(body.window).toBe("24h");
 		expect(body.runs).toMatchObject({
 			byState: { queued: 2, running: 1, succeeded: 1, failed: 1, cancelled: 0 },
 			nonTerminal: 3,
 			total: 5,
 		});
-		expect(body.spend).toEqual({ totalUsd: 4, last24hUsd: 4, last24hRuns: 5 });
+		expect(body.spend).toEqual({ totalUsd: 4, windowUsd: 4, windowRuns: 5 });
 		expect(body.delivery).toEqual({ branchesPushed: 1, prsOpened: 1, prsMerged: 1 });
-		expect(body.interventions).toEqual({
-			pendingByPriority: { normal: 1, high: 1 },
-			pendingTotal: 2,
-		});
 		expect(body.services).toMatchObject({
 			dbReachable: true,
 			runtime: "local",
@@ -165,8 +158,16 @@ describe("GET /ops/overview handler", () => {
 		const res = await opsOverviewHandler(deps)(ctxFor(ANONYMOUS_ACTOR));
 		expect(res.status).toBe(200);
 		const body = await bodyOf(res);
-		// Allowlist: exactly the run counts + the timestamp, nothing else.
-		expect(Object.keys(body).sort()).toEqual(["generatedAt", "runs"]);
+		// Allowlist: run counts, the windowed run count, delivery, the
+		// cheap service facts, and the timestamp — nothing else.
+		expect(Object.keys(body).sort()).toEqual([
+			"delivery",
+			"generatedAt",
+			"runs",
+			"services",
+			"spend",
+			"window",
+		]);
 		expect((body.runs as Record<string, unknown>).byState).toEqual({
 			queued: 2,
 			running: 1,
@@ -174,10 +175,35 @@ describe("GET /ops/overview handler", () => {
 			failed: 1,
 			cancelled: 0,
 		});
-		// The operator-only sections never ride the public body.
-		for (const key of ["spend", "delivery", "interventions", "services"]) {
-			expect(body).not.toHaveProperty(key);
-		}
+		// spend shrinks to the windowed run count alone; the USD sums
+		// (which /analytics/cost gates as readOperator) never ride the
+		// public body.
+		expect(body.spend).toEqual({ windowRuns: 5 });
+		expect(body.delivery).toEqual({ branchesPushed: 1, prsOpened: 1, prsMerged: 1 });
+		expect(body.services).toEqual({
+			dbReachable: true,
+			runtime: "local",
+			lifecycleStream: false,
+		});
+	});
+
+	test("?window selects the trailing window for spend AND delivery", async () => {
+		await seedSnapshotFixture(repos);
+		// Everything in the fixture is minutes old, so 30d covers it too.
+		const res = await opsOverviewHandler(deps)(ctxFor(OPERATOR_ACTOR, "?window=30d"));
+		expect(res.status).toBe(200);
+		const body = await bodyOf(res);
+		expect(body.window).toBe("30d");
+		expect(body.spend).toEqual({ totalUsd: 4, windowUsd: 4, windowRuns: 5 });
+		expect(body.delivery).toEqual({ branchesPushed: 1, prsOpened: 1, prsMerged: 1 });
+	});
+
+	test("rejects an unknown ?window token with a ValidationError", () => {
+		// The router maps the thrown ValidationError to the 400 envelope;
+		// the handler itself throws (same shape as the /events parser).
+		expect(() => opsOverviewHandler(deps)(ctxFor(OPERATOR_ACTOR, "?window=90d"))).toThrow(
+			"?window must be one of 24h, 7d, 30d; got '90d'",
+		);
 	});
 
 	test("degrades to dbReachable: false with zeroed counts when no db is wired", async () => {
@@ -191,7 +217,7 @@ describe("GET /ops/overview handler", () => {
 			lifecycleStream: false,
 		});
 		expect(body.runs).toMatchObject({ total: 0, nonTerminal: 0 });
-		expect(body.spend).toEqual({ totalUsd: 0, last24hUsd: 0, last24hRuns: 0 });
+		expect(body.spend).toEqual({ totalUsd: 0, windowUsd: 0, windowRuns: 0 });
 	});
 
 	test("declares the route readPublic in ROUTE_TABLE", () => {
@@ -233,13 +259,17 @@ describe("GET /ops/overview over the wire (WARREN_AUTH=public)", () => {
 		const url = `http://${transport.hostname}:${transport.port}/ops/overview`;
 
 		const anon = await bodyOf(await fetch(url));
-		expect(Object.keys(anon).sort()).toEqual(["generatedAt", "runs"]);
+		expect((anon.spend as Record<string, unknown>).windowRuns).toBe(5);
+		expect(anon.spend).not.toHaveProperty("totalUsd");
+		expect(anon).toHaveProperty("delivery");
+		expect(anon).toHaveProperty("services");
 
 		const authed = await bodyOf(
 			await fetch(url, { headers: { authorization: `Bearer ${TOKEN}` } }),
 		);
-		for (const key of ["spend", "delivery", "interventions", "services"]) {
+		for (const key of ["spend", "delivery", "services"]) {
 			expect(authed).toHaveProperty(key);
 		}
+		expect((authed.spend as Record<string, unknown>).totalUsd).toBe(4);
 	});
 });

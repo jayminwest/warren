@@ -14,7 +14,7 @@
 	"$comment_runtime_cell_2026_09_03": "BOUNDED AUTO-RAISE, RAW JS ONLY (warren-a0f4 / pl-9fa9 step 6): the runs-table Runtime cell gains the backend-kind line plus the CopyHandle button (click-to-copy, ~10-char truncation). Net +310 B raw js, measured via check-bundle-size (raw is toolchain-independent). Issued inside a warren run, where --update refuses to write ANY budget because gzip measures ~1.3-1.5KB cooler; per the warren-4e7a/warren-25b7 precedent only totals.raw.js takes the script's re-baselined figure (measured + HEADROOM_RAW) and the four gzip budgets keep their existing floors — they were never exceeded. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 683140,
+			"js": 684217,
 			"css": 54553
 		},
 		"gzip": {
