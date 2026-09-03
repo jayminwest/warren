@@ -1,0 +1,13 @@
+# Backup layer for the in-cluster Postgres (warren-6db7, plan pl-6076).
+#
+# Pulled in by the parent component's kustomization.yaml, so a single include
+# of deploy/k8s/components/postgres renders the database AND its backup layer.
+# Nothing here creates GCP resources — warren-32bd provisions the bucket and
+# binds the Workload Identity federation; these manifests only reference it.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - serviceaccount.yaml
+  - configmap.yaml
+  - cronjob.yaml
+  - restore-job.yaml

@@ -19,3 +19,11 @@ resources:
   - service.yaml
   - secret.yaml
   - networkpolicy.yaml
+  # Backup layer (warren-6db7): SA for Workload Identity, bucket-name ConfigMap,
+  # nightly pg_dump CronJob, suspended restore Job. Its own kustomization under
+  # backup/ is a Component too, but listing the files here directly renders it
+  # with a single include of this component.
+  - backup/serviceaccount.yaml
+  - backup/configmap.yaml
+  - backup/cronjob.yaml
+  - backup/restore-job.yaml

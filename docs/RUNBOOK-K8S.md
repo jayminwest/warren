@@ -142,11 +142,72 @@ at `postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode
 flags, because traffic never leaves the cluster network and the Supabase
 `sslmode=require&uselibpqcompat=true` trap does not apply.
 
-This path is not production-ready until the backup CronJob layer lands
-(`deploy/k8s/components/postgres/backup/`, warren-6db7). The Supabase text
-below stays the reference backend until warren-a3ed completes the cutover.
+The backup layer ships as part of the same Component (warren-6db7). See
+“Backups” below.
 
-**Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
+**Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`.
+
+#### Backups (warren-6db7)
+
+An in-cluster database is only acceptable with independent restore paths.
+Three layers exist, deliberately independent of each other:
+
+| Layer | Mechanism | Retention |
+| --- | --- | --- |
+| Logical dumps | Nightly `pg_dump -Fc -n public -n drizzle --no-owner --no-privileges` CronJob (`postgres-backup`, 03:00 UTC) uploads to `gs://warren-pg-backups-502318/warren/<date>.dump` via Workload Identity (SA `postgres-backup` → GSA `postgres-backup@warren-502318.iam.gserviceaccount.com`) | 30 days (bucket lifecycle rule) |
+| Disk snapshots | GCP snapshot schedule `warren-pg-daily` attached to the PVC's PersistentDisk | 14 daily snapshots |
+| Volume itself | PVC `reclaimPolicy: Retain` — a deleted StatefulSet never deletes the disk | until an operator deletes it |
+
+The dump CronJob runs as two containers sharing an emptyDir:
+
+- `postgres:17` runs `pg_dump` (needs the same-major client. image major 17 matches the server).
+- `google/cloud-sdk:slim` uploads the file with `gcloud storage cp` (has the storage CLI but no postgres client).
+
+`concurrencyPolicy` is `Forbid`, the Job keeps 3 histories, and `backoffLimit` is 0. A failed backup shows `Failed` and never masks a broken dump. The bucket name is a ConfigMap key (`postgres-backup-config/backup-bucket-url`) so another operator can substitute their own bucket without editing the CronJob. The manifest directory is `deploy/k8s/components/postgres/backup/`.
+
+Verify a nightly dump ran:
+
+```bash
+gcloud storage ls "gs://warren-pg-backups-502318/warren/" | tail -5
+kubectl -n warren get cronjob postgres-backup -o wide
+```
+
+**Restore from a GCS dump (cold start).** Run this against an idle warren only. `--clean` drops all objects in the target database first, so drain the control plane (§7.6) before you restore.
+
+```bash
+# 1. Scale warren down so nothing writes to the DB.
+kubectl -n warren scale deploy/warren --replicas=0
+
+# 2. Set the dump to restore (name without the .dump suffix), then unsuspend.
+kubectl -n warren set env job/postgres-restore RESTORE_DUMP=20260903
+kubectl -n warren patch job postgres-restore --type merge -p '{"spec":{"suspend":false}}'
+kubectl -n warren logs job/postgres-restore -c restore -f
+
+# 3. Smoke-check, then bring warren back.
+kubectl -n warren run psql-check --rm -it --restart=Never \
+  --image=postgres:17 --env "PGPASSWORD=$(kubectl -n warren get secret postgres-credentials -o jsonpath='{.data.postgres-password}' | base64 -d)" \
+  -- psql -h postgres.warren.svc -U warren -d warren -c "select count(*) from runs;"
+kubectl -n warren scale deploy/warren --replicas=1
+```
+
+If kubectl already consumed the Job template (kubectl Jobs are immutable once
+unsuspended), create a throwaway copy:
+`kubectl -n warren create job --from=job/postgres-restore restore-<date>`.
+
+**Restore from a PD snapshot (cold start).** The snapshot is the disk, so it
+restores the whole volume, not just warren-owned schemas. Use it when you lost
+the disk, not for point-in-time schema repair:
+
+```bash
+gcloud compute snapshots list --filter="name~warren-pg-daily"
+gcloud compute disks create warren-pg-restored-<date> \
+  --source-snapshot=<SNAPSHOT_NAME> --zone=<ZONE> --type=pd-balanced
+# stop postgres, swap the disk onto the postgres PVC (delete the PVC first;
+# reclaimPolicy Retain keeps the old disk as the rollback), then restart.
+```
+
+The old disk survives deletion thanks to `reclaimPolicy: Retain`. Keep it
+until you verify the restored volume. This snapshot is the restore point for anything that predates the cutover.
 
 ### 1.6 Automated CI/CD (GitHub Actions)
 
