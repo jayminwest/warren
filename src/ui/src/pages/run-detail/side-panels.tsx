@@ -8,7 +8,7 @@ import { formatDuration, shortSha } from "@/pages/runs/runs-format.ts";
 /**
  * The Direction C run-detail side column's fact cards (warren-8c85 /
  * pl-7e38 step 4), translated from docs/ui-revamp/screens/run-detail.jsx:
- * Runtime, Budget, and Run definition panels as label/value grids, plus
+ * Runtime, Spend, and Run definition panels as label/value grids, plus
  * the Prompt card with a Copy action. All values bind the real run row
  * — absent facts render "—", never a fabricated figure.
  */
@@ -65,6 +65,8 @@ function totalTokens(run: RunRow): number | null {
 
 export function RuntimePanel({ run }: { run: RunRow }) {
 	const handle = run.sandboxRunId ?? run.sandboxId ?? null;
+	const workspaceBranch = run.branch ?? run.targetBranch ?? run.ref;
+	const showTarget = run.targetBranch !== null && run.targetBranch !== workspaceBranch;
 	return (
 		<PanelShell
 			title="Runtime"
@@ -85,22 +87,19 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 			<MetaRow label="base commit">
 				{shortSha(run.baseCommit) !== "" ? shortSha(run.baseCommit) : DASH}
 			</MetaRow>
-			<MetaRow label="branch">{run.targetBranch ?? run.ref ?? DASH}</MetaRow>
+			<MetaRow label="branch">{workspaceBranch ?? DASH}</MetaRow>
+			{showTarget ? <MetaRow label="target">{run.targetBranch}</MetaRow> : null}
 		</PanelShell>
 	);
 }
 
-export function BudgetPanel({ run }: { run: RunRow }) {
+export function SpendPanel({ run }: { run: RunRow }) {
 	// The run row carries no dispatch-time cap, so the export's "OF $5.00"
 	// denominator would be a fabricated number — only the measured figures
-	// render (warren-8c85, no fabricated numbers).
+	// render (warren-8c85, no fabricated numbers). No MEASURED chip: the
+	// CostBasisNote beside the figure already qualifies its basis.
 	return (
-		<PanelShell
-			title="Budget"
-			trailing={
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">MEASURED</span>
-			}
-		>
+		<PanelShell title="Spend">
 			<div className="flex items-baseline justify-between gap-2">
 				<span className="font-mono text-[16px] leading-5 font-semibold tracking-[-0.04em] text-(--color-text) md:text-[22px] md:leading-7 md:font-medium">
 					{run.costUsd !== null

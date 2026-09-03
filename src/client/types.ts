@@ -160,6 +160,10 @@ export interface RunRow {
 	 * the run authenticated via CLAUDE_CODE_OAUTH_TOKEN — an API-priced
 	 * estimate, not a bill. `api` otherwise (and for legacy rows). */
 	costBasis: RunCostBasis;
+	/** Runtime backend kind frozen at dispatch (warren-a0f4):
+	 * `local` | `docker` | `k8s`. Operator-only runs-list overlay; absent
+	 * for spectators and detail GETs, null when no dispatch-context row. */
+	runtimeBackend?: string | null;
 	tokensInput: number | null;
 	tokensOutput: number | null;
 	tokensCacheRead: number | null;
