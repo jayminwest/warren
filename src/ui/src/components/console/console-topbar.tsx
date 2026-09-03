@@ -1,12 +1,17 @@
+import {
+	burnValue,
+	healthLabel,
+	runtimeValue,
+} from "@/components/console/console-topbar.helpers.ts";
 import type { ConsoleStats } from "@/components/console/use-console-stats.ts";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { cn } from "@/lib/utils.ts";
 
 /**
- * The 42px Direction C status strip (warren-4ed7): control-plane health,
- * RUNNING, QUEUE, BURN, RUNTIME, identity. Mono 10px figures; labels in
- * text-3, values in text-2. Figures whose API lands later render a quiet
- * "—" placeholder — never a fabricated number.
+ * The 42px Direction C status strip (warren-4ed7): health, RUNNING, QUEUE,
+ * BURN, RUNTIME, identity. Mono 10px figures; labels in text-3, values in
+ * text-2. Figures whose data is unavailable render a quiet "—" placeholder —
+ * never a fabricated number.
  */
 
 function Stat({
@@ -46,12 +51,7 @@ function Stat({
 }
 
 function HealthStat({ health }: { health: ConsoleStats["health"] }) {
-	const label =
-		health === "ok"
-			? "CONTROL PLANE HEALTHY"
-			: health === "down"
-				? "CONTROL PLANE ERROR"
-				: "CONTROL PLANE —";
+	const label = healthLabel(health);
 	return (
 		<span className="flex items-center gap-[7px]" title="GET /healthz liveness">
 			<span
@@ -69,11 +69,7 @@ function HealthStat({ health }: { health: ConsoleStats["health"] }) {
 					health === "ok" ? "text-(--color-text-2)" : "text-(--color-text-3)",
 				)}
 			>
-				{/* Compact artboard spelling below sm (warren-dea8). */}
-				<span className="sm:hidden">
-					{health === "ok" ? "HEALTHY" : health === "down" ? "ERROR" : "—"}
-				</span>
-				<span className="hidden sm:inline">{label}</span>
+				{label}
 			</span>
 		</span>
 	);
@@ -91,24 +87,28 @@ function IdentityStat() {
 	);
 }
 
-/** BURN placeholder: the ops overview API (warren-d850) lands the figure. */
-function BurnStat() {
+/** BURN: ops-overview spend rate (warren-d6ea); "—" while loading or spectator. */
+function BurnStat({ burnUsdPerHour }: { burnUsdPerHour: ConsoleStats["burnUsdPerHour"] }) {
 	return (
 		<Stat
 			label="BURN"
-			value="— / H"
-			title="Spend rate lands with the ops overview API (warren-d850)"
+			value={burnValue(burnUsdPerHour)}
+			title={
+				burnUsdPerHour === null
+					? "Spend rate unavailable (loading or spectator view)"
+					: "Spend rate over the last 24 hours"
+			}
 		/>
 	);
 }
 
-/** RUNTIME placeholder: no surface names the boot-resolved provider yet. */
-function RuntimeStat() {
+/** RUNTIME: boot-resolved provider off `GET /instance` (warren-d6ea). */
+function RuntimeStat({ runtime }: { runtime: ConsoleStats["runtime"] }) {
 	return (
 		<Stat
 			label="RUNTIME"
-			value="—"
-			title="Runtime kind lands with the ops overview API (warren-d850)"
+			value={runtimeValue(runtime) ?? "—"}
+			title="Boot-resolved runtime provider"
 			hideOnNarrow
 		/>
 	);
@@ -128,9 +128,9 @@ export function ConsoleTopbar({ stats }: { stats: ConsoleStats }) {
 				shortLabel="QUE"
 				value={stats.queuedCount === null ? "—" : String(stats.queuedCount)}
 			/>
-			<BurnStat />
+			<BurnStat burnUsdPerHour={stats.burnUsdPerHour} />
 			<span className="flex-1" />
-			<RuntimeStat />
+			<RuntimeStat runtime={stats.runtime} />
 			<IdentityStat />
 		</header>
 	);
@@ -155,7 +155,7 @@ export function ConsoleMobileStatusStrip({ stats }: { stats: ConsoleStats }) {
 				shortLabel="QUE"
 				value={stats.queuedCount === null ? "—" : String(stats.queuedCount)}
 			/>
-			<BurnStat />
+			<BurnStat burnUsdPerHour={stats.burnUsdPerHour} />
 		</header>
 	);
 }
