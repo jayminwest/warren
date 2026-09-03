@@ -2,6 +2,7 @@ import type { RunEvent, RunRow } from "@/api/types.ts";
 import { isTerminalRunState } from "@/api/types.ts";
 import { formatWallClock } from "@/pages/run-detail-format.ts";
 import { formatElapsedMs } from "@/pages/runs/runs-format.ts";
+import { deriveStageDurations, lastEventTsOf, lastStateChangeTypeTs } from "./run-detail-format.ts";
 
 /**
  * The Direction C lifecycle phase rail's derivation logic
@@ -19,39 +20,8 @@ export interface PhaseCellData {
 	label: string;
 	state: PhaseState;
 	sub: string;
-}
-
-/** Latest event ts for a kind, else null. */
-function lastEventTs(events: RunEvent[], kinds: ReadonlySet<string>): string | null {
-	let ts: string | null = null;
-	for (const e of events) {
-		if (kinds.has(e.kind)) ts = e.ts;
-	}
-	return ts;
-}
-
-/**
- * Latest ts of a state_change event whose pi envelope type matches
- * (warren-57fb): the pi adapter collapses the harness's `agent_start`
- * lifecycle envelope to `state_change` on `system` with the raw type
- * preserved in `payload.type`, so `agent_start` as a kind never appears
- * on the wire.
- */
-function lastStateChangeOfType(events: RunEvent[], type: string): string | null {
-	let ts: string | null = null;
-	for (const e of events) {
-		if (e.kind !== "state_change") continue;
-		const payload = e.payload;
-		if (
-			payload !== null &&
-			typeof payload === "object" &&
-			!Array.isArray(payload) &&
-			(payload as Record<string, unknown>).type === type
-		) {
-			ts = e.ts;
-		}
-	}
-	return ts;
+	/** Duration of this cell's stage (warren-935a); null = unobserved, render `sub`. */
+	durationMs: number | null;
 }
 
 function wallClockOf(iso: string | null): string {
@@ -88,53 +58,83 @@ export function cellClass(state: PhaseState): string {
 		: "border-b border-transparent";
 }
 
-function admittedPhase(run: RunRow, events: RunEvent[]): PhaseCellData {
-	if (run.state === "queued") return { label: "Admitted", state: "pending", sub: "queued" };
-	const ts = run.startedAt ?? lastEventTs(events, new Set(["state_change"]));
-	return { label: "Admitted", state: "done", sub: wallClockOf(ts) || "admitted" };
+function admittedPhase(run: RunRow, events: RunEvent[], queuePrepMs: number | null): PhaseCellData {
+	if (run.state === "queued")
+		return { label: "Admitted", state: "pending", sub: "queued", durationMs: null };
+	const ts = run.startedAt ?? lastEventTsOf(events, new Set(["state_change"]));
+	return {
+		label: "Admitted",
+		state: "done",
+		sub: wallClockOf(ts) || "admitted",
+		durationMs: queuePrepMs,
+	};
 }
 
-function workspacePhase(run: RunRow, events: RunEvent[]): PhaseCellData {
+function workspacePhase(
+	run: RunRow,
+	events: RunEvent[],
+	agentBootMs: number | null,
+): PhaseCellData {
 	// Probe three real signals (warren-57fb): the raw `agent_start` kind
 	// (other adapters), the pi adapter's state_change payload.type form,
 	// and run.startedAt — the bridge stamps it when the agent is claimed,
 	// so the cell lights while the run is live, not only at terminal.
 	const agentStartTs =
-		lastEventTs(events, new Set(["agent_start"])) ??
-		lastStateChangeOfType(events, "agent_start") ??
+		lastEventTsOf(events, new Set(["agent_start"])) ??
+		lastStateChangeTypeTs(events, "agent_start") ??
 		run.startedAt;
 	const done = agentStartTs !== null;
 	return {
 		label: "Workspace ready",
 		state: done ? "done" : "pending",
 		sub: agentStartTs !== null ? wallClockOf(agentStartTs) : "pending",
+		durationMs: agentBootMs,
 	};
 }
 
-function agentPhase(run: RunRow, terminal: boolean, elapsed: string): PhaseCellData {
+function agentPhase(
+	run: RunRow,
+	terminal: boolean,
+	elapsed: string,
+	agentRunMs: number | null,
+): PhaseCellData {
+	// The duration travels on the cell even after terminal (warren-935a):
+	// the span the agent actually ran, not the wall clock it ended at.
 	if (terminal) {
-		return { label: "Agent running", state: "done", sub: wallClockOf(run.endedAt) || "ended" };
+		return {
+			label: "Agent running",
+			state: "done",
+			sub: wallClockOf(run.endedAt) || "ended",
+			durationMs: agentRunMs,
+		};
 	}
 	if (run.state === "running") {
 		return {
 			label: "Agent running",
 			state: "active",
 			sub: elapsed !== "" ? `${elapsed} elapsed` : "running",
+			durationMs: null,
 		};
 	}
-	return { label: "Agent running", state: "pending", sub: "pending" };
+	return { label: "Agent running", state: "pending", sub: "pending", durationMs: null };
 }
 
-function reapPhase(run: RunRow, events: RunEvent[], reaped: boolean): PhaseCellData {
-	const reapTs = lastEventTs(events, new Set(["reap.completed", "reap_failed", "reap.orphaned"]));
+function reapPhase(
+	run: RunRow,
+	events: RunEvent[],
+	reaped: boolean,
+	reapMs: number | null,
+): PhaseCellData {
+	const reapTs = lastEventTsOf(events, new Set(["reap.completed", "reap_failed", "reap.orphaned"]));
 	return {
 		label: "Reap",
 		state: reaped ? "done" : "pending",
 		sub: reaped ? wallClockOf(reapTs ?? run.endedAt) || "reaped" : "pending",
+		durationMs: reapMs,
 	};
 }
 
-function deliveryPhase(run: RunRow, terminal: boolean): PhaseCellData {
+function deliveryPhase(run: RunRow, terminal: boolean, deliveryMs: number | null): PhaseCellData {
 	const delivered = (run.commitsAhead ?? 0) > 0 || run.prUrl !== null;
 	let sub = "pending";
 	if (delivered) {
@@ -145,7 +145,12 @@ function deliveryPhase(run: RunRow, terminal: boolean): PhaseCellData {
 	} else if (terminal) {
 		sub = run.commitsAhead === 0 ? "no new commits" : "pending";
 	}
-	return { label: "Git delivery", state: delivered ? "done" : "pending", sub };
+	return {
+		label: "Git delivery",
+		state: delivered ? "done" : "pending",
+		sub,
+		durationMs: deliveryMs,
+	};
 }
 
 /**
@@ -159,17 +164,18 @@ function deliveryPhase(run: RunRow, terminal: boolean): PhaseCellData {
  */
 export function derivePhases(run: RunRow, events: RunEvent[]): PhaseCellData[] {
 	const terminal = isTerminalRunState(run.state);
-	const reapTs = lastEventTs(events, new Set(["reap.completed", "reap_failed", "reap.orphaned"]));
+	const reapTs = lastEventTsOf(events, new Set(["reap.completed", "reap_failed", "reap.orphaned"]));
 	// Reap is off the terminal short-circuit (warren-57fb): a terminal row
 	// without a reap event has not reaped yet (e.g. finalize_failed).
 	const reaped = reapTs !== null;
 	const elapsed = elapsedLabel(run);
+	const stages = deriveStageDurations(run, events);
 
 	return [
-		admittedPhase(run, events),
-		workspacePhase(run, events),
-		agentPhase(run, terminal, elapsed),
-		reapPhase(run, events, reaped),
-		deliveryPhase(run, terminal),
+		admittedPhase(run, events, stages.queuePrepMs),
+		workspacePhase(run, events, stages.agentBootMs),
+		agentPhase(run, terminal, elapsed, stages.agentRunMs),
+		reapPhase(run, events, reaped, stages.reapMs),
+		deliveryPhase(run, terminal, stages.deliveryMs),
 	];
 }

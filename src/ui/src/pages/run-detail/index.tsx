@@ -25,7 +25,8 @@ import {
 } from "@/pages/run-detail/side-panels.tsx";
 import { CancelRunButton, SteerForm } from "@/pages/run-detail/steering-panel.tsx";
 import { extractReapSummary, isBridgeStalled } from "@/pages/run-detail-format.ts";
-import { formatDuration, projectLabel } from "@/pages/runs/runs-format.ts";
+import { projectLabel } from "@/pages/runs/runs-format.ts";
+import { formatRunElapsed } from "./run-detail-format.ts";
 
 /**
  * Run detail — the Direction C workload inspector (warren-8c85 /
@@ -279,7 +280,7 @@ function RunHeader({
 						run.agentName,
 						projectName,
 						run.seedId !== null ? `seed ${run.seedId}` : null,
-						formatDuration(run, Date.now()),
+						formatRunElapsed(run, Date.now()),
 					]
 						.filter(Boolean)
 						.join(" · ")}
