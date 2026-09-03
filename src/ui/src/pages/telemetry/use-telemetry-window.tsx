@@ -6,6 +6,7 @@ import {
 	runAnalyticsApi,
 } from "@/api/client.ts";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
+import { telemetryAnalyticsFilter, telemetryQueryKey } from "./telemetry-window.helpers.ts";
 
 /**
  * The Telemetry window (warren-7197 / pl-7e38 step 14): the shared
@@ -25,6 +26,9 @@ export const DEFAULT_TELEMETRY_RANGE_DAYS = 14 satisfies TelemetryRangeDays;
 export interface TelemetryWindow {
 	readonly days: TelemetryRangeDays;
 	readonly setDays: (days: TelemetryRangeDays) => void;
+	/** Selected project id, or null for every project (warren-1548). */
+	readonly projectId: string | null;
+	readonly setProjectId: (projectId: string | null) => void;
 	/** ISO instant: the window start (now - days). */
 	readonly from: string;
 	/** ISO instant: the window end (now). */
@@ -43,6 +47,7 @@ const TelemetryWindowContext = createContext<TelemetryWindow | null>(null);
 
 export function TelemetryWindowProvider({ children }: { children: ReactNode }) {
 	const [days, setDays] = useState<TelemetryRangeDays>(DEFAULT_TELEMETRY_RANGE_DAYS);
+	const [projectId, setProjectId] = useState<string | null>(null);
 
 	const { from, to } = useMemo(() => {
 		const now = Date.now();
@@ -55,20 +60,25 @@ export function TelemetryWindowProvider({ children }: { children: ReactNode }) {
 	const caps = useCapabilities();
 	const isOperator = caps.can("readOperator");
 
+	const filter = useMemo(
+		() => telemetryAnalyticsFilter(projectId, from, to),
+		[projectId, from, to],
+	);
+
 	const runs = useQuery({
-		queryKey: ["analytics", "runs", { projectId: null, from, to }],
-		queryFn: ({ signal }) => runAnalyticsApi.runs({ from, to }, signal),
+		queryKey: telemetryQueryKey("runs", projectId, from, to),
+		queryFn: ({ signal }) => runAnalyticsApi.runs(filter, signal),
 	});
 
 	const behavior = useQuery({
-		queryKey: ["analytics", "behavior", { projectId: null, from, to }],
-		queryFn: ({ signal }) => runAnalyticsApi.behavior({ from, to }, signal),
+		queryKey: telemetryQueryKey("behavior", projectId, from, to),
+		queryFn: ({ signal }) => runAnalyticsApi.behavior(filter, signal),
 		enabled: isOperator,
 	});
 
 	const value = useMemo<TelemetryWindow>(
-		() => ({ days, setDays, from, to, runs, behavior, isOperator }),
-		[days, from, to, runs, behavior, isOperator],
+		() => ({ days, setDays, projectId, setProjectId, from, to, runs, behavior, isOperator }),
+		[days, projectId, from, to, runs, behavior, isOperator],
 	);
 
 	return (

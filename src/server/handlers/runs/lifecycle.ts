@@ -1,4 +1,5 @@
 import { ValidationError } from "../../../core/errors.ts";
+import type { DispatchFacts } from "../../../db/repos/dispatch-context.ts";
 import { readProviderFrontmatter } from "../../../registry/index.ts";
 import type { RunRow } from "../../../runs/index.ts";
 import {
@@ -193,13 +194,18 @@ async function projectRunsWithCaps(
 	actor: Actor | undefined,
 ): Promise<unknown[]> {
 	const publicOnly = isPublicOnly(actor);
-	const caps = publicOnly
-		? new Map<string, number>()
-		: await deps.repos.dispatchContext.getMaxCostUsdByRunIds(runs.map((r) => r.id));
+	const facts = publicOnly
+		? new Map<string, DispatchFacts>()
+		: await deps.repos.dispatchContext.getDispatchFactsByRunIds(runs.map((r) => r.id));
 	return runs.map((run) => {
 		const projected = projectRun(run, actor);
 		if (publicOnly) return projected;
-		return { ...projected, maxCostUsd: caps.get(run.id) ?? null };
+		const fact = facts.get(run.id);
+		return {
+			...projected,
+			maxCostUsd: fact?.maxCostUsd ?? null,
+			runtimeBackend: fact?.runtimeBackend ?? null,
+		};
 	});
 }
 

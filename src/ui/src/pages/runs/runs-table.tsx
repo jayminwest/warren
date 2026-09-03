@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { RunRow } from "@/api/types.ts";
-import { cn, relativeTime } from "@/lib/utils.ts";
+import { cn, relativeTime } from "../../lib/utils.ts";
 import {
+	branchLabelOf,
 	formatDuration,
 	projectLabel,
 	runCostLabel,
 	shortSha,
 	startedAtOf,
-} from "@/pages/runs/runs-format.ts";
+	truncateRuntimeHandle,
+} from "./runs-format.ts";
 
 /**
  * The Direction C workload-inventory table (warren-9e87 / pl-7e38
@@ -77,37 +80,71 @@ function RunSubLine({ row }: { row: RunRow }) {
 }
 
 /**
- * Runtime column. The wire carries no runtime *kind* per run (the ops
- * overview API is the future source), so the column shows the real
- * per-run handle the server does serve — `sandboxRunId` / `sandboxId`
- * (the pod name under k8s) — and a quiet "—" when absent.
+ * Runtime column (warren-a0f4): line one is the backend kind
+ * (`local` / `docker` / `k8s`) frozen at dispatch; line two is the real
+ * per-run handle the server serves — `sandboxRunId` / `sandboxId` (the
+ * pod name under k8s) — truncated to ~10 chars with the full value in
+ * `title` and a click-to-copy that does not fire the row link. Rows with
+ * neither fact keep the quiet "—" / "not scheduled".
  */
 function RuntimeCell({ row }: { row: RunRow }) {
+	const kind = row.runtimeBackend ?? null;
 	const handle = row.sandboxRunId ?? row.sandboxId ?? null;
-	const sub =
-		handle !== null && handle !== undefined && handle.length > 0
-			? handle
-			: row.state === "queued"
-				? "not scheduled"
-				: "—";
+	const hasHandle = handle !== null && handle !== undefined && handle.length > 0;
+	if (kind === null) {
+		const sub = hasHandle ? (handle as string) : row.state === "queued" ? "not scheduled" : "—";
+		return (
+			<span className="flex min-w-0 flex-col gap-0.5">
+				<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-2)">
+					{sub}
+				</span>
+			</span>
+		);
+	}
 	return (
-		<span
-			className="flex min-w-0 flex-col gap-0.5"
-			title="Runtime handle; a per-run runtime-kind figure needs an API (warren-d850)"
-		>
-			<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-2)">{sub}</span>
+		<span className="flex min-w-0 flex-col gap-0.5">
+			<span className="font-mono text-[10px] leading-3 text-(--color-text-2)">{kind}</span>
+			{hasHandle ? <CopyHandle handle={handle as string} /> : null}
 		</span>
+	);
+}
+
+/** Second line of the runtime cell: the full handle on hover, click copies it. */
+function CopyHandle({ handle }: { handle: string }) {
+	const [copied, setCopied] = useState(false);
+	const short = truncateRuntimeHandle(handle);
+	return (
+		<button
+			type="button"
+			title={handle}
+			aria-label={`Copy runtime handle ${handle}`}
+			onClick={(e) => {
+				e.stopPropagation();
+				void navigator.clipboard?.writeText(handle).then(() => {
+					setCopied(true);
+					setTimeout(() => setCopied(false), 1500);
+				});
+			}}
+			className="max-w-full cursor-pointer truncate text-left font-mono text-[9px] leading-3 text-(--color-text-3) hover:text-(--color-text-2)"
+		>
+			{copied ? "copied" : short}
+		</button>
 	);
 }
 
 /** PROJECT column sub-line: branch · base commit, "—" when neither set. */
 function ProjectSubLine({ row }: { row: RunRow }) {
-	const branch = row.targetBranch ?? row.ref ?? null;
+	const branch = branchLabelOf(row);
 	const sha = shortSha(row.baseCommit);
 	const label =
 		branch !== null && sha !== "" ? `${branch} · ${sha}` : (branch ?? (sha !== "" ? sha : "—"));
 	return (
-		<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">{label}</span>
+		<span
+			title={branch ?? undefined}
+			className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)"
+		>
+			{label}
+		</span>
 	);
 }
 
@@ -139,10 +176,12 @@ function RunsTableRow({
 	row,
 	projectName,
 	now,
+	isOperator,
 }: {
 	row: RunRow;
 	projectName: string;
 	now: number;
+	isOperator: boolean;
 }) {
 	const navigate = useNavigate();
 	const runPath = `/runs/${encodeURIComponent(row.id)}`;
@@ -192,9 +231,11 @@ function RunsTableRow({
 					<ProjectSubLine row={row} />
 				</span>
 			</td>
-			<td className="w-[88px] px-2.5 py-1.5 align-middle">
-				<RuntimeCell row={row} />
-			</td>
+			{isOperator ? (
+				<td className="w-[88px] px-2.5 py-1.5 align-middle">
+					<RuntimeCell row={row} />
+				</td>
+			) : null}
 			<td className="w-[62px] px-2.5 py-1.5 align-middle font-mono text-[10px] leading-3 text-(--color-text-3)">
 				{row.trigger}
 			</td>
@@ -242,10 +283,12 @@ export function RunsTable({
 	rows,
 	projectIndex,
 	now,
+	isOperator,
 }: {
 	rows: readonly RunRow[];
 	projectIndex: Map<string, string>;
 	now: number;
+	isOperator: boolean;
 }) {
 	return (
 		<div className="overflow-x-auto">
@@ -256,7 +299,7 @@ export function RunsTable({
 						<Th width="128px">Run</Th>
 						<Th width="118px">Agent</Th>
 						<Th width="128px">Project</Th>
-						<Th width="88px">Runtime</Th>
+						{isOperator ? <Th width="88px">Runtime</Th> : null}
 						<Th width="62px">Trigger</Th>
 						<Th width="56px">Started</Th>
 						<Th width="54px" className="text-right">
@@ -279,6 +322,7 @@ export function RunsTable({
 									? "deleted project"
 									: projectLabel(projectIndex.get(row.projectId), row.projectId)
 							}
+							isOperator={isOperator}
 						/>
 					))}
 				</tbody>

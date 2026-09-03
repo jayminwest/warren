@@ -1,5 +1,5 @@
 import type { RunRow } from "@/api/types.ts";
-import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { formatCostUsd } from "../run-detail-format.ts";
 
 /**
  * Formatting helpers for the Direction C Runs inventory
@@ -59,10 +59,28 @@ export function projectLabel(gitUrl: string | null | undefined, fallback: string
 	return stripped.length > 0 ? stripped : gitUrl;
 }
 
+/**
+ * The branch a run works on: the explicit dispatch target, else the
+ * composed workspace branch set for every run at dispatch, else the raw
+ * clone ref. Null when the row predates the columns.
+ */
+export function branchLabelOf(row: RunRow): string | null {
+	return row.targetBranch ?? row.branch ?? row.ref ?? null;
+}
+
 /** First 7 chars of a sha-ish string, "" when absent. */
 export function shortSha(sha: string | null | undefined): string {
 	if (sha === null || sha === undefined || sha.length === 0) return "";
 	return sha.slice(0, 7);
+}
+
+/**
+ * Runtime handle as it renders on the cell's second line (warren-a0f4):
+ * truncated to ~10 chars with a trailing ellipsis when longer, verbatim
+ * otherwise — the full value rides on the element's `title`.
+ */
+export function truncateRuntimeHandle(handle: string): string {
+	return handle.length > 10 ? `${handle.slice(0, 10)}…` : handle;
 }
 
 /**

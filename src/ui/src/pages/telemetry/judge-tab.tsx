@@ -36,7 +36,7 @@ const UNJUDGED_REASON_LABELS: Record<string, string> = {
 const ABSENT_COPY: Record<JudgeVerdictsAbsent["reason"], { meta: string; line: string }> = {
 	absent: {
 		meta: "EXTENSION ABSENT",
-		line: "The judge extension is not deployed against this instance. Set WARREN_JUDGE_BASE_URL and WARREN_JUDGE_EXPORT_TOKEN (or deploy extensions/judge) and the proxy's verdict export becomes this tab's evidence.",
+		line: "The judge extension is not deployed on this instance. Deploy extensions/judge and its verdict export becomes this tab's evidence.",
 	},
 	unauthorized: {
 		meta: "EXTENSION LOCKED",
@@ -44,7 +44,7 @@ const ABSENT_COPY: Record<JudgeVerdictsAbsent["reason"], { meta: string; line: s
 	},
 	misconfigured: {
 		meta: "PROXY MISCONFIGURED",
-		line: "The verdict proxy answered with an HTML page instead of the NDJSON export. Something in front of warren (or its proxy config) is serving the SPA where the judge export should be — this is never a healthy judge.",
+		line: "The verdict proxy answered with an HTML page instead of the NDJSON export. Something in front of warren is serving the SPA where the judge export should be.",
 	},
 	error: {
 		meta: "EXPORT UNREACHABLE",
@@ -288,10 +288,6 @@ export function TelemetryJudgeTab() {
 						</InventoryCardList>
 					</>
 				)}
-				<p className="text-[12px] leading-4 text-(--color-text-2)">
-					Failed verdicts and unjudged markers from the extension's append-only export, joined with
-					run records and forge PR state.
-				</p>
 			</TelemetryPanel>
 
 			<TelemetryPanel title="Judge verdicts" meta="RUBRIC V1 · 15 CLASSES">
@@ -334,10 +330,6 @@ export function TelemetryJudgeTab() {
 						No failing classes in the export.
 					</p>
 				)}
-				<p className="text-[12px] leading-4 text-(--color-text-2)">
-					Unjudged runs carry a marker until the judge catches up. Figures cover the newest{" "}
-					{String(state.rows.length)} exported rows.
-				</p>
 			</TelemetryPanel>
 		</div>
 	);

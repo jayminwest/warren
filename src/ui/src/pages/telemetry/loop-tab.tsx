@@ -248,7 +248,7 @@ export function TelemetryLoopTab() {
 		<div className="flex flex-col gap-4 lg:flex-row">
 			<OutcomesPanel runs={runs} days={days} weekly={!isDesktop} />
 
-			<TelemetryPanel title="Where the time goes" meta="MEDIAN PER RUN" className="flex-1">
+			<TelemetryPanel title="Stage timings" meta="MEDIAN PER RUN" className="flex-1">
 				{stages.map((s, i) => (
 					<StageRow
 						key={s.label}
@@ -259,11 +259,6 @@ export function TelemetryLoopTab() {
 						knownIndex={knownIndices[i] ?? -1}
 					/>
 				))}
-				<p className="mt-1 text-[12px] leading-4 text-(--color-text-2)">
-					Queue wait and run duration come from the run record. Per-stage delivery timings — branch
-					push, PR open, review wait, merge — have no API surface yet, so those rows stay quiet
-					rather than invented.
-				</p>
 			</TelemetryPanel>
 		</div>
 	);
