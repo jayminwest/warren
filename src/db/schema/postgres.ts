@@ -108,6 +108,12 @@ export const runs = pgTable(
 		createdAt: bigint("created_at", { mode: "number" }),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
+		// Mirror of sqlite stage timestamps (warren-7116); see sqlite.ts for
+		// the full shape + NULL-semantics intent.
+		workspaceReadyAt: text("workspace_ready_at"),
+		agentReadyAt: text("agent_ready_at"),
+		agentEndedAt: text("agent_ended_at"),
+		reapedAt: text("reaped_at"),
 		prompt: text("prompt").notNull(),
 		trigger: text("trigger").notNull(),
 		prUrl: text("pr_url"),

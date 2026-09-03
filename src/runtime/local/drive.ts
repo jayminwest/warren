@@ -75,6 +75,14 @@ export interface DriveDeps {
 	readonly midRunInboxPollMs?: number;
 	readonly now?: () => Date;
 	readonly log?: (message: string) => void;
+	/**
+	 * Workspace-ready signal (warren-7116) — the runtime → domain edge for the
+	 * `runs.workspace_ready_at` stamp. Fired once after `prepareSpawn` lands
+	 * (workspace materialized, sandbox profile composed) so the prep span is
+	 * measured without the drive loop touching the database directly. Optional;
+	 * first-write-wins domain-side.
+	 */
+	readonly onWorkspaceReady?: (runId: string, at: Date) => void;
 }
 
 /**
@@ -166,6 +174,13 @@ async function spawnAndPump(
 	}
 	const prepared = await prepareSpawn(store, record, spec, profile, deps);
 	if (prepared === null) return;
+	// warren-7116: the workspace is prepared — stamp the stage timestamp via
+	// the injected domain signal (never a direct db write from the runtime).
+	try {
+		deps.onWorkspaceReady?.(record.runId, deps.now?.() ?? new Date());
+	} catch {
+		// Best-effort observability; a writer fault must not kill the drive loop.
+	}
 	const { runtime, runProfile, runCommand, proxy, useStdinHold } = prepared;
 
 	// Re-check after async setup — cancel may have landed mid-prepare.

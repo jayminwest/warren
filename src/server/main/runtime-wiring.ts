@@ -91,6 +91,12 @@ export interface BootK8sRuntimeInput {
 	 * event stream (`k8s-pod-warning-sink.ts`); absent ⇒ warn-log only.
 	 */
 	readonly onPodWarning?: (signal: PodWarningSignal) => void;
+	/**
+	 * Workspace-ready sink (warren-7116) — fired by the pod-watcher when a
+	 * run's workspace-init container terminates; boot wires it to stamp
+	 * `runs.workspace_ready_at` through the runs repo.
+	 */
+	readonly onWorkspaceReady?: (runId: string, at: Date) => void;
 }
 
 /** Handle over the started K8s background loops. `stop()` is idempotent. */
@@ -166,6 +172,7 @@ export function bootK8sRuntime(input: BootK8sRuntimeInput): K8sRuntimeHandle | u
 		logger: wireLogger,
 		resyncPeriodMs: resolveResyncPeriodMs(input.env),
 		...(input.now !== undefined ? { now: input.now } : {}),
+		...(input.onWorkspaceReady !== undefined ? { onWorkspaceReady: input.onWorkspaceReady } : {}),
 	});
 
 	const podGc = new PodGc({
@@ -237,12 +244,18 @@ export interface ResolveBootRuntimeProviderInput {
 	 */
 	readonly k8sRuntime?: K8sRuntimeHandle;
 	/**
-	 * Boot-resolved forge (warren-c9ac). Drives the K8s token windows
+	/** Boot-resolved forge (warren-c9ac). Drives the K8s token windows
 	 * (forge-contract.md §4.1): the provider mints the init-container clone
 	 * credential per pod-spec, and the window-2 static-env push-token fallback
 	 * is allowed only when the forge's `credentialLifetime` is `static` (PAT).
 	 */
 	readonly forge?: Forge;
+	/**
+	 * Workspace-ready signal (warren-7116) — threaded onto the LocalProvider's
+	 * drive deps so the drive loop stamps `runs.workspace_ready_at` via the
+	 * domain rather than touching the db itself.
+	 */
+	readonly onWorkspaceReady?: (runId: string, at: Date) => void;
 }
 
 /**
@@ -282,6 +295,7 @@ export function resolveBootRuntimeProvider(
 	return resolveRuntimeProvider(
 		{
 			k8sRunInbox: input.runInbox,
+			...(input.onWorkspaceReady !== undefined ? { onWorkspaceReady: input.onWorkspaceReady } : {}),
 			...(input.admissionMetrics !== undefined
 				? { k8sAdmissionMetrics: input.admissionMetrics }
 				: {}),

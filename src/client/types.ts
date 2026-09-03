@@ -109,6 +109,11 @@ export interface RunRow {
 	createdAt: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
+	/** Stage timestamps (warren-7116): workspace ready / agent ready (first event, same instant as startedAt) / agent ended (runtime-terminal) / reaped (terminal transition). Null = never observed. */
+	workspaceReadyAt: string | null;
+	agentReadyAt: string | null;
+	agentEndedAt: string | null;
+	reapedAt: string | null;
 	/**
 	 * Reap-time measured outcome facts (warren-ab2b / pl-103e): commits the
 	 * pushed branch was ahead of the base, plus the parsed `git diff

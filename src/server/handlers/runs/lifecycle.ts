@@ -42,6 +42,14 @@ export const PUBLIC_RUN_FIELDS = [
 	"createdAt",
 	"startedAt",
 	"endedAt",
+	// warren-7116: the stage timestamps decompose the run wall clock into its
+	// four observed edges (workspace ready / agent ready / agent ended / reaped).
+	// Load-shape timestamps of the same spectator class as startedAt/endedAt;
+	// NULL reads as "never observed" (pre-column rows, never-claimed runs).
+	"workspaceReadyAt",
+	"agentReadyAt",
+	"agentEndedAt",
+	"reapedAt",
 	"prompt",
 	"trigger",
 	"prUrl",

@@ -86,6 +86,14 @@ export interface PodWatcherDeps {
 	/** Shared counter registry (OOM / reconnect / init-failure totals). */
 	readonly metrics: CounterSink;
 	/**
+	 * Workspace-ready signal (warren-7116) — the runtime → domain edge for the
+	 * `runs.workspace_ready_at` stamp. Fired once per run when the
+	 * workspace-init container terminates (success or failure); the writer is
+	 * first-write-wins domain-side. Optional so tests that never assert the
+	 * stamp can omit it.
+	 */
+	readonly onWorkspaceReady?: (runId: string, at: Date) => void;
+	/**
 	 * Optional cluster seam (warren-ea4b): reports whether a NODE was deleted
 	 * while carrying the `cloud.google.com/gke-spot=true` label. Consulted when
 	 * a tracked pod VANISHES (`forget`) so a spot reclamation that removed the
@@ -382,6 +390,16 @@ export class PodWatcher
 		if (seconds !== null) this.lastInitDurationSeconds = seconds;
 		if ((term.exitCode ?? 0) !== 0 || term.reason === OOM_KILLED_REASON) {
 			this.deps.metrics.increment(METRIC_INIT_FAILURES_TOTAL);
+		}
+		// warren-7116: stamp the workspace-ready stage timestamp off the init
+		// container's own completion (kubelet clock), falling back to the
+		// watcher's clock when the pod didn't carry a finishedAt stamp.
+		const finishedAt = term.finishedAt ?? this.now();
+		try {
+			this.deps.onWorkspaceReady?.(runId, finishedAt);
+		} catch {
+			// The stamp is best-effort observability; a writer fault must never
+			// tear down the watch loop.
 		}
 	}
 }

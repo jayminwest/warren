@@ -145,12 +145,12 @@ export interface RunRow {
 	createdAt: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
-	/**
-	 * Reap-time measured outcome facts (warren-ab2b / pl-103e): commits the
-	 * pushed branch was ahead of the base, plus the parsed diff totals.
-	 * Null = unknown (pre-column rows, unmeasured finalize) — render as
-	 * "unknown", never as zero.
-	 */
+	/** Stage timestamps (warren-7116): the four observed run edges — null = never observed. */
+	workspaceReadyAt: string | null;
+	agentReadyAt: string | null;
+	agentEndedAt: string | null;
+	reapedAt: string | null;
+	/** Reap-time measured outcome facts (warren-ab2b): null = unknown, never zero. */
 	commitsAhead: number | null;
 	filesChanged: number | null;
 	insertions: number | null;
@@ -163,8 +163,8 @@ export interface RunRow {
 	 */
 	prUrl: string | null;
 	/**
-	 * Merge-watcher PR facts (warren-3bc6): forge-reported lifecycle + merge
-	 * instant. Null reads as "unknown" (historical rows, no PR), never "not merged".
+	 * Merge-watcher PR facts (warren-3bc6): forge-reported lifecycle + merge instant.
+	 * Null reads as "unknown" (historical rows, no PR), never "not merged".
 	 */
 	prState: PullRequestLifecycle | null;
 	prMergedAt: string | null;
