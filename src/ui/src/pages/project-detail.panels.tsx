@@ -414,9 +414,11 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 									/>
 								}
 							>
-								<Link to="/dispatch/plan" className="shrink-0">
-									<Button size="sm">Dispatch plan</Button>
-								</Link>
+								<OperatorOnly>
+									<Link to="/dispatch/plan" className="shrink-0">
+										<Button size="sm">Dispatch plan</Button>
+									</Link>
+								</OperatorOnly>
 							</InventoryRowCard>
 						))}
 					</InventoryCardList>
@@ -437,9 +439,11 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 								<span className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
 									{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
 								</span>
-								<Link to="/dispatch/plan" className="shrink-0">
-									<Button size="sm">Dispatch plan</Button>
-								</Link>
+								<OperatorOnly>
+									<Link to="/dispatch/plan" className="shrink-0">
+										<Button size="sm">Dispatch plan</Button>
+									</Link>
+								</OperatorOnly>
 							</div>
 						))}
 					</div>

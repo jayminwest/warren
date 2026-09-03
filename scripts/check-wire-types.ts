@@ -157,6 +157,10 @@ export const DOMAIN_STEMS = [
 	"issue",
 	"plan",
 	"tracker",
+	// warren-7194: the ops-overview window vocabulary (OpsWindow, OPS_WINDOWS,
+	// OPS_WINDOW_MS) joins the guarded stems so a local copy in a handler or
+	// the UI fails the gate instead of drifting.
+	"ops",
 ] as const;
 
 /**

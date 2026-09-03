@@ -23,11 +23,7 @@ import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { sandboxGitPreflightCached } from "../../sandbox/git-preflight.ts";
 import type { IssueTracker, PlanCapableTracker } from "../../tracker/contract.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
-import {
-	type CronTrigger,
-	type LoadedWarrenConfig,
-	loadWarrenConfig,
-} from "../../warren-config/index.ts";
+import type { CronTrigger } from "../../warren-config/index.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
 import { jsonResponse } from "../response.ts";
 import type { Actor, RouteHandler, ServerDeps } from "../types.ts";
@@ -39,6 +35,7 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
+import { loadProjectWarrenConfig } from "./projects.warren-config.ts";
 
 /**
  * The project columns a `readPublic`-only spectator sees (warren-4f6c /
@@ -148,27 +145,6 @@ export function deleteProjectHandler(deps: ServerDeps): RouteHandler {
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 		});
 		return jsonResponse(200, row);
-	};
-}
-
-export function getProjectWarrenConfigHandler(deps: ServerDeps): RouteHandler {
-	return async (ctx) => {
-		const id = requireParam(ctx, "id");
-		// `require` throws NotFoundError → 404 via renderError; the cache
-		// only knows ids it's been asked about, so the project lookup has
-		// to come first to keep the 404 contract honest.
-		const project = await deps.repos.projects.require(id);
-		const loaded: LoadedWarrenConfig =
-			deps.warrenConfigs !== undefined
-				? await deps.warrenConfigs.get(project.id, project.localPath)
-				: await loadWarrenConfig({ projectPath: project.localPath });
-		return jsonResponse(200, {
-			triggers: loaded.triggers,
-			defaults: loaded.defaults,
-			sourceFile: loaded.sourceFile,
-			errors: loaded.errors,
-			warnings: loaded.warnings,
-		});
 	};
 }
 
@@ -326,11 +302,7 @@ export function listReadyPlansHandler(deps: ServerDeps): RouteHandler {
 export function getProjectTriggersHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
-		const project = await deps.repos.projects.require(id);
-		const loaded: LoadedWarrenConfig =
-			deps.warrenConfigs !== undefined
-				? await deps.warrenConfigs.get(project.id, project.localPath)
-				: await loadWarrenConfig({ projectPath: project.localPath });
+		const { project, loaded } = await loadProjectWarrenConfig(deps, id);
 		const now = deps.now?.() ?? new Date();
 		const summaries = await buildTriggerSummaries({
 			projectId: project.id,
@@ -378,10 +350,8 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 		});
 		const project = refreshed.project;
 
-		const loaded: LoadedWarrenConfig =
-			deps.warrenConfigs !== undefined
-				? await deps.warrenConfigs.get(project.id, project.localPath)
-				: await loadWarrenConfig({ projectPath: project.localPath });
+		// Load the post-refresh snapshot through the shared cache path.
+		const loaded = (await loadProjectWarrenConfig(deps, required.id)).loaded;
 
 		const trigger = (loaded.triggers ?? []).find((t): t is CronTrigger => t.id === triggerId);
 		if (trigger === undefined) {

@@ -26,9 +26,9 @@ const FIXTURE_OVERVIEW: OpsOverview = {
 		nonTerminal: 3,
 		total: 9,
 	},
-	spend: { totalUsd: 12.5, last24hUsd: 3.25, last24hRuns: 4 },
+	window: "24h",
+	spend: { totalUsd: 12.5, windowUsd: 3.25, windowRuns: 4 },
 	delivery: { branchesPushed: 4, prsOpened: 3, prsMerged: 2 },
-	interventions: { pendingByPriority: { normal: 1, high: 2 }, pendingTotal: 3 },
 	services: { dbReachable: true, runtime: "local", lifecycleStream: true },
 	generatedAt: "2026-08-27T00:00:00.000Z",
 };

@@ -28,7 +28,7 @@ describe("healthLabel", () => {
 
 describe("deriveBurnUsdPerHour", () => {
 	test("derives the per-hour rate from the 24h spend", () => {
-		expect(deriveBurnUsdPerHour({ last24hUsd: 12 }, true)).toBe(0.5);
+		expect(deriveBurnUsdPerHour({ windowUsd: 12, window: "24h" }, true)).toBe(0.5);
 	});
 
 	test("is null for spectators — the ops-overview spend section is absent", () => {
@@ -36,11 +36,15 @@ describe("deriveBurnUsdPerHour", () => {
 	});
 
 	test("is null when the ops-overview database probe is unreachable", () => {
-		expect(deriveBurnUsdPerHour({ last24hUsd: 12 }, false)).toBeNull();
+		expect(deriveBurnUsdPerHour({ windowUsd: 12, window: "24h" }, false)).toBeNull();
 	});
 
 	test("derives a figure when dbReachable is true", () => {
-		expect(deriveBurnUsdPerHour({ last24hUsd: 24 }, true)).toBe(1);
+		expect(deriveBurnUsdPerHour({ windowUsd: 24, window: "24h" }, true)).toBe(1);
+	});
+
+	test("scales by the selected window's hour span (warren-7194)", () => {
+		expect(deriveBurnUsdPerHour({ windowUsd: 336, window: "7d" }, true)).toBe(2);
 	});
 });
 

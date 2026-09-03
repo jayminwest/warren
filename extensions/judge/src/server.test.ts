@@ -138,6 +138,28 @@ describe("GET /verdicts.jsonl", () => {
 		expect(await res.text()).toBe("");
 	});
 
+	test("serves the newest page with ?order=desc (warren-f282)", async () => {
+		const { verdicts, handler } = makeDeps(":memory:");
+		for (let i = 0; i < 5; i += 1) {
+			verdicts.recordVerdict(verdict(`r-${i}`, "cheap-model", "2026-08-15T00:00:00Z"));
+		}
+		const res = handler(authed("/verdicts.jsonl?limit=3&order=desc"));
+		expect(res.status).toBe(200);
+		const rows = (await res.text())
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as { id: number });
+		// The newest 3 ids, descending — not the oldest 3 the asc default serves.
+		expect(rows.map((r) => r.id)).toEqual([5, 4, 3]);
+	});
+
+	test("rejects an order other than asc|desc", async () => {
+		const { handler } = makeDeps(":memory:");
+		const res = handler(authed("/verdicts.jsonl?order=newest"));
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: string }).error).toContain("order");
+	});
+
 	test("honors ?limit and rejects malformed paging params", async () => {
 		const { verdicts, handler } = makeDeps(":memory:");
 		for (let i = 0; i < 3; i += 1) {

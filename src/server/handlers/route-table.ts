@@ -42,13 +42,13 @@ import {
 	getProjectHandler,
 	getProjectSeedHandler,
 	getProjectTriggersHandler,
-	getProjectWarrenConfigHandler,
 	listProjectSeedPlansHandler,
 	listProjectsHandler,
 	listReadyPlansHandler,
 	refreshProjectHandler,
 	runProjectTriggerHandler,
 } from "./projects.ts";
+import { getProjectWarrenConfigHandler } from "./projects.warren-config.ts";
 import {
 	cancelRunHandler,
 	createRunHandler,
@@ -98,8 +98,8 @@ interface RouteEntry {
  * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
  *   run / project / agent / plan-run listings and details, the run event stream,
  *   `/whoami`, `/instance` (a reduced static facts projection, warren-2eec),
- *   `/analytics/runs`, the reduced `GET /ops/overview` snapshot (run counts
- *   only, warren-d850), and the cross-run `GET /events` query (per-row
+ *   `/analytics/runs`, the reduced `GET /ops/overview` snapshot (USD sums
+ *   stripped, warren-d850 + warren-7194), and the cross-run `GET /events` query (per-row
  *   `projectEvent` reduction, warren-5eec). Each is served through a public
  *   projection (pl-b82d steps 14-16) before an instance is actually exposed;
  *   the policy is what makes the projection reachable, not what makes it safe.
@@ -108,11 +108,12 @@ interface RouteEntry {
  *   auth-exempt, warren-682a). `/analytics/cost` is the instance-wide USD
  *   rollup (per-run cost on a run detail is a deliberate exception).
  *   `/analytics/behavior`, `/analytics/dispatch` (dispatch-context log),
- *   the per-project seeds / ready-plans reads, `/projects/:id/triggers`,
- *   `/projects/:id/warren-config` (trigger prompt text, `qualityGate`
- *   command strings, admission caps), `/preview/config` (discloses
- *   `WARREN_PREVIEW_HOST`), and the judge export proxy (warren-1b40) all
- *   surface operator internals. `GET /runs/:id/inbox` is here for a stronger
+ *   the per-project seeds read, `/projects/:id/triggers` (trigger prompt
+ *   text), `/preview/config` (discloses `WARREN_PREVIEW_HOST`), and the
+ *   judge export proxy (warren-1b40) all surface operator internals.
+ *   The ready-plans read (warren-b754) and the narrowed
+ *   `/projects/:id/warren-config` envelope (redacted defaults, no
+ *   triggers — warren-b754) are `readPublic` instead. `GET /runs/:id/inbox` is here for a stronger
  *   reason than disclosure: it MUTATES on read (`src/runs/inbox.ts` claims
  *   unread rows and flips them to delivered), so an anonymous poll would
  *   silently drain the operator's steering queue.
@@ -191,7 +192,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{
 		method: "GET",
 		pattern: "/projects/:id/warren-config",
-		policy: "readOperator",
+		policy: "readPublic",
 		build: getProjectWarrenConfigHandler,
 	},
 	{
@@ -211,7 +212,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{
 		method: "GET",
 		pattern: "/projects/:id/ready-plans",
-		policy: "readOperator",
+		policy: "readPublic",
 		build: listReadyPlansHandler,
 	},
 	{

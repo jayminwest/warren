@@ -2,10 +2,10 @@
  * Ops-overview snapshot (pl-7e38 step 12 / warren-d850).
  *
  * One call builds the whole control-plane snapshot behind `GET /ops/overview`:
- * run lifecycle counts by state, spend rate (all-time + recent-window cost
- * aggregates), delivery stats (branches pushed / PRs opened / PRs merged),
- * and the pending operator-intervention count (unread steering-inbox rows).
- * Everything is a single SQL aggregate query — no run bodies are loaded and
+ * run lifecycle counts by state, spend rate (all-time + trailing-window cost
+ * aggregates over the `?window=` selection), and delivery stats (branches
+ * pushed / PRs opened / PRs merged, same window). Everything is a single SQL
+ * aggregate query — no run bodies are loaded and
  * nothing loops per run. The service-health facts (runtime provider kind,
  * lifecycle-stream wiring) are injected by the handler from `ServerDeps`;
  * `dbReachable` is derived here from whether the aggregate queries actually
@@ -13,15 +13,12 @@
  * as fresh ones — a failed db zeroes every db-backed section.
  */
 
-import { eq, gt, sql } from "drizzle-orm";
-import type { RunState } from "../core/wire.ts";
+import { gt, sql } from "drizzle-orm";
+import { OPS_WINDOW_MS, type OpsWindow, type RunState } from "../core/wire.ts";
 import type { SqliteDrizzleDb } from "../db/client.ts";
 import type { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
 import { countRunsByState } from "../db/repos/runs-stats.ts";
 import type { RuntimeProviderKind } from "../runtime/contract.ts";
-
-/** Recent-cost window: epoch-ms cutoff for the trailing 24h spend bucket. */
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Run lifecycle counts, dense across `RUN_STATES`. */
 export interface OpsRunCounts {
@@ -35,10 +32,10 @@ export interface OpsRunCounts {
 export interface OpsSpend {
 	/** All-time USD across every run. */
 	readonly totalUsd: number;
-	/** USD across runs queued in the trailing 24h window. */
-	readonly last24hUsd: number;
-	/** How many runs the 24h window covers. */
-	readonly last24hRuns: number;
+	/** USD across runs queued in the snapshot's trailing window. */
+	readonly windowUsd: number;
+	/** How many runs the window covers. */
+	readonly windowRuns: number;
 }
 
 /** Delivery stats — what reap handed to the forge. */
@@ -55,13 +52,6 @@ export interface OpsDelivery {
 	readonly prsMerged: number;
 }
 
-/** Pending operator interventions — unread steering-inbox rows. */
-export interface OpsInterventions {
-	/** Unread inbox rows across every run, by priority class. */
-	readonly pendingByPriority: Readonly<Record<string, number>>;
-	readonly pendingTotal: number;
-}
-
 /** Cheap control-plane service-health facts (no probes — derived truth). */
 export interface OpsServices {
 	readonly dbReachable: boolean;
@@ -73,9 +63,10 @@ export interface OpsServices {
 /** Full operator snapshot served by `GET /ops/overview`. */
 export interface OpsOverview {
 	readonly runs: OpsRunCounts;
+	/** Trailing window the spend/delivery buckets cover (warren-7194). */
+	readonly window: OpsWindow;
 	readonly spend: OpsSpend;
 	readonly delivery: OpsDelivery;
-	readonly interventions: OpsInterventions;
 	readonly services: OpsServices;
 	/** ISO8601 instant the snapshot was taken. */
 	readonly generatedAt: string;
@@ -88,16 +79,20 @@ export interface OpsServiceFacts {
 }
 
 /** An `OpsOverview` with every db-backed section zeroed. */
-export function degradedOpsOverview(facts: OpsServiceFacts, now: Date): OpsOverview {
+export function degradedOpsOverview(
+	facts: OpsServiceFacts,
+	now: Date,
+	window: OpsWindow = "24h",
+): OpsOverview {
 	return {
 		runs: {
 			byState: { queued: 0, running: 0, succeeded: 0, failed: 0, cancelled: 0 },
 			nonTerminal: 0,
 			total: 0,
 		},
-		spend: { totalUsd: 0, last24hUsd: 0, last24hRuns: 0 },
+		window,
+		spend: { totalUsd: 0, windowUsd: 0, windowRuns: 0 },
 		delivery: { branchesPushed: 0, prsOpened: 0, prsMerged: 0 },
-		interventions: { pendingByPriority: {}, pendingTotal: 0 },
 		services: {
 			dbReachable: false,
 			runtime: facts.runtime,
@@ -113,26 +108,32 @@ export function degradedOpsOverview(facts: OpsServiceFacts, now: Date): OpsOverv
  * console must never read zero counters as "quiet instance" when the truth
  * is "no database".
  */
+export interface BuildOpsOverviewOptions {
+	/** Trailing window the spend/delivery buckets cover; default `24h`. */
+	readonly window?: OpsWindow;
+	readonly now?: Date;
+}
+
 export async function buildOpsOverview(
 	adapter: DrizzleAdapter | undefined,
 	facts: OpsServiceFacts,
-	now: Date = new Date(),
+	options: BuildOpsOverviewOptions = {},
 ): Promise<OpsOverview> {
-	if (adapter === undefined) return degradedOpsOverview(facts, now);
+	const { window = "24h", now = new Date() } = options;
+	if (adapter === undefined) return degradedOpsOverview(facts, now, window);
 	try {
-		const [byState, spend, delivery, inbox] = await Promise.all([
+		const [byState, spend, delivery] = await Promise.all([
 			countRunsByState(adapter),
-			aggregateSpend(adapter, now.getTime()),
-			aggregateDelivery(adapter),
-			aggregatePendingInbox(adapter),
+			aggregateSpend(adapter, now.getTime(), window),
+			aggregateDelivery(adapter, now.getTime(), window),
 		]);
 		const total = Object.values(byState).reduce((a, b) => a + b, 0);
 		const nonTerminal = (byState.queued ?? 0) + (byState.running ?? 0);
 		return {
 			runs: { byState, nonTerminal, total },
+			window,
 			spend,
 			delivery,
-			interventions: inbox,
 			services: {
 				dbReachable: true,
 				runtime: facts.runtime,
@@ -145,7 +146,12 @@ export async function buildOpsOverview(
 	}
 }
 
-async function aggregateSpend(adapter: DrizzleAdapter, nowMs: number): Promise<OpsSpend> {
+async function aggregateSpend(
+	adapter: DrizzleAdapter,
+	nowMs: number,
+	window: OpsWindow,
+): Promise<OpsSpend> {
+	const cutoffMs = nowMs - OPS_WINDOW_MS[window];
 	const db = adapter.drizzle as SqliteDrizzleDb;
 	const runs = adapter.schema.runs;
 	const [allTime] = await adapter.pickAll<{ costUsd: number | string | null }>(
@@ -161,16 +167,20 @@ async function aggregateSpend(adapter: DrizzleAdapter, nowMs: number): Promise<O
 				count: sql<number>`count(*)`.as("count"),
 			})
 			.from(runs)
-			.where(gt(runs.createdAt, nowMs - DAY_MS)),
+			.where(gt(runs.createdAt, cutoffMs)),
 	);
 	return {
 		totalUsd: Number(allTime?.costUsd ?? 0),
-		last24hUsd: Number(recent?.costUsd ?? 0),
-		last24hRuns: Number(recent?.count ?? 0),
+		windowUsd: Number(recent?.costUsd ?? 0),
+		windowRuns: Number(recent?.count ?? 0),
 	};
 }
 
-async function aggregateDelivery(adapter: DrizzleAdapter): Promise<OpsDelivery> {
+async function aggregateDelivery(
+	adapter: DrizzleAdapter,
+	nowMs: number,
+	window: OpsWindow,
+): Promise<OpsDelivery> {
 	const db = adapter.drizzle as SqliteDrizzleDb;
 	const runs = adapter.schema.runs;
 	const [row] = await adapter.pickAll<{
@@ -184,31 +194,12 @@ async function aggregateDelivery(adapter: DrizzleAdapter): Promise<OpsDelivery> 
 				prsOpened: sql<number>`count(${runs.prUrl})`.as("prsOpened"),
 				prsMerged: sql<number>`count(*) filter (where ${runs.prState} = 'merged')`.as("prsMerged"),
 			})
-			.from(runs),
+			.from(runs)
+			.where(gt(runs.createdAt, nowMs - OPS_WINDOW_MS[window])),
 	);
 	return {
 		branchesPushed: Number(row?.branchesPushed ?? 0),
 		prsOpened: Number(row?.prsOpened ?? 0),
 		prsMerged: Number(row?.prsMerged ?? 0),
 	};
-}
-
-async function aggregatePendingInbox(adapter: DrizzleAdapter): Promise<OpsInterventions> {
-	const db = adapter.drizzle as SqliteDrizzleDb;
-	const runInbox = adapter.schema.runInbox;
-	const rows = await adapter.pickAll<{ priority: string; count: number | string }>(
-		db
-			.select({ priority: runInbox.priority, count: sql<number>`count(*)`.as("count") })
-			.from(runInbox)
-			.where(eq(runInbox.state, "unread"))
-			.groupBy(runInbox.priority),
-	);
-	const pendingByPriority: Record<string, number> = {};
-	let pendingTotal = 0;
-	for (const r of rows) {
-		const n = Number(r.count);
-		pendingByPriority[r.priority] = n;
-		pendingTotal += n;
-	}
-	return { pendingByPriority, pendingTotal };
 }
