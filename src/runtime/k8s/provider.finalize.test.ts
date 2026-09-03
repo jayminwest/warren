@@ -51,6 +51,51 @@ function firingTimer(fireMs: number): (fn: () => void, ms: number) => { cancel: 
 }
 const inertTimer = (): { cancel: () => void } => ({ cancel: () => {} });
 
+describe("K8sProvider.finalize — pod-memory sample (warren-fe11)", () => {
+	async function runFinalize(
+		sampler: (runId: string) => Promise<unknown>,
+	): Promise<FinalizeResult> {
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: { WARREN_GIT_TOKEN: "ghp_pushtoken" },
+			finalizeCoordinator: coordinator,
+			finalizeSetTimer: inertTimer,
+			podMemorySampler: sampler as never,
+		});
+		const p = provider.finalize(handle, intent());
+		await Promise.resolve();
+		const parked = coordinator.peekIntent(handle.runId);
+		coordinator.submit(handle.runId, parked?.attemptId ?? "", podResult());
+		return p;
+	}
+
+	test("stamps a single run_pod_memory_sample event when the sampler yields (warren-fe11)", async () => {
+		const result = await runFinalize(async () => ({
+			runId: handle.runId,
+			podName: handle.sandboxId,
+			agentMemoryMiB: 1494,
+			sampledAt: "2026-09-02T00:00:00.000Z",
+		}));
+		const samples = result.events.filter((e) => e.kind === "run_pod_memory_sample");
+		expect(samples).toHaveLength(1);
+		expect((samples[0]?.payload as { agentMemoryMiB: number }).agentMemoryMiB).toBe(1494);
+	});
+
+	test("returns the result untouched when the sampler yields undefined (warren-fe11)", async () => {
+		const result = await runFinalize(async () => undefined);
+		expect(result.events.some((e) => e.kind === "run_pod_memory_sample")).toBe(false);
+	});
+
+	test("never throws out of the sampler hook (warren-fe11)", async () => {
+		const result = await runFinalize(async () => {
+			throw new Error("boom");
+		});
+		expect(result.pushed).toBe(true);
+		expect(result.events.some((e) => e.kind === "run_pod_memory_sample")).toBe(false);
+	});
+});
+
 describe("K8sProvider.finalize — wiring", () => {
 	test("embeds the WARREN_GIT_TOKEN push credential into the served intent", async () => {
 		const coordinator = new FinalizeCoordinator();
