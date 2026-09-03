@@ -70,6 +70,12 @@ export type JudgeVerdictsState =
 /** Fetch page size: enough for a trend line, bounded on purpose. */
 const VERDICT_PAGE_LIMIT = 500;
 
+/**
+ * The fetch window is the NEWEST page (warren-f282): `?order=desc` (warren
+ * forwards the query verbatim, the judge serves the highest ids first), so
+ * the strip reports recent verdicts instead of the first 500 ever recorded.
+ */
+
 export const JUDGE_VERDICTS_QUERY_KEY = ["telemetry", "judge-verdicts"] as const;
 
 /** The warren proxy path (warren-1b40; same-origin under CSP). */
@@ -91,7 +97,7 @@ export async function fetchJudgeVerdicts(signal: AbortSignal): Promise<JudgeVerd
 
 	let res: Response;
 	try {
-		res = await fetch(`${JUDGE_PROXY_PATH}?limit=${String(VERDICT_PAGE_LIMIT)}`, {
+		res = await fetch(`${JUDGE_PROXY_PATH}?limit=${String(VERDICT_PAGE_LIMIT)}&order=desc`, {
 			headers,
 			signal,
 		});
@@ -155,6 +161,9 @@ export interface JudgeSummary {
 	readonly unjudged: number;
 	/** pass / (pass + fail), null when no verdict has landed yet. */
 	readonly passRate: number | null;
+	/** (pass + fail) / all rows in the page, null when the page is empty.
+	 * Coverage below 1 means the judge skipped runs (unjudged markers). */
+	readonly judgedRate: number | null;
 	/** Non-clean classes by assignment count, worst first. */
 	readonly failingClasses: readonly { readonly name: string; readonly count: number }[];
 	/** Distinct rubric versions in the page (e.g. "sha256:…"). */
@@ -203,6 +212,7 @@ export function summarizeJudgeVerdicts(rows: readonly JudgeStoreRow[]): JudgeSum
 		fail,
 		unjudged,
 		passRate: judged === 0 ? null : pass / judged,
+		judgedRate: rows.length === 0 ? null : judged / rows.length,
 		failingClasses: [...classCounts.entries()]
 			.map(([name, count]) => ({ name, count }))
 			.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),

@@ -565,14 +565,21 @@ export const forgeApi = {
 		request<ForgeReposResponse>("/forge/repos", { ...(signal ? { signal } : {}) }),
 };
 
+/** Trailing window selection for the ops-overview snapshot (warren-7194). */
+function opsOverviewQuery(window?: string): string {
+	return window === undefined ? "" : `?window=${encodeURIComponent(window)}`;
+}
+
 export const opsApi = {
 	/**
 	 * One-poll control-plane snapshot behind the Operations page
 	 * (pl-7e38 step 13). Spectators get the reduced projection — the
 	 * envelope's operator sections arrive undefined, never zero.
 	 */
-	overview: (signal?: AbortSignal) =>
-		request<OpsOverviewResponse>("/ops/overview", { ...(signal ? { signal } : {}) }),
+	overview: (window?: string, signal?: AbortSignal) =>
+		request<OpsOverviewResponse>(`/ops/overview${opsOverviewQuery(window)}`, {
+			...(signal ? { signal } : {}),
+		}),
 };
 
 /* Meta                                                                     */

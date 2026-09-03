@@ -59,12 +59,13 @@ export type RunMode = (typeof RUN_MODES)[number];
 export * from "./wire-actor.ts";
 // Cost-basis vocabulary (warren-f3c3) lives in ./wire-cost.ts (file-size budget).
 export * from "./wire-cost.ts";
-// The steering-inbox vocabulary (warren-3d0b) lives in ./wire-inbox.ts;
-// re-exported so the canonical import path stays `src/core/wire.ts`.
+// The steering-inbox vocabulary (warren-3d0b) lives in ./wire-inbox.ts.
 export * from "./wire-inbox.ts";
 // The analytics-insight vocabulary (warren-be04) lives in
 // ./wire-insight.ts (file-size budget); re-exported for one canonical home.
 export * from "./wire-insight.ts";
+// The ops-overview window vocabulary (warren-7194) lives in ./wire-ops.ts.
+export * from "./wire-ops.ts";
 // The runtime-id vocabulary (warren-c4be) lives in ./wire-runtime.ts
 // (file-size budget); re-exported for one canonical home.
 export * from "./wire-runtime.ts";

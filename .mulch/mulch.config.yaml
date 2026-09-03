@@ -72,6 +72,8 @@ domains:
   infra: {}
   postgres: {}
   usage-hydrate: {}
+  ops-overview: {}
+  run-detail: {}
   telemetry: {}
 governance:
   max_entries: 100

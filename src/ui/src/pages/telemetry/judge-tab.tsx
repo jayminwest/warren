@@ -73,10 +73,10 @@ function prStateLabel(run: RunRow | undefined): string {
 	return state;
 }
 
-/** The failing-class label a failed row carries (shared by both arms). */
+/** The failing-class label a judged-failed row carries. */
 function failedClassLabel(row: JudgeStoreRow): string {
 	const classes = (row.verdict?.assignments ?? []).filter((a) => a.class !== "clean");
-	return UNJUDGED_REASON_LABELS[row.reason ?? ""] ?? classes.map((a) => a.class).join(", ");
+	return classes.map((a) => a.class).join(", ");
 }
 
 /**
@@ -154,14 +154,14 @@ function JudgeDistributionMobile({
 /**
  * The below-md arm of one failed-verdict row (warren-a293): the shared
  * InventoryRowCard pattern — dot-only tone (danger for a failing
- * verdict, neutral for an unjudged marker), the run id as the link,
- * agent · PR state as the subline, judged time as the trailing figure,
- * and the failing-class label on the meta line.
+ * verdict), the run id as the link, agent · PR state as the subline,
+ * judged time as the trailing figure, and the failing-class label on
+ * the meta line.
  */
 function FailedVerdictCard({ row, run }: { row: JudgeStoreRow; run: RunRow | undefined }) {
 	return (
 		<InventoryRowCard
-			tone={row.kind === "unjudged" ? "neutral" : "danger"}
+			tone="danger"
 			title={row.runId}
 			titleTo={`/runs/${encodeURIComponent(row.runId)}`}
 			subline={`${run?.agentName ?? "—"} · pr ${prStateLabel(run)}`}
@@ -209,6 +209,62 @@ function FailedVerdictRow({ row, run }: { row: JudgeStoreRow; run: RunRow | unde
 	);
 }
 
+const UNJUDGED_COLS = ["RUN", "AGENT", "REASON", "DETAIL", "PR"] as const;
+
+/**
+ * One unjudged-marker row (warren-f282): the judge recorded WHY it did
+ * not reach a verdict — the skip reason plus the model/transport detail
+ * the store kept alongside it. Rendered in its own section, not lumped
+ * into the failed-verdict table.
+ */
+function UnjudgedRow({ row, run }: { row: JudgeStoreRow; run: RunRow | undefined }) {
+	return (
+		<tr className="border-b border-(--color-border) last:border-b-0">
+			<td className="py-1.5 pr-3">
+				<Link
+					to={`/runs/${encodeURIComponent(row.runId)}`}
+					className="font-mono text-[11px] leading-[14px] text-(--color-text-2) underline-offset-2 hover:underline"
+				>
+					{row.runId}
+				</Link>
+			</td>
+			<td className="py-1.5 pr-3 font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+				{run?.agentName ?? "—"}
+			</td>
+			<td className="py-1.5 pr-3 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+				{UNJUDGED_REASON_LABELS[row.reason ?? ""] ?? row.reason ?? "—"}
+			</td>
+			<td
+				className="max-w-[280px] truncate py-1.5 pr-3 font-mono text-[11px] leading-[14px] text-(--color-text-3)"
+				title={row.detail ?? undefined}
+			>
+				{row.detail ?? "—"}
+			</td>
+			<td className="py-1.5 font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+				{prStateLabel(run)}
+			</td>
+		</tr>
+	);
+}
+
+function UnjudgedCard({ row, run }: { row: JudgeStoreRow; run: RunRow | undefined }) {
+	return (
+		<InventoryRowCard
+			tone="neutral"
+			title={row.runId}
+			titleTo={`/runs/${encodeURIComponent(row.runId)}`}
+			subline={`${run?.agentName ?? "—"} · pr ${prStateLabel(run)}`}
+			figures="—"
+			meta={
+				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-2)">
+					{UNJUDGED_REASON_LABELS[row.reason ?? ""] ?? row.reason ?? "—"}
+					{row.detail ? ` · ${row.detail}` : ""}
+				</span>
+			}
+		/>
+	);
+}
+
 export function TelemetryJudgeTab() {
 	const verdicts = useJudgeVerdicts();
 	const runsJoin = useRunsJoin();
@@ -245,12 +301,55 @@ export function TelemetryJudgeTab() {
 	const failing = state.rows
 		.filter(
 			(r) =>
-				r.kind === "unjudged" || (r.verdict?.assignments ?? []).some((a) => a.class !== "clean"),
+				r.kind === "verdict" && (r.verdict?.assignments ?? []).some((a) => a.class !== "clean"),
 		)
 		.sort((a, b) => b.id - a.id);
 
+	// Unjudged markers get their own section (warren-f282): these runs
+	// never reached a verdict, so there is no failing class to review —
+	// only the skip reason and the judge's recorded detail.
+	const unjudged = state.rows.filter((r) => r.kind === "unjudged").sort((a, b) => b.id - a.id);
+
+	const judgedCoverage = summary.judgedRate;
+
 	return (
 		<div className="flex flex-col gap-4">
+			{unjudged.length > 0 ? (
+				<TelemetryPanel title="Not judged" meta={`${String(unjudged.length)} RUNS · NO VERDICT`}>
+					<div className="hidden overflow-x-auto md:block">
+						<table className="w-full">
+							<thead>
+								<tr>
+									{UNJUDGED_COLS.map((h) => (
+										<th
+											key={h}
+											className="pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)"
+										>
+											{h}
+										</th>
+									))}
+								</tr>
+							</thead>
+							<tbody>
+								{unjudged.slice(0, FAILED_ROWS).map((row) => (
+									<UnjudgedRow key={row.id} row={row} run={runById.get(row.runId)} />
+								))}
+							</tbody>
+						</table>
+						{unjudged.length > FAILED_ROWS ? (
+							<p className="pt-2 font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+								showing {String(FAILED_ROWS)} of {String(unjudged.length)} unjudged runs
+							</p>
+						) : null}
+					</div>
+					<InventoryCardList>
+						{unjudged.slice(0, FAILED_ROWS).map((row) => (
+							<UnjudgedCard key={row.id} row={row} run={runById.get(row.runId)} />
+						))}
+					</InventoryCardList>
+				</TelemetryPanel>
+			) : null}
+
 			<TelemetryPanel title="Merged, then failed the judge" meta="REVIEW THESE FIRST">
 				{failing.length === 0 ? (
 					<p className="text-[12px] leading-4 text-(--color-text-3)">
@@ -290,7 +389,7 @@ export function TelemetryJudgeTab() {
 				)}
 			</TelemetryPanel>
 
-			<TelemetryPanel title="Judge verdicts" meta="RUBRIC V1 · 15 CLASSES">
+			<TelemetryPanel title="Judge verdicts" meta="NEWEST 500 ROWS · RUBRIC V1 · 15 CLASSES">
 				<div className="hidden flex-wrap items-center gap-4 md:flex">
 					<span className="font-mono text-[11px] leading-[14px] text-(--color-success)">
 						pass {String(summary.pass)}
@@ -300,6 +399,24 @@ export function TelemetryJudgeTab() {
 					</span>
 					<span className="font-mono text-[11px] leading-[14px] text-(--color-text-3)">
 						unjudged {String(summary.unjudged)}
+					</span>
+				</div>
+
+				<div className="hidden items-center gap-2 md:flex">
+					<span
+						className={
+							summary.passRate === null
+								? "font-mono text-[11px] leading-[14px] text-(--color-text-3)"
+								: judgedCoverage !== null && judgedCoverage < 0.8
+									? "font-mono text-[11px] leading-[14px] text-(--color-text-2)"
+									: "font-mono text-[11px] leading-[14px] text-(--color-success)"
+						}
+					>
+						pass rate{" "}
+						{summary.passRate === null ? "—" : `${String(Math.round(summary.passRate * 100))}%`}
+					</span>
+					<span className="font-mono text-[10px] leading-[14px] text-(--color-text-3)">
+						{summary.pass + summary.fail} of {String(state.rows.length)} judged
 					</span>
 				</div>
 
