@@ -134,7 +134,7 @@ function childStatusLine(
 	if (child.state === "failed") {
 		return {
 			text:
-				child.failureReason === null ? "failed" : formatPlanRunFailureReason(child.failureReason),
+				child.failureReason == null ? "failed" : formatPlanRunFailureReason(child.failureReason),
 			danger: true,
 		};
 	}
@@ -227,7 +227,9 @@ function ChildCard({
 			subline={child.runId !== null ? child.runId : "not dispatched"}
 			figures={childCardFigures(child, prLabel, isGate)}
 			meta={
-				status !== null ? <ChildCardMeta status={status} title={child.failureReason} /> : undefined
+				status !== null ? (
+					<ChildCardMeta status={status} title={child.failureReason ?? null} />
+				) : undefined
 			}
 		>
 			{child.state === "pr_open" && prUrl !== null ? (

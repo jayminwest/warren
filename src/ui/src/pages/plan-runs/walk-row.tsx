@@ -42,10 +42,10 @@ export function WalkRow({
 	const cap = planRun.maxCostUsd;
 	const capTitle =
 		cost === null
-			? cap === null
+			? cap == null
 				? "No per-child spend cap"
 				: `Per-child spend cap ${formatCostUsd(cap)}`
-			: cap === null
+			: cap == null
 				? `No cap · spent ${formatCostUsd(cost.sum)} (${cost.priced} of ${cost.total} child runs priced)`
 				: `Cap ${formatCostUsd(cap)} per child · spent ${formatCostUsd(cost.sum)} (${cost.priced} of ${cost.total} child runs priced)`;
 
@@ -60,7 +60,7 @@ export function WalkRow({
 					{planRun.id}
 				</Link>
 				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
-					by {planRun.dispatcherHandle}
+					by {planRun.dispatcherHandle ?? "—"}
 				</span>
 			</div>
 			<div className="w-[90px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-2)">
@@ -80,7 +80,7 @@ export function WalkRow({
 				<span className="truncate text-[11px] leading-3.5 text-(--color-text-2)">
 					{planRun.agentName}
 				</span>
-				{planRun.modelOverride !== null ? (
+				{planRun.modelOverride != null ? (
 					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
 						{planRun.modelOverride}
 					</span>
@@ -99,7 +99,7 @@ export function WalkRow({
 				className="w-[54px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)"
 				title={capTitle}
 			>
-				{cap === null ? "—" : formatCostUsd(cap)}
+				{cap == null ? "—" : formatCostUsd(cap)}
 			</div>
 			<ChildrenCell state={planRun.state} childRows={children} counts={counts} />
 		</div>

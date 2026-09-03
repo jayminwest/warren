@@ -67,15 +67,13 @@ function WalkCard({
 			figures={
 				<>
 					<CardFigure value={planRunElapsed(planRun, now)} />
-					<CardFigureNote
-						value={planRun.maxCostUsd === null ? "—" : `${formatCostUsd(planRun.maxCostUsd)} cap`}
-					/>
+					<CardFigureNote value={`${formatCostUsd(planRun.maxCostUsd)} cap`} />
 				</>
 			}
 			meta={
 				children === null
-					? `${relativeTime(planRun.startedAt)} · by ${planRun.dispatcherHandle} · …`
-					: `${relativeTime(planRun.startedAt)} · by ${planRun.dispatcherHandle} · ${childSummary(
+					? `${relativeTime(planRun.startedAt)} · by ${planRun.dispatcherHandle ?? "—"} · …`
+					: `${relativeTime(planRun.startedAt)} · by ${planRun.dispatcherHandle ?? "—"} · ${childSummary(
 							planRun.state,
 							children,
 						)}${counts !== null ? ` · ${counts.text}` : ""}`

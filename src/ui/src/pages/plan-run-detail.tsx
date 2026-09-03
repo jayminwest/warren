@@ -111,10 +111,11 @@ export function PlanRunDetailPage() {
 				) : null}
 			</header>
 
-			{planRun.state === "failed" && planRun.failureReason !== null ? (
+			{planRun.state === "failed" && planRun.failureReason != null ? (
 				<Alert variant="danger" title="Walk failed">
 					{/* Prose for the visitor, raw reason in the tooltip for the
-					    operator (warren-14fc / #641). */}
+					    operator (warren-14fc / #641). Redacted to undefined for
+					    spectators (warren-17d7). */}
 					<span title={planRun.failureReason}>
 						{formatPlanRunFailureReason(planRun.failureReason)}
 					</span>

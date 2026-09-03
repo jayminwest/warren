@@ -41,7 +41,8 @@ export function isBridgeStalled(events: RunEvent[]): boolean {
  * round to "$0.00"; anything ≥ $1 shows two decimals like a normal
  * currency display.
  */
-export function formatCostUsd(cost: number): string {
+export function formatCostUsd(cost: number | null | undefined): string {
+	if (cost == null) return "—";
 	if (cost >= 1) return `$${cost.toFixed(2)}`;
 	if (cost === 0) return "$0.00";
 	const minor = cost.toFixed(3);

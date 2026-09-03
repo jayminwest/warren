@@ -638,16 +638,17 @@ export interface PlanRunRow {
 	source: PlanRunSource;
 	projectId: string;
 	agentName: string;
-	promptTemplate: string;
+	/** Optional: redacted on the spectator projection (REDACTED_PLAN_RUN_FIELDS). */
+	promptTemplate?: string;
 	ref: string | null;
-	providerOverride: string | null;
-	modelOverride: string | null;
-	/** warren-a63d: per-child USD spend cap forwarded to every child dispatch. */
-	maxCostUsd: number | null;
-	dispatcherHandle: string;
+	providerOverride?: string | null;
+	modelOverride?: string | null;
+	/** warren-a63d per-child USD cap; optional: spectator-redacted field. */
+	maxCostUsd?: number | null;
+	dispatcherHandle?: string;
 	trigger: string;
 	state: PlanRunState;
-	failureReason: string | null;
+	failureReason?: string | null;
 	createdAt: string;
 	startedAt: string | null;
 	endedAt: string | null;
@@ -664,7 +665,8 @@ export interface PlanRunChildRow {
 	startedAt: string | null;
 	endedAt: string | null;
 	prMergedAt: string | null;
-	failureReason: string | null;
+	/** Optional: redacted on the spectator projection (REDACTED_PLAN_RUN_CHILD_FIELDS). */
+	failureReason?: string | null;
 	/** warren-6de9: automatic child re-dispatch budget consumed so far. */
 	retryCount: number;
 }

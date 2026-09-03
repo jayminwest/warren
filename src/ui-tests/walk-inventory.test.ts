@@ -92,4 +92,17 @@ describe("Plan runs walk inventory (warren-23b2 / pl-7e38 step 6)", () => {
 	test("no summary cards — the table is the product", () => {
 		expect(PAGE).not.toMatch(/<Card|CardTitle|KpiCard/);
 	});
+
+	test("warren-17d7: redacted spectator fields render as em-dash, never crash", () => {
+		// The spectator projection strips maxCostUsd, dispatcherHandle,
+		// modelOverride, providerOverride, and failureReason
+		// (REDACTED_PLAN_RUN_FIELDS), so these arrive undefined. The row
+		// must treat "absent" like "null": `== null`, `?? "—"`, never a
+		// `.toFixed()` on undefined.
+		expect(ROW).toMatch(/cap == null/);
+		expect(ROW).toMatch(/planRun\.dispatcherHandle \?\? "—"/);
+		expect(ROW).toMatch(/planRun\.modelOverride != null/);
+		// formatCostUsd accepts the widened null|undefined domain.
+		expect(ROW).toMatch(/from "@\/pages\/run-detail-format\.ts"/);
+	});
 });

@@ -38,22 +38,22 @@ export function DetailRail({
 						{
 							label: "model",
 							value: planRun.modelOverride ?? "—",
-							hint: planRun.modelOverride === null ? "agent default" : undefined,
+							hint: planRun.modelOverride == null ? "agent default" : undefined,
 						},
-						...(planRun.providerOverride !== null
+						...(planRun.providerOverride != null
 							? [{ label: "provider", value: planRun.providerOverride }]
 							: []),
 						{
 							label: "per-child cap",
-							value: planRun.maxCostUsd === null ? "—" : formatCostUsd(planRun.maxCostUsd),
+							value: formatCostUsd(planRun.maxCostUsd),
 							hint:
-								planRun.maxCostUsd === null
+								planRun.maxCostUsd == null
 									? "no cap declared"
 									: cost.priced === 0
 										? "no child cost recorded yet"
 										: `spent ${formatCostUsd(cost.sum)} across ${cost.priced} of ${cost.total} priced child runs`,
 						},
-						{ label: "dispatcher", value: planRun.dispatcherHandle },
+						{ label: "dispatcher", value: planRun.dispatcherHandle ?? "—" },
 						{ label: "trigger", value: planRun.trigger },
 						{ label: "started", value: formatTimestamp(planRun.startedAt) },
 						{ label: "ended", value: formatTimestamp(planRun.endedAt) },
@@ -61,11 +61,13 @@ export function DetailRail({
 				/>
 			</RailCard>
 
-			<RailCard title="Prompt template" meta={`${children.length} CHILDREN`}>
-				<pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-(--color-text-2)">
-					{planRun.promptTemplate}
-				</pre>
-			</RailCard>
+			{planRun.promptTemplate !== undefined ? (
+				<RailCard title="Prompt template" meta={`${children.length} CHILDREN`}>
+					<pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-(--color-text-2)">
+						{planRun.promptTemplate}
+					</pre>
+				</RailCard>
+			) : null}
 
 			<RailCard
 				title="Delivery"
