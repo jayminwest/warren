@@ -1,0 +1,91 @@
+# Postgres StatefulSet (warren-9f5a). In-cluster replacement candidate for
+# Supabase (RUNBOOK-K8S §1.5); the Supabase text stays until warren-a3ed.
+#
+# Image major MUST track the Supabase source (17 today) so `pg_restore` of the
+# cutover dump (warren-c4b7) is same-major.
+#
+# storageClassName is deliberately OMITTED on the volumeClaimTemplate: omitting
+# it binds the GKE default StorageClass (standard-rwo on Autopilot) and keeps
+# the manifest portable to kind/k3d local validation. Pinning a class here would
+# break one of the two every time.
+#
+# No spot selector: the DB is the one workload that must survive a node
+# preemption without a restore-from-backup dance.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-db
+            - name: PGDATA
+              # Subdirectory of the mounted volume: a lost+found at the volume
+              # root makes postgres refuse to initdb there.
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - warren
+                - -d
+                - warren
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        # storageClassName omitted — GKE default standard-rwo (see header).
+        resources:
+          requests:
+            storage: 10Gi

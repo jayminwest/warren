@@ -125,6 +125,27 @@ Supabase Postgres is the reference backend. Three of its gotchas each cost a dep
 - **Point at the session pooler host, not the direct host.** `db.<ref>.supabase.co` resolves over IPv6 only, and GKE Autopilot pods speak IPv4 by default. Use `aws-1-<region>.pooler.supabase.com:5432` with the tenant username form `postgres.<ref>`. The older `aws-0-` pooler generation answers "tenant not found".
 - **Single-quote the value in a shell.** The `&` in the query string forks the command otherwise.
 
+**In-cluster Postgres (opt-in Component, warren-9f5a).**
+Instead of Supabase, an operator can run Postgres inside the cluster by including the
+kustomize Component `deploy/k8s/components/postgres/` from their overlay (see
+`deploy/k8s/README.md` "Components"), which ships a StatefulSet on the postgres 17
+image (one replica, 250m/1Gi requests, 1/2Gi limits, 10Gi PVC with `pg_isready` readiness), a
+ClusterIP Service on 5432, and a placeholder Secret template (`postgres-credentials`, never apply it as-is).
+
+A NetworkPolicy admits ingress only from the warren control-plane pods
+in namespace `warren` (the policy denies run pods in `warren-runs`). The PVC omits `storageClassName`,
+so the GKE default `standard-rwo` binds.
+
+The image major must match the Supabase source (17 today) so the `pg_restore`
+cutover (below, warren-c4b7) is same-major. Point `warren-secrets/warren-db-url`
+at `postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode
+flags, because traffic never leaves the cluster network and the Supabase
+`sslmode=require&uselibpqcompat=true` trap does not apply.
+
+This path is not production-ready until the backup CronJob layer lands
+(`deploy/k8s/components/postgres/backup/`, warren-6db7). The Supabase text
+below stays the reference backend until warren-a3ed completes the cutover.
+
 **Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
 
 ### 1.6 Automated CI/CD (GitHub Actions)

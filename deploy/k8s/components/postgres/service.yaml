@@ -1,0 +1,20 @@
+# ClusterIP Service for the in-cluster Postgres (warren-9f5a).
+# The control plane reaches it at postgres.warren.svc:5432 — see the DSN note
+# in secret.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
