@@ -1,4 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { projectsApi } from "@/api/client.ts";
+import type { ProjectRow } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
 import { cn } from "@/lib/utils.ts";
 import { TelemetryBehaviorTab } from "@/pages/telemetry/behavior-tab.tsx";
@@ -42,7 +45,7 @@ export { TelemetryLoopTab } from "@/pages/telemetry/loop-tab.tsx";
  */
 
 const TABS = [
-	{ path: "loop", label: "THE LOOP" },
+	{ path: "loop", label: "DELIVERY" },
 	{ path: "behavior", label: "BEHAVIOR" },
 	{ path: "judge", label: "JUDGE" },
 	{ path: "economics", label: "ECONOMICS" },
@@ -53,6 +56,31 @@ function endsTodayLabel(): string {
 	return `ENDS TODAY · ${new Date()
 		.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 		.toUpperCase()}`;
+}
+
+/** The project <select> beside the range selector (warren-1548). */
+function ProjectSelector() {
+	const { projectId, setProjectId } = useTelemetryWindow();
+	const projects = useQuery({
+		queryKey: ["projects"],
+		queryFn: ({ signal }) => projectsApi.list(signal),
+	});
+	const rows: readonly ProjectRow[] = projects.data?.projects ?? [];
+	return (
+		<select
+			value={projectId ?? ""}
+			onChange={(e) => setProjectId(e.target.value === "" ? null : e.target.value)}
+			aria-label="Filter by project"
+			className="hidden h-8 rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 font-mono text-[11px] leading-[14px] text-(--color-text-2) md:block"
+		>
+			<option value="">all projects</option>
+			{rows.map((p) => (
+				<option key={p.id} value={p.id}>
+					{p.id}
+				</option>
+			))}
+		</select>
+	);
 }
 
 /** The 7D/14D/30D/90D segmented control from the artboards (md+ only). */
@@ -127,7 +155,7 @@ function TabNav() {
 }
 
 /**
- * The index child: desktop keeps the legacy "land on THE LOOP"
+ * The index child: desktop keeps the legacy "land on DELIVERY"
  * redirect; below md the stacked arm already renders everything, so
  * the index child stays empty (redirecting would bounce off the
  * page-level deep-link flatten).
@@ -158,11 +186,13 @@ export function TelemetryPage() {
 							Telemetry
 						</h1>
 						<p className="text-[13px] leading-[18px] text-(--color-text-2)">
-							Cost, behavior, and delivery joined across run records, forge PR state, and judge
-							verdicts.
+							Cost, behavior, and delivery across runs.
 						</p>
 					</div>
-					<RangeSelector />
+					<div className="flex items-center gap-3">
+						<ProjectSelector />
+						<RangeSelector />
+					</div>
 				</header>
 				<TelemetryMetricStrip />
 				<TabNav />
