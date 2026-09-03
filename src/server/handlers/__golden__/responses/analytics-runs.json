@@ -53,6 +53,32 @@
 				"priced": 2
 			}
 		},
+		"delivery": {
+			"branchPushToPrOpenMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			},
+			"prOpenToMergeMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			},
+			"dispatchToMergeMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			},
+			"endToMergeMs": {
+				"avg": null,
+				"median": null,
+				"p95": null,
+				"count": 0
+			}
+		},
 		"timeSeries": [
 			{
 				"key": "2026-08-07",
@@ -321,6 +347,11 @@
 					}
 				],
 				"confidence": "low"
+			},
+			"autonomy": {
+				"merged": 0,
+				"autonomous": 0,
+				"rate": null
 			}
 		},
 		"capHits": 2
