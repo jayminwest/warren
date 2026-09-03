@@ -418,14 +418,15 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// consumer sees the settled summary (the hook warren-df3e subscribes
 	// to). No-op unless a bus is installed with a subscriber.
 	const bus = lifecycleBus();
+	// warren-bc9c: persist the push as a real event row so delivery
+	// analytics can time the push -> PR-open gap; independent of the
+	// bus guard so the row exists even with no bus installed.
+	if (state.branchPushed && branch !== null) {
+		await emit("reap.branch_pushed", { branch, baseBranch, commitsAhead: state.commitsAhead });
+	}
 	if (bus !== undefined) {
 		if (state.branchPushed && branch !== null) {
-			bus.emitBranchPushed({
-				runId: run.id,
-				branch,
-				baseBranch,
-				commitsAhead: state.commitsAhead,
-			});
+			bus.emitBranchPushed({ runId: run.id, branch, baseBranch, commitsAhead: state.commitsAhead });
 		}
 		bus.emitPostReap({
 			runId: run.id,

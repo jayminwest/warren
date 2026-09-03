@@ -23,6 +23,11 @@ function run(
 		tokensCacheWrite: null,
 		startedAt: "2026-05-20T10:00:00.000Z",
 		endedAt: "2026-05-20T10:05:00.000Z",
+		parentRunId: null,
+		retryOf: null,
+		prMergedAt: null,
+		branchPushedAt: null,
+		prOpenedAt: null,
 		createdAt: Date.parse("2026-05-20T10:00:00.000Z"),
 		prState: null,
 	};

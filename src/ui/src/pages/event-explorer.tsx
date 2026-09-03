@@ -148,8 +148,7 @@ export function EventExplorerPage() {
 						{follow && <LiveBadge className="hidden md:inline-flex" />}
 					</div>
 					<p className="max-w-prose text-[13px] leading-[18px] text-(--color-text-2)">
-						Every structured event this instance emits, in sequence order. Filter it, follow it,
-						export it.
+						Search, filter, follow, and export run events.
 					</p>
 				</div>
 				<div className="flex items-center gap-2">

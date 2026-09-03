@@ -199,7 +199,7 @@ export function LoginPage() {
 						{admitted ? (
 							<>
 								<span className="text-[10px] leading-3 text-(--color-text-3)">
-									Already admitted to this instance —
+									Already signed in —
 								</span>
 								<Link
 									to="/operations"

@@ -97,6 +97,14 @@ describe("reapRun lifecycle emits (warren-4e74)", () => {
 		expect(pre?.payload).toMatchObject({ runId, projectId, outcome: "succeeded" });
 		const post = seen.find((env) => env.hook === "post_reap");
 		expect(post?.payload).toMatchObject({ runId, projectId, branchPushed: true, commitsAhead: 3 });
+
+		// warren-bc9c: the push is also persisted as a real event row so
+		// delivery analytics can read it back — not just the bus emit.
+		const pushEvents = await repos.events.listByKind("reap.branch_pushed");
+		expect(pushEvents.find((e) => e.runId === runId)).toMatchObject({
+			runId,
+			stream: "system",
+		});
 	});
 
 	test("no bus installed ⇒ reap still completes (emit is a no-op)", async () => {

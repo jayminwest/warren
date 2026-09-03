@@ -26,6 +26,11 @@ function row(overrides: Partial<RunMetricsRow> & { runId: string }): RunMetricsR
 		endedAt: "2026-05-01T00:10:00.000Z",
 		createdAt: null,
 		prState: null,
+		parentRunId: null,
+		retryOf: null,
+		prMergedAt: null,
+		branchPushedAt: null,
+		prOpenedAt: null,
 		...overrides,
 	};
 }
@@ -172,5 +177,37 @@ describe("buildRunOutcomes", () => {
 		expect(o.steering.steered.runs).toBe(1);
 		// Total priced cost (3 + 1) over the single merged PR.
 		expect(o.costPerMergedPr.overall.costPerMergedPrUsd).toBe(4);
+	});
+});
+
+describe("outcomes.autonomy (warren-bc9c)", () => {
+	test("counts merged runs that were unsteered and first attempts", () => {
+		const rows = [
+			row({ runId: "a", prState: "merged" }),
+			// steered: merged but not autonomous
+			row({ runId: "b", prState: "merged" }),
+			// retry: merged but not autonomous
+			row({ runId: "c", prState: "merged", retryOf: "x" }),
+			// continuation: merged but not autonomous
+			row({ runId: "d", prState: "merged", parentRunId: "p" }),
+			// unmerged: outside the denominator
+			row({ runId: "e", prState: "open" }),
+			row({ runId: "f", prState: null }),
+		];
+		const steering = [{ runId: "b", kind: "steer.sent" }];
+		const outcomes = buildRunOutcomes(rows, steering, buildRunMetrics(rows));
+		expect(outcomes.autonomy.merged).toBe(4);
+		expect(outcomes.autonomy.autonomous).toBe(1);
+		expect(outcomes.autonomy.rate).toBe(0.25);
+	});
+
+	test("rate is null when nothing merged", () => {
+		const outcomes = buildRunOutcomes(
+			[row({ runId: "a" })],
+			[],
+			buildRunMetrics([row({ runId: "a" })]),
+		);
+		expect(outcomes.autonomy.merged).toBe(0);
+		expect(outcomes.autonomy.rate).toBeNull();
 	});
 });

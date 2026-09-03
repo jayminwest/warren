@@ -175,10 +175,7 @@ function InstanceSection({ facts }: { facts: InstanceFactsResponse | undefined }
 	const dbBackend = facts?.dbBackend ? facts.dbBackend : "—";
 
 	return (
-		<Section
-			title="Instance"
-			sub="Identity of this control plane. The runtime provider resolves once at boot."
-		>
+		<Section title="Instance" sub="Server identity and runtime provider.">
 			<div className="grid w-full grid-cols-[1fr_96px] gap-2.5 sm:flex sm:flex-row sm:gap-3">
 				<FactField
 					label="Runtime provider"
@@ -203,10 +200,7 @@ function InstanceSection({ facts }: { facts: InstanceFactsResponse | undefined }
 function AuthenticationSection({ facts }: { facts: InstanceFactsResponse | undefined }) {
 	const authMode = facts?.authMode;
 	return (
-		<Section
-			title="Authentication"
-			sub="A stale or malformed token returns 401. It never degrades to the public view."
-		>
+		<Section title="Authentication" sub="How access is authenticated.">
 			<div className="flex flex-col gap-[5px]">
 				<span className="text-[10px] leading-3 font-medium text-(--color-text-2)">Auth mode</span>
 				{authMode ? (
@@ -222,11 +216,7 @@ function AuthenticationSection({ facts }: { facts: InstanceFactsResponse | undef
 function AdmissionSection({ facts }: { facts: InstanceFactsResponse | undefined }) {
 	const admission = facts?.admission ?? null;
 	return (
-		<Section
-			title="Admission"
-			sub="Over a cap the gate rejects the dispatch with 429. Zero disables a cap."
-			last
-		>
+		<Section title="Admission" sub="Concurrency and spend caps." last>
 			{admission ? (
 				<div className="grid w-full grid-cols-2 gap-2.5 sm:flex sm:flex-row sm:gap-3">
 					<FactField
@@ -336,7 +326,7 @@ export function InstancePage() {
 					Instance
 				</h1>
 				<p className="max-w-prose text-[11px] leading-[14px] text-(--color-text-2) md:text-[13px] md:leading-[18px]">
-					Boot-resolved configuration, read-only over the API. Change it in env or a project&apos;s
+					Server settings, read-only. Configure via environment or a project&apos;s
 					.warren/config.yaml.
 				</p>
 			</header>

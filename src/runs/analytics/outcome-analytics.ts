@@ -116,6 +116,23 @@ export interface CostPerMergedPr {
 export interface RunOutcomes {
 	readonly steering: SteeringOutcomeComparison;
 	readonly costPerMergedPr: CostPerMergedPr;
+	/**
+	 * Autonomy rollup (warren-bc9c): how many of the merged runs needed no
+	 * human in the loop — no steering, no infra-retry, no continuation.
+	 * "No human commit" is not observable through the Forge seam and is
+	 * deliberately out of scope.
+	 */
+	autonomy: AutonomyRollup;
+}
+
+/** Merged count and the unsteered, first-attempt subset of it. */
+export interface AutonomyRollup {
+	/** rows whose `prState` is `merged` — the rate's denominator. */
+	readonly merged: number;
+	/** merged rows that were never steered and are first attempts. */
+	readonly autonomous: number;
+	/** autonomous / merged, or null when nothing merged. */
+	rate: number | null;
 }
 
 /** Sample size at or above which a denominator earns "medium" confidence. */
@@ -234,6 +251,31 @@ export function buildCostPerMergedPr(metrics: RunMetrics): CostPerMergedPr {
 }
 
 /**
+ * Autonomy rollup (warren-bc9c): of the runs that merged, how many were
+ * never steered (`steer.sent` trace) and were first attempts — no
+ * `retry_of` back-link and no `parent_run_id` continuation. O(rows + events).
+ */
+function buildAutonomy(
+	rows: readonly RunMetricsRow[],
+	steeringEvents: readonly SteeringOutcomeEventRow[],
+): AutonomyRollup {
+	const steeredIds = new Set<string>();
+	for (const e of steeringEvents) {
+		if (e.kind === STEER_SENT_KIND) steeredIds.add(e.runId);
+	}
+	let merged = 0;
+	let autonomous = 0;
+	for (const r of rows) {
+		if (r.prState !== "merged") continue;
+		merged += 1;
+		if (!steeredIds.has(r.runId) && r.retryOf === null && r.parentRunId === null) {
+			autonomous += 1;
+		}
+	}
+	return { merged, autonomous, rate: merged === 0 ? null : autonomous / merged };
+}
+
+/**
  * Build the full outcome-joined rollup for an analytics window from the
  * flat run rows, their steering event trace, and the run-metrics rollup.
  */
@@ -245,5 +287,6 @@ export function buildRunOutcomes(
 	return {
 		steering: buildSteeringOutcomeComparison(rows, steeringEvents),
 		costPerMergedPr: buildCostPerMergedPr(metrics),
+		autonomy: buildAutonomy(rows, steeringEvents),
 	};
 }

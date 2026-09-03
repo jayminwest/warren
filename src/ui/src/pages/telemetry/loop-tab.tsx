@@ -1,4 +1,4 @@
-import type { RunAnalyticsTotals, RunDayBucket } from "@/api/client.ts";
+import type { RunAnalyticsTotals, RunDayBucket, RunDeliveryMetrics } from "@/api/client.ts";
 import { cn } from "@/lib/utils.ts";
 import { formatDuration } from "@/pages/telemetry/format.ts";
 import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
@@ -9,9 +9,10 @@ import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 /**
  * Telemetry · the Loop (warren-7197 / pl-7e38 step 14): how runs end,
  * and where the time inside them goes. Everything comes from
- * `GET /analytics/runs` over the shared window; the stage breakdown
- * beyond queue wait and run duration has no API surface yet, so those
- * stages render as quiet "—" rows rather than invented figures.
+ * `GET /analytics/runs` over the shared window. The stage breakdown reads
+ * the `totals` queue-wait/duration medians plus the `delivery` timing block
+ * (warren-bc9c); stages without a computed figure render as quiet "—" rows
+ * rather than invented numbers.
  */
 
 /** One stacked column: succeeded (green) / cancelled (neutral) / failed (red). */
@@ -115,17 +116,30 @@ function StageRow({
 	);
 }
 
-/** The stage rows: known medians from the totals, quiet rows elsewhere. */
-function buildStages(totals: RunAnalyticsTotals | undefined) {
+/** One stage row in the "where the time goes" panel. */
+interface StageSpec {
+	label: string;
+	medianMs: number | null;
+	highlight: boolean;
+}
+
+/**
+ * The stage rows: known medians from the totals + the delivery block
+ * (warren-bc9c), quiet rows elsewhere.
+ */
+function buildStages(
+	totals: RunAnalyticsTotals | undefined,
+	delivery: RunDeliveryMetrics | undefined,
+): StageSpec[] {
 	const queueWait = totals?.queueWaitMs.median ?? null;
 	const duration = totals?.durationMs.median ?? null;
+	const pushToPrOpen = delivery?.branchPushToPrOpenMs.median ?? null;
+	const prOpenToMerge = delivery?.prOpenToMergeMs.median ?? null;
 	return [
 		{ label: "queue wait", medianMs: queueWait, highlight: (queueWait ?? 0) > (duration ?? 0) },
 		{ label: "agent work", medianMs: duration, highlight: (duration ?? 0) >= (queueWait ?? 0) },
-		{ label: "branch push", medianMs: null, highlight: false },
-		{ label: "PR open", medianMs: null, highlight: false },
-		{ label: "review wait", medianMs: null, highlight: false },
-		{ label: "merge", medianMs: null, highlight: false },
+		{ label: "branch push → PR open", medianMs: pushToPrOpen, highlight: false },
+		{ label: "PR open → merge", medianMs: prOpenToMerge, highlight: false },
 	];
 }
 
@@ -235,7 +249,7 @@ export function TelemetryLoopTab() {
 	const { runs, days } = useTelemetryWindow();
 	const isDesktop = useIsDesktop();
 	const totals = runs.data?.totals;
-	const stages = buildStages(totals);
+	const stages = buildStages(totals, runs.data?.delivery);
 	const knownMax = stages.reduce((m, s) => Math.max(m, s.medianMs ?? 0), 0);
 	// Position among known-median rows, for the below-md fill ramp.
 	const knownIndices: number[] = [];

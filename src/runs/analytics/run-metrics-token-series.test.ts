@@ -20,6 +20,11 @@ const ROW_DEFAULTS: Omit<RunMetricsRow, "runId"> = {
 	endedAt: null,
 	createdAt: null,
 	prState: null,
+	parentRunId: null,
+	retryOf: null,
+	prMergedAt: null,
+	branchPushedAt: null,
+	prOpenedAt: null,
 };
 
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
