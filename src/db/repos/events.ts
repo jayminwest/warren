@@ -239,6 +239,35 @@ export class EventsRepo {
 	}
 
 	/**
+	 * Fetch the newest event per (runId, kind) pair for the given runs and
+	 * kinds. Used by the `GET /analytics/runs` handler (warren-bc9c) to pull
+	 * the `reap.branch_pushed` / `reap.pr_opened` timestamps that feed the
+	 * delivery block — the same shape `listSteeringEventsForRuns` returns,
+	 * so callers can pass rows straight into their extractors.
+	 *
+	 * Ordered by (runId, kind, seq). Empty `runIds` or `kinds` short-circuits
+	 * without a DB hit.
+	 */
+	async listEventsByKindsForRuns(
+		runIds: readonly string[],
+		kinds: readonly string[],
+	): Promise<EventRow[]> {
+		if (runIds.length === 0 || kinds.length === 0) return [];
+		return this.adapter.pickAll(
+			this.db
+				.select()
+				.from(this.events)
+				.where(
+					and(
+						inArray(this.events.runId, runIds as string[]),
+						inArray(this.events.kind, kinds as string[]),
+					),
+				)
+				.orderBy(asc(this.events.runId), asc(this.events.kind), asc(this.events.sandboxEventSeq)),
+		);
+	}
+
+	/**
 	 * Attempt history for one `payload_json` string key across every event of
 	 * a kind (warren-55cf). Returns the total matching row count and the
 	 * newest `ts`, both computed in SQL, so the healer's max-retries and

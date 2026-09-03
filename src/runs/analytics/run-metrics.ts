@@ -35,11 +35,14 @@ import {
 	type FailureBucket,
 	type SeedContextBucket,
 } from "./run-metrics-breakdowns.ts";
+import { computeDelivery, type RunDeliveryMetrics } from "./run-metrics-delivery.ts";
 import { buildTokenDimSeries, buildTokenTimeSeries } from "./run-metrics-token-series.ts";
+import { type StatSummary, summarize } from "./stat-summary.ts";
 
 // The bucket types live in `run-metrics-breakdowns.ts` (file-size split);
 // re-export so existing consumers keep importing from this module.
 export type { FailureBucket, SeedContextBucket } from "./run-metrics-breakdowns.ts";
+export type { StatSummary } from "./stat-summary.ts";
 
 /**
  * Token-kind breakdown for a set of runs. All four counters plus their sum.
@@ -89,15 +92,23 @@ export interface RunMetricsRow {
 	 * denominators, never counted as a failure to land.
 	 */
 	readonly prState: PullRequestLifecycle | null;
-}
-
-/** avg/median/p95 over the non-null sample, or all-null when the sample is empty. */
-export interface StatSummary {
-	readonly avg: number | null;
-	readonly median: number | null;
-	readonly p95: number | null;
-	/** number of rows that contributed a non-null value. */
-	readonly count: number;
+	/**
+	 * Continuation back-link (warren-4b11) — the run this row continues.
+	 * Non-null rows are continuations, not first attempts (warren-bc9c).
+	 */
+	readonly parentRunId: string | null;
+	/** Infra-lost auto-retry back-link (warren-4af7) — non-null means a retry. */
+	readonly retryOf: string | null;
+	/** The forge-reported merge instant, or null when the PR has not merged. */
+	readonly prMergedAt: string | null;
+	/**
+	 * The persisted `reap.branch_pushed` event ts (warren-bc9c), or null
+	 * when no push event exists for the run (historical rows, cancelled
+	 * runs, runs whose push never completed).
+	 */
+	readonly branchPushedAt: string | null;
+	/** The persisted `reap.pr_opened` event ts (warren-bc9c), or null. */
+	readonly prOpenedAt: string | null;
 }
 
 export interface RunTotals {
@@ -183,6 +194,13 @@ export interface DimensionTokenSeries {
 
 export interface RunMetrics {
 	readonly totals: RunTotals;
+	/**
+	 * Delivery-timing rollup (warren-bc9c): the gaps between dispatch,
+	 * branch push, PR open, and merge over the runs where both endpoints
+	 * of each gap are known. Null endpoints are excluded from each sample,
+	 * never counted as zero.
+	 */
+	readonly delivery: RunDeliveryMetrics;
 	readonly timeSeries: readonly RunDayBucket[];
 	readonly byAgent: readonly RunGroupBucket[];
 	readonly byModel: readonly RunGroupBucket[];
@@ -230,27 +248,6 @@ export function queueWaitMsOf(row: RunMetricsRow): number | null {
 	if (Number.isNaN(start)) return null;
 	const delta = start - row.createdAt;
 	return delta < 0 ? null : delta;
-}
-
-function summarize(values: readonly number[]): StatSummary {
-	if (values.length === 0) return { avg: null, median: null, p95: null, count: 0 };
-	const sorted = [...values].sort((a, b) => a - b);
-	let sum = 0;
-	for (const v of sorted) sum += v;
-	return {
-		avg: sum / sorted.length,
-		median: percentile(sorted, 50),
-		p95: percentile(sorted, 95),
-		count: sorted.length,
-	};
-}
-
-/** Nearest-rank percentile over a pre-sorted (ascending) array. */
-function percentile(sorted: readonly number[], p: number): number | null {
-	if (sorted.length === 0) return null;
-	const rank = Math.ceil((p / 100) * sorted.length);
-	const idx = Math.min(sorted.length - 1, Math.max(0, rank - 1));
-	return sorted[idx] ?? null;
 }
 
 export function tokenBreakdownOf(row: RunMetricsRow): TokenBreakdown {
@@ -476,6 +473,7 @@ function buildGroup(rows: readonly RunMetricsRow[], dim: GroupDimension): RunGro
 export function buildRunMetrics(rows: readonly RunMetricsRow[]): RunMetrics {
 	return {
 		totals: computeTotals(rows),
+		delivery: computeDelivery(rows),
 		timeSeries: buildTimeSeries(rows),
 		byAgent: buildGroup(rows, "agent"),
 		byModel: buildGroup(rows, "model"),

@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { formatDuration } from "@/pages/telemetry/format.ts";
 import { summarizeJudgeVerdicts, useJudgeVerdicts } from "@/pages/telemetry/judge-verdicts.ts";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
@@ -8,8 +9,7 @@ import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
  * tab content, from the Paper artboards. Cost per merged PR comes from
  * `GET /analytics/runs` outcomes (spectator-redacted → "—"); judge pass
  * comes from the judge extension's verdict export (absent → "—").
- * Autonomy and issue→merge have no API surface yet — quiet placeholders,
- * never fabricated numbers.
+ * Autonomy and dispatch→merge come from `GET /analytics/runs` (warren-bc9c).
  */
 function MetricCell({
 	label,
@@ -56,6 +56,54 @@ function MetricCell({
 				{note}
 			</span>
 		</div>
+	);
+}
+
+interface AutonomyShape {
+	merged: number;
+	autonomous: number;
+	rate: number | null;
+}
+
+function autonomyCell(autonomy: AutonomyShape | undefined) {
+	return (
+		<MetricCell
+			label="AUTONOMY"
+			value={
+				autonomy === undefined || autonomy.rate === null
+					? "—"
+					: `${Math.round(autonomy.rate * 100)}%`
+			}
+			note={
+				autonomy === undefined
+					? "loading run outcomes…"
+					: autonomy.rate === null
+						? "no merged runs in this window"
+						: `${String(autonomy.autonomous)} of ${String(autonomy.merged)} merges unsteered, first attempt`
+			}
+			title="GET /analytics/runs outcomes.autonomy — merged runs with no steering and no retry/continuation"
+			mobileBottom
+			hasRightBorder
+		/>
+	);
+}
+
+function dispatchMergeCell(medianMs: number | undefined | null) {
+	return (
+		<MetricCell
+			label="DISPATCH → MERGE"
+			value={medianMs == null ? "—" : formatDuration(medianMs)}
+			note={
+				medianMs === undefined
+					? "loading delivery timings…"
+					: medianMs === null
+						? "no merged runs in this window"
+						: "median dispatch-to-merge lead time"
+			}
+			title="GET /analytics/runs delivery.dispatchToMergeMs (median)"
+			mobileRight
+			hasRightBorder
+		/>
 	);
 }
 
@@ -118,22 +166,8 @@ export function TelemetryMetricStrip() {
 				mobileRight
 				hasRightBorder
 			/>
-			<MetricCell
-				label="AUTONOMY"
-				value="—"
-				note="merged with no steer, no re-run, no human commit"
-				title="No API surface computes this figure yet"
-				mobileBottom
-				hasRightBorder
-			/>
-			<MetricCell
-				label="ISSUE → MERGE"
-				value="—"
-				note="median issue-to-merge lead time"
-				title="No API surface computes this figure yet"
-				mobileRight
-				hasRightBorder
-			/>
+			{autonomyCell(outcomes?.autonomy)}
+			{dispatchMergeCell(runs.data?.delivery.dispatchToMergeMs.median)}
 			<MetricCell
 				label="JUDGE PASS"
 				value={judgeCell.value}

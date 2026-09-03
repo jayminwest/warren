@@ -191,6 +191,52 @@ describe("GET /analytics/runs", () => {
 		expect(claude?.costPerMergedPrUsd).toBe(4);
 	});
 
+	test("delivery block + outcomes.autonomy: timings from push/PR events and merge facts (warren-bc9c)", async () => {
+		const runId = await seedRun(repos, {
+			projectId,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "sonnet",
+			state: "succeeded",
+			startedAt: "2026-05-20T10:00:00.000Z",
+			endedAt: "2026-05-20T10:05:00.000Z",
+		});
+		// setRunPrState stamps pr_merged_at = 2026-05-21T00:00:00.000Z on merge.
+		await setRunPrState(repos, runId, "merged");
+		await repos.events.append({
+			runId,
+			sandboxEventSeq: 1,
+			ts: "2026-05-20T10:05:10.000Z",
+			kind: "reap.branch_pushed",
+			payload: { branch: "warren/x" },
+		});
+		await repos.events.append({
+			runId,
+			sandboxEventSeq: 2,
+			ts: "2026-05-20T10:06:10.000Z",
+			kind: "reap.pr_opened",
+			payload: { prUrl: "https://github.com/o/r/pull/1" },
+		});
+		start();
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs?${WINDOW}`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			delivery: {
+				branchPushToPrOpenMs: { median: number | null; count: number };
+				prOpenToMergeMs: { median: number | null; count: number };
+				dispatchToMergeMs: { median: number | null; count: number };
+				endToMergeMs: { median: number | null; count: number };
+			};
+			outcomes: { autonomy: { merged: number; autonomous: number; rate: number | null } };
+		};
+		expect(body.delivery.branchPushToPrOpenMs).toMatchObject({ median: 60_000, count: 1 });
+		expect(body.delivery.prOpenToMergeMs.count).toBe(1);
+		expect(body.delivery.dispatchToMergeMs.count).toBe(1);
+		expect(body.delivery.endToMergeMs.count).toBe(1);
+		// merged, never steered, first attempt.
+		expect(body.outcomes.autonomy).toMatchObject({ merged: 1, autonomous: 1, rate: 1 });
+	});
+
 	test("honors ?projectId and rejects malformed ?to (warren-0692)", async () => {
 		start();
 		const bad = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs?to=not-a-date`);

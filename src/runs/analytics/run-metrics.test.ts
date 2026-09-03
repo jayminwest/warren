@@ -30,6 +30,11 @@ const ROW_DEFAULTS: Omit<RunMetricsRow, "runId"> = {
 	endedAt: null,
 	createdAt: null,
 	prState: null,
+	parentRunId: null,
+	retryOf: null,
+	prMergedAt: null,
+	branchPushedAt: null,
+	prOpenedAt: null,
 };
 
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
@@ -455,5 +460,39 @@ describe("buildRunMetrics", () => {
 			expect(bucket.prStateKnown).toBe(0);
 			expect(bucket.mergedPrRate).toBeNull();
 		}
+	});
+});
+
+describe("buildRunMetrics delivery block (warren-bc9c)", () => {
+	it("summarizes the four delivery gaps over rows with known endpoints", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				startedAt: "2026-05-01T00:00:10.000Z",
+				endedAt: "2026-05-01T00:20:00.000Z",
+				createdAt: 1_775_000_000_000, // well before the delivery timestamps
+				branchPushedAt: "2026-05-01T00:20:10.000Z",
+				prOpenedAt: "2026-05-01T00:21:10.000Z",
+				prMergedAt: "2026-05-01T00:31:10.000Z",
+				prState: "merged",
+			}),
+			row({ runId: "b" }),
+		]);
+		expect(m.delivery.branchPushToPrOpenMs.median).toBe(60_000);
+		expect(m.delivery.prOpenToMergeMs.median).toBe(600_000);
+		expect(m.delivery.endToMergeMs.median).toBe(670_000);
+		expect(m.delivery.dispatchToMergeMs.count).toBe(1);
+	});
+
+	it("excludes unknown endpoints from each sample instead of counting zero", () => {
+		const m = buildRunMetrics([
+			row({ runId: "a", prMergedAt: "2026-05-01T00:31:10.000Z", prState: "merged" }),
+			row({ runId: "b", branchPushedAt: "2026-05-01T00:20:10.000Z" }),
+		]);
+		expect(m.delivery.prOpenToMergeMs.count).toBe(0);
+		expect(m.delivery.prOpenToMergeMs.median).toBeNull();
+		expect(m.delivery.branchPushToPrOpenMs.count).toBe(0);
+		expect(m.delivery.dispatchToMergeMs.count).toBe(0);
+		expect(m.delivery.endToMergeMs.count).toBe(0);
 	});
 });

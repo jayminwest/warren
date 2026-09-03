@@ -14,7 +14,7 @@
 
 import type { RuntimeId } from "../../../core/wire.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
-import type { RunRow } from "../../../runs/index.ts";
+import type { EventRow, RunRow } from "../../../runs/index.ts";
 import {
 	buildRunMetrics,
 	buildRunOutcomes,
@@ -103,7 +103,18 @@ export function parseAnalyticsWindow(ctx: { url: URL }): {
  * genuinely declares no provider/model stay null, group under NONE_KEY
  * ("unknown"), and are excluded from the real buckets' denominators.
  */
-export function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
+export function toMetricsRows(
+	rows: readonly RunRow[],
+	deliveryEvents: readonly EventRow[] = [],
+): RunMetricsRow[] {
+	// warren-bc9c: newest event ts per (runId, kind) for the two delivery
+	// markers; ordered scan makes the last write the newest.
+	const branchPushedAt = new Map<string, string>();
+	const prOpenedAt = new Map<string, string>();
+	for (const e of deliveryEvents) {
+		if (e.kind === "reap.branch_pushed") branchPushedAt.set(e.runId, e.ts);
+		else if (e.kind === "reap.pr_opened") prOpenedAt.set(e.runId, e.ts);
+	}
 	return rows.map((r) => {
 		const fallback =
 			r.provider === null || r.model === null ? extractProviderModel(r.renderedAgentJson) : {};
@@ -124,12 +135,20 @@ export function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 			startedAt: r.startedAt,
 			endedAt: r.endedAt,
 			createdAt: r.createdAt,
-			// warren-bd57: the merge-watcher column feeds landed-work rates
+			// warren-bd57: the merge-watcher columns feed landed-work rates
 			// directly — no rendered_agent_json re-parse in this path.
 			prState: r.prState,
+			// warren-bc9c: autonomy + delivery inputs.
+			parentRunId: r.parentRunId,
+			retryOf: r.retryOf,
+			prMergedAt: r.prMergedAt,
+			branchPushedAt: branchPushedAt.get(r.id) ?? null,
+			prOpenedAt: prOpenedAt.get(r.id) ?? null,
 		};
 	});
 }
+
+const ANALYTICS_DELIVERY_EVENT_KINDS = ["reap.branch_pushed", "reap.pr_opened"] as const;
 
 /**
  * Fetch + hydrate the `runs` rows for an analytics window and compute the
@@ -145,7 +164,13 @@ export async function loadRunMetrics(
 	const rowsRaw = await deps.repos.runs.listForAnalytics(filter);
 	// Hydrate so terminal runs with bridge-died usage still count.
 	const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events, deps.repos.runs);
-	return { rows, metrics: buildRunMetrics(toMetricsRows(rows)) };
+	// warren-bc9c: the persisted `reap.branch_pushed` / `reap.pr_opened`
+	// timestamps feed the delivery block; one capped query for the window.
+	const deliveryEvents = await deps.repos.events.listEventsByKindsForRuns(
+		rows.map((r) => r.id),
+		ANALYTICS_DELIVERY_EVENT_KINDS,
+	);
+	return { rows, metrics: buildRunMetrics(toMetricsRows(rows, deliveryEvents)) };
 }
 
 /**
@@ -256,6 +281,9 @@ export const PUBLIC_RUN_ANALYTICS_FIELDS = [
 	"tokenByModelSeries",
 	"tokenByProviderSeries",
 	"tokens",
+	// warren-bc9c: the delivery timing block — medians over push/PR/merge
+	// gaps, same posture as queueWaitMs (load shape, not a private fact).
+	"delivery",
 	// warren-be04: rates + counts are public (same call as the warren-bd57
 	// landed-work fields); the cost halves inside are redacted one level
 	// down — see PUBLIC_COST_PER_MERGED_PR_*_FIELDS below.
@@ -411,6 +439,7 @@ function projectRunAnalytics(
 	const costPerMergedPr = body.outcomes.costPerMergedPr;
 	const outcomes: PublicRunOutcomes = {
 		steering: body.outcomes.steering,
+		autonomy: body.outcomes.autonomy,
 		costPerMergedPr: {
 			overall: pickFields(costPerMergedPr.overall, PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS),
 			byAgent: costBuckets(costPerMergedPr.byAgent),

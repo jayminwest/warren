@@ -381,6 +381,11 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		);
 		expect(outcomes.costPerMergedPr.overall).not.toHaveProperty("costUsd");
 		expect(outcomes.costPerMergedPr.overall.prsMerged).toBe(1);
+		// warren-bc9c: delivery timings (public like queueWaitMs) and the
+		// autonomy rollup (counts + a rate) survive the projection.
+		const delivery = body.delivery as { branchPushToPrOpenMs: unknown };
+		expect(delivery.branchPushToPrOpenMs).toBeDefined();
+		expect((body.outcomes as { autonomy: { merged: number } }).autonomy.merged).toBe(1);
 		for (const bucket of outcomes.costPerMergedPr.byAgent) {
 			expect(Object.keys(bucket).sort()).toEqual(
 				[...PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS].sort(),
