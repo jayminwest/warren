@@ -427,7 +427,7 @@ jobs:
                         - name: warren
                           env:
                             - name: ${name}
-                              value: ${value}
+                              value: "${value}"
           EOF
           done
           echo "----- rendered gke-live kustomization -----"
