@@ -1,7 +1,13 @@
 import { Fragment } from "react";
 import type { RunEvent, RunRow } from "@/api/types.ts";
 import { cn } from "@/lib/utils.ts";
+import { formatElapsedMs } from "@/pages/runs/runs-format.ts";
 import { cellClass, derivePhases, dotClass, type PhaseCellData } from "./phase-rail-logic.ts";
+
+/** Duration when the stage's span is observable, else the wall-clock/pending sub. */
+function cellSub(cell: PhaseCellData): string {
+	return cell.durationMs !== null ? formatElapsedMs(cell.durationMs) : cell.sub;
+}
 
 function PhaseCell({ cell, first, last }: { cell: PhaseCellData; first: boolean; last: boolean }) {
 	return (
@@ -28,7 +34,7 @@ function PhaseCell({ cell, first, last }: { cell: PhaseCellData; first: boolean;
 				</span>
 			</span>
 			<span className="pl-[13px] font-mono text-[9px] leading-3 text-(--color-text-3)">
-				{cell.sub}
+				{cellSub(cell)}
 			</span>
 		</div>
 	);

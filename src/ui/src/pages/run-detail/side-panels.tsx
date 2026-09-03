@@ -3,7 +3,8 @@ import type { RunRow } from "@/api/types.ts";
 import { CostBasisNote } from "@/components/cost-basis-note.tsx";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd, formatTokens } from "@/pages/run-detail-format.ts";
-import { formatDuration, shortSha } from "@/pages/runs/runs-format.ts";
+import { shortSha } from "@/pages/runs/runs-format.ts";
+import { formatRunElapsed } from "./run-detail-format.ts";
 
 /**
  * The Direction C run-detail side column's fact cards (warren-8c85 /
@@ -149,7 +150,7 @@ export function RunDefinitionPanel({ run, projectName }: { run: RunRow; projectN
 			<MetaRow label="trigger">{run.trigger}</MetaRow>
 			<MetaRow label="tracker">{run.seedId ?? "no tracker item"}</MetaRow>
 			<MetaRow label="started">{formatTimestamp(run.startedAt)}</MetaRow>
-			<MetaRow label="elapsed">{formatDuration(run, Date.now())}</MetaRow>
+			<MetaRow label="elapsed">{formatRunElapsed(run, Date.now())}</MetaRow>
 			{run.parentRunId !== null ? (
 				<MetaRow label={run.cloneKind === "replicate" ? "re-run of" : "continued from"}>
 					{run.parentRunId}
