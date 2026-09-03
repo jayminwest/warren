@@ -118,35 +118,49 @@ Nothing in code *forces* Postgres under `k8s` — `run_inbox` has both a sqlite 
 But SQLite on a `ReadWriteOnce` PVC is a single-replica trap.
 Set `WARREN_DB_URL=postgres://...` deliberately.
 Agent run pods never get the DB URL — only the control plane does (§3, blast-radius minimization).
+Run pods talk to warren over HTTP and never to the DB, so a database cutover does not touch them.
 
-Supabase Postgres is the reference backend. Three of its gotchas each cost a deploy session (warren-4e36):
+**In-cluster Postgres (opt-in Component, warren-9f5a).**
+The kustomize Component `deploy/k8s/components/postgres/` runs Postgres inside the cluster: a
+StatefulSet on the postgres 17 image (one replica, 250m/1Gi requests, 1/2Gi limits, 10Gi PVC with
+`pg_isready` readiness), a ClusterIP Service on 5432, and a placeholder Secret template
+(`postgres-credentials`, never apply it as-is).
+
+A NetworkPolicy admits ingress only from the warren control-plane pods in namespace `warren`.
+Run pods in `warren-runs` stay denied.
+The PVC omits `storageClassName`, so the GKE default `standard-rwo` binds.
+
+The image major must match the Supabase source (17 today) so the cutover `pg_restore` is same-major.
+This path is not production-ready until the backup CronJob layer lands
+(`deploy/k8s/components/postgres/backup/`, warren-6db7).
+
+**Supabase rollback anchor (warren-4e36).**
+Supabase Postgres is the reference backend until warren-a3ed completes the cutover, and it is the
+rollback target for the whole cutover window (7 days).
+Three of its gotchas each cost a deploy session:
 
 - **The URL must carry `sslmode=require&uselibpqcompat=true`.** Without the compat flag, `pg-connection-string` reads `sslmode=require` as verify-full and rejects the pooler certificate chain with `SELF_SIGNED_CERT_IN_CHAIN`.
 - **Point at the session pooler host, not the direct host.** `db.<ref>.supabase.co` resolves over IPv6 only, and GKE Autopilot pods speak IPv4 by default. Use `aws-1-<region>.pooler.supabase.com:5432` with the tenant username form `postgres.<ref>`. The older `aws-0-` pooler generation answers "tenant not found".
 - **Single-quote the value in a shell.** The `&` in the query string forks the command otherwise.
 
-**In-cluster Postgres (opt-in Component, warren-9f5a).**
-Instead of Supabase, an operator can run Postgres inside the cluster by including the
-kustomize Component `deploy/k8s/components/postgres/` from their overlay (see
-`deploy/k8s/README.md` "Components"), which ships a StatefulSet on the postgres 17
-image (one replica, 250m/1Gi requests, 1/2Gi limits, 10Gi PVC with `pg_isready` readiness), a
-ClusterIP Service on 5432, and a placeholder Secret template (`postgres-credentials`, never apply it as-is).
-
-A NetworkPolicy admits ingress only from the warren control-plane pods
-in namespace `warren` (the policy denies run pods in `warren-runs`). The PVC omits `storageClassName`,
-so the GKE default `standard-rwo` binds.
-
-The image major must match the Supabase source (17 today) so the `pg_restore`
-cutover (below, warren-c4b7) is same-major. Point `warren-secrets/warren-db-url`
-at `postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode
-flags, because traffic never leaves the cluster network and the Supabase
-`sslmode=require&uselibpqcompat=true` trap does not apply.
-
-This path is not production-ready until the backup CronJob layer lands
-(`deploy/k8s/components/postgres/backup/`, warren-6db7). The Supabase text
-below stays the reference backend until warren-a3ed completes the cutover.
-
 **Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
+
+#### The cutover checklist (warren-c4b7)
+
+Run this at an idle window.
+The tooling lives in `scripts/pg-migrate/`: `dump.ts`, `restore.ts`, and `parity.ts` (tests beside them).
+Every step is reversible until step 6.
+
+1. **Idle check.** Confirm no work is in flight: `kubectl -n warren-runs get pods` shows nothing non-terminal, and the warren HTTP log is quiet.
+2. **Scale warren to 0.** `kubectl -n warren scale deploy/warren --replicas=0`. The database now has no warren writers. Run pods keep working. They talk to warren over HTTP and never to the DB.
+3. **Dump.** `SOURCE_DB_URL=<supabase-url> bun run scripts/pg-migrate/dump.ts`. The script writes a dated `-Fc` archive of the `public` and `drizzle` schemas with `--no-owner --no-privileges`, prints the archive size, and lists the tables from `pg_restore --list`. Read that table list before moving on.
+4. **Restore.** `TARGET_DB_URL=<in-cluster-dsn> bun run scripts/pg-migrate/restore.ts <dump-file>`. The script refuses to run while the target has live connections other than its own.
+5. **Parity.** `SOURCE_DB_URL=<supabase-url> TARGET_DB_URL=<in-cluster-dsn> bun run scripts/pg-migrate/parity.ts`. It compares per-table row counts, `max(events.id)`, `max(runs.created_at)`, and the drizzle journal hash list, then exits non-zero with a diff table on any mismatch. Do not proceed on red.
+6. **Rewrite the DB URL.** Point `warren-secrets/warren-db-url` at `postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode flags, because traffic never leaves the cluster network. Re-apply the secret:
+   `kubectl -n warren create secret generic warren-secrets --from-literal=warren-db-url='postgres://...' --dry-run=client -o yaml | kubectl apply -f -`.
+7. **Scale up.** `kubectl -n warren scale deploy/warren --replicas=1`, then wait on `kubectl -n warren rollout status deploy/warren`.
+8. **Smoke dispatch.** Dispatch one run and watch it reach a terminal state. Confirm events stream and the delivery path works.
+9. **Rollback (if needed).** Swap `warren-secrets/warren-db-url` back to the Supabase DSN and scale up again. Steps 2 to 8 never write to Supabase, so the rollback anchor stays intact for 7 days.
 
 ### 1.6 Automated CI/CD (GitHub Actions)
 
