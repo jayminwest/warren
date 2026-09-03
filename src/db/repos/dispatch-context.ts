@@ -50,6 +50,17 @@ export interface DispatchContextAnalyticsRow {
 	readonly prState: PullRequestLifecycle | null;
 }
 
+/**
+ * Per-run dispatch facts the runs list overlays onto its projected rows
+ * (warren-a0f4): the USD spend cap plus the runtime backend kind
+ * (`local` | `docker` | `k8s`) frozen pre-spawn. NULL means unknown
+ * (no dispatch-context row, or a row written before the column).
+ */
+export interface DispatchFacts {
+	readonly maxCostUsd: number | null;
+	readonly runtimeBackend: string | null;
+}
+
 export class DispatchContextRepo {
 	constructor(private readonly adapter: DrizzleAdapter) {}
 
@@ -83,20 +94,25 @@ export class DispatchContextRepo {
 		);
 	}
 
-	async getMaxCostUsdByRunIds(runIds: readonly string[]): Promise<Map<string, number>> {
-		const caps = new Map<string, number>();
-		if (runIds.length === 0) return caps;
+	/** Widened from getMaxCostUsdByRunIds (warren-a0f4) to carry runtimeBackend too. */
+	async getDispatchFactsByRunIds(runIds: readonly string[]): Promise<Map<string, DispatchFacts>> {
+		const facts = new Map<string, DispatchFacts>();
+		if (runIds.length === 0) return facts;
 		const dc = this.dispatchContext;
-		const rows = await this.adapter.pickAll<{ runId: string; maxCostUsd: number | null }>(
+		const rows = await this.adapter.pickAll<{
+			runId: string;
+			maxCostUsd: number | null;
+			runtimeBackend: string | null;
+		}>(
 			this.db
-				.select({ runId: dc.runId, maxCostUsd: dc.maxCostUsd })
+				.select({ runId: dc.runId, maxCostUsd: dc.maxCostUsd, runtimeBackend: dc.runtimeBackend })
 				.from(dc)
 				.where(inArray(dc.runId, [...runIds])),
 		);
 		for (const row of rows) {
-			if (row.maxCostUsd !== null) caps.set(row.runId, row.maxCostUsd);
+			facts.set(row.runId, { maxCostUsd: row.maxCostUsd, runtimeBackend: row.runtimeBackend });
 		}
-		return caps;
+		return facts;
 	}
 
 	/**

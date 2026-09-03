@@ -42,6 +42,7 @@ export function createRepos(db: AnyWarrenDb): Repos {
 	};
 }
 
+export type { DispatchFacts } from "./dispatch-context.ts";
 export {
 	AgentsRepo,
 	DispatchContextRepo,

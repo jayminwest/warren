@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RunRow } from "@/api/types.ts";
-import { branchLabelOf } from "./runs-format.ts";
+import { branchLabelOf, truncateRuntimeHandle } from "./runs-format.ts";
 
 /** Minimal run-shaped fixture — only the fields branchLabelOf reads. */
 function run(overrides: Partial<RunRow>): RunRow {
@@ -69,5 +69,16 @@ describe("branchLabelOf", () => {
 
 	test("returns null when the row predates the columns", () => {
 		expect(branchLabelOf(run({}))).toBeNull();
+	});
+});
+
+describe("truncateRuntimeHandle (warren-a0f4)", () => {
+	test("truncates a long handle to 10 chars plus an ellipsis", () => {
+		expect(truncateRuntimeHandle("warren-run-abcdef123456")).toBe("warren-run…");
+	});
+
+	test("keeps a short handle verbatim", () => {
+		expect(truncateRuntimeHandle("pod-xyz")).toBe("pod-xyz");
+		expect(truncateRuntimeHandle("1234567890")).toBe("1234567890");
 	});
 });
