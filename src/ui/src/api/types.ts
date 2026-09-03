@@ -517,8 +517,8 @@ export interface DefaultsConfig {
 }
 
 export interface WarrenConfigResponse {
-	/** Parsed triggers, or `null` when the file is absent or malformed. */
-	triggers: Trigger[] | null;
+	/** Parsed triggers, or `null`; absent on the readPublic envelope (warren-b754). */
+	triggers?: Trigger[] | null;
 	/** Parsed defaults, or `null` when the file is absent or malformed. */
 	defaults: DefaultsConfig | null;
 	/**
@@ -526,8 +526,8 @@ export interface WarrenConfigResponse {
 	 * or the legacy `.warren/defaults.json`), or `null` when neither exists.
 	 */
 	sourceFile: string | null;
-	/** Per-file failures collected during this load. Empty on full success. */
-	errors: WarrenConfigFileError[];
+	/** Per-file failures; empty on success, absent on the readPublic envelope. */
+	errors?: WarrenConfigFileError[];
 	/**
 	 * Non-fatal advisories (warren-5840) — e.g. `defaults.json` deprecation.
 	 * Surfaced separately from `errors` so the UI / doctor can render them
