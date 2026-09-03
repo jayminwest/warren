@@ -44,13 +44,7 @@ export function AgentsPage() {
 						Agents
 					</h1>
 					<p className="text-[12px] leading-4 text-(--color-text-2)">
-						Harness definitions this instance can dispatch. Boot seeds the seven builtins on every
-						start.
-					</p>
-				</div>
-				<div className="flex h-[31px] shrink-0 items-center">
-					<p className="font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)">
-						READ-ONLY · DEFINED IN src/registry/builtins/
+						Agents warren can dispatch runs with.
 					</p>
 				</div>
 			</div>
@@ -62,10 +56,7 @@ export function AgentsPage() {
 					{formatError(agents.error)}
 				</Alert>
 			) : agents.data?.agents.length === 0 ? (
-				<EmptyState
-					title="No agents registered"
-					description="Boot seeds the seven builtins into the registry on every start; none are registered on this instance."
-				/>
+				<EmptyState title="No agents" description="No agents in the registry." />
 			) : (
 				<AgentRegistryTable agents={agents.data?.agents ?? []} />
 			)}

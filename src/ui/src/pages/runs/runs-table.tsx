@@ -1,13 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import type { RunRow } from "@/api/types.ts";
-import { cn, relativeTime } from "@/lib/utils.ts";
+import { cn, relativeTime } from "../../lib/utils.ts";
 import {
+	branchLabelOf,
 	formatDuration,
 	projectLabel,
 	runCostLabel,
 	shortSha,
 	startedAtOf,
-} from "@/pages/runs/runs-format.ts";
+} from "./runs-format.ts";
 
 /**
  * The Direction C workload-inventory table (warren-9e87 / pl-7e38
@@ -102,12 +103,17 @@ function RuntimeCell({ row }: { row: RunRow }) {
 
 /** PROJECT column sub-line: branch · base commit, "—" when neither set. */
 function ProjectSubLine({ row }: { row: RunRow }) {
-	const branch = row.targetBranch ?? row.ref ?? null;
+	const branch = branchLabelOf(row);
 	const sha = shortSha(row.baseCommit);
 	const label =
 		branch !== null && sha !== "" ? `${branch} · ${sha}` : (branch ?? (sha !== "" ? sha : "—"));
 	return (
-		<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">{label}</span>
+		<span
+			title={branch ?? undefined}
+			className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)"
+		>
+			{label}
+		</span>
 	);
 }
 
@@ -139,10 +145,12 @@ function RunsTableRow({
 	row,
 	projectName,
 	now,
+	isOperator,
 }: {
 	row: RunRow;
 	projectName: string;
 	now: number;
+	isOperator: boolean;
 }) {
 	const navigate = useNavigate();
 	const runPath = `/runs/${encodeURIComponent(row.id)}`;
@@ -192,9 +200,11 @@ function RunsTableRow({
 					<ProjectSubLine row={row} />
 				</span>
 			</td>
-			<td className="w-[88px] px-2.5 py-1.5 align-middle">
-				<RuntimeCell row={row} />
-			</td>
+			{isOperator ? (
+				<td className="w-[88px] px-2.5 py-1.5 align-middle">
+					<RuntimeCell row={row} />
+				</td>
+			) : null}
 			<td className="w-[62px] px-2.5 py-1.5 align-middle font-mono text-[10px] leading-3 text-(--color-text-3)">
 				{row.trigger}
 			</td>
@@ -242,10 +252,12 @@ export function RunsTable({
 	rows,
 	projectIndex,
 	now,
+	isOperator,
 }: {
 	rows: readonly RunRow[];
 	projectIndex: Map<string, string>;
 	now: number;
+	isOperator: boolean;
 }) {
 	return (
 		<div className="overflow-x-auto">
@@ -256,7 +268,7 @@ export function RunsTable({
 						<Th width="128px">Run</Th>
 						<Th width="118px">Agent</Th>
 						<Th width="128px">Project</Th>
-						<Th width="88px">Runtime</Th>
+						{isOperator ? <Th width="88px">Runtime</Th> : null}
 						<Th width="62px">Trigger</Th>
 						<Th width="56px">Started</Th>
 						<Th width="54px" className="text-right">
@@ -279,6 +291,7 @@ export function RunsTable({
 									? "deleted project"
 									: projectLabel(projectIndex.get(row.projectId), row.projectId)
 							}
+							isOperator={isOperator}
 						/>
 					))}
 				</tbody>

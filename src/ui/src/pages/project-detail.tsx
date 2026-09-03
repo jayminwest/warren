@@ -24,6 +24,7 @@ import {
 	TriggersPanel,
 } from "@/pages/project-detail.panels.tsx";
 import { ProjectFactsPanel, RecentRunsPanel } from "@/pages/project-detail.side-rail.tsx";
+import { mainColumnClasses, sideRailClasses } from "@/pages/project-detail-layout.ts";
 
 /**
  * Project detail — the Direction C project inspector (warren-8375 /
@@ -79,18 +80,20 @@ export function ProjectDetailPage() {
 				<Alert variant="danger" title="Project not found" />
 			) : (
 				<div className="flex min-w-0 flex-1 flex-col gap-4 lg:flex-row">
-					<div className="flex min-w-0 flex-1 flex-col gap-4">
-						{isOperator ? (
+					{isOperator ? (
+						<div className={mainColumnClasses()}>
 							<DispatchDefaultsPanel
 								query={warrenConfig.data}
 								isLoading={warrenConfig.isLoading}
 								error={warrenConfig.error}
 							/>
-						) : null}
-						{isOperator ? <TriggersPanel projectId={id} /> : null}
-						{isOperator ? <ReadyPlansPanel projectId={id} /> : null}
-					</div>
-					<div className="flex w-full shrink-0 flex-col gap-4 lg:w-[336px]">
+							<TriggersPanel projectId={id} />
+							<ReadyPlansPanel projectId={id} />
+						</div>
+					) : null}
+					{/* A spectator gets no operator panels, so no empty flex-1
+					    main column — the rail fills the row (warren-cd42). */}
+					<div className={sideRailClasses(isOperator)}>
 						<ProjectFactsPanel project={project.data} />
 						<RecentRunsPanel projectId={id} />
 					</div>
