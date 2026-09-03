@@ -1,6 +1,8 @@
-# Parameterised restore Job (warren-6db7) — SUSPENDED template, not a
-# standing workload. It restores a named dump from
-# $BACKUP_BUCKET_URL/$BACKUP_OBJECT_PREFIX/<dump-name> into the postgres
+# Restore Job TEMPLATE (warren-a413) — rendered into a throwaway Job, never
+# applied as-is and deliberately absent from kustomization.yaml so no standing
+# postgres-restore object exists (a Job's pod template is immutable, so
+# `kubectl set env job/...` cannot parameterise one). It restores a named dump
+# from $BACKUP_BUCKET_URL/$BACKUP_OBJECT_PREFIX/<dump-name> into the postgres
 # Service with pg_restore --clean --if-exists --no-owner.
 #
 # ⚠️ Run against an IDLE warren only: --clean drops every object in the
@@ -11,21 +13,24 @@
 # Same two-container split as the CronJob: google/cloud-sdk:slim fetches the
 # dump onto an emptyDir, postgres:17 runs pg_restore against postgres.warren.svc.
 #
-# Use (dump-name WITHOUT the .dump suffix):
+# Render (dump name WITHOUT the .dump suffix; RESTORE_DUMP may itself be
+# empty only if you enjoy a loud failure in the fetch container):
 #
-#   kubectl -n warren scale job postgres-restore --replicas=0 2>/dev/null # noop
-#   kubectl -n warren set env job/postgres-restore RESTORE_DUMP=20260903
-#   kubectl -n warren apply -f deploy/k8s/components/postgres/backup/restore-job.yaml
-#   kubectl -n warren patch job postgres-restore --type merge \
-#     -p '{"spec":{"suspend":false}}'
-#   kubectl -n warren logs job/postgres-restore -c restore -f
+#   sed -e 's/__RESTORE_NAME__/postgres-restore-<date>/' \
+#       -e 's/__RESTORE_DUMP__/<dump-name>/' \
+#       deploy/k8s/components/postgres/backup/restore-job.template.yaml \
+#     | kubectl -n warren create -f -
+#   kubectl -n warren logs job/postgres-restore-<date> -c restore -f
 #
-# Or create a throwaway Job from this one without touching the template:
-#   kubectl -n warren create job --from=job/postgres-restore restore-<date>
+# envsubst would work too, but sed ships everywhere (the operator
+# workstation, a cloud-sdk pod, CI) with no extra image; envsubst is in
+# gettext, which google/cloud-sdk:slim and most distroless bases omit.
+#
+# Cleanup when done: kubectl -n warren delete job postgres-restore-<date>
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: postgres-restore
+  name: __RESTORE_NAME__
   namespace: warren
   labels:
     app.kubernetes.io/name: postgres
@@ -55,7 +60,7 @@ spec:
               ls -lh /dump/restore.dump
           env:
             - name: RESTORE_DUMP
-              value: "" # REQUIRED — kubectl set env job/postgres-restore RESTORE_DUMP=<date>
+              value: "__RESTORE_DUMP__" # placeholder — replaced at render time
             - name: BACKUP_BUCKET_URL
               valueFrom:
                 configMapKeyRef:

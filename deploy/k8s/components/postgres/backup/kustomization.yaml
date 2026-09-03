@@ -10,4 +10,6 @@ resources:
   - serviceaccount.yaml
   - configmap.yaml
   - cronjob.yaml
-  - restore-job.yaml
+# restore-job.template.yaml is NOT a resource (warren-a413): it is a sed
+# template rendered into a uniquely named throwaway Job per restore. Keeping
+# it out of the render means no immutable standing Job to fight with.

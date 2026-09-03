@@ -1,6 +1,7 @@
 // Renders deploy/k8s/components/postgres with `kubectl kustomize` and asserts
-// the eight objects come out: the four from warren-9f5a plus the backup layer
-// from warren-6db7 (SA, ConfigMap, CronJob, suspended Job). The 10Gi claim is a
+// the seven objects come out: the four from warren-9f5a plus the backup layer
+// from warren-6db7 (SA, ConfigMap, CronJob — the restore Job became a sed
+// template in warren-a413 and is no longer a rendered resource). The 10Gi claim is a
 // volumeClaimTemplate inside the StatefulSet, not a fifth top-level object.
 //
 // The component is opt-in: nothing in base includes it, so the render wraps it
@@ -13,7 +14,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadAll } from "js-yaml";
 
@@ -64,7 +65,7 @@ function renderComponent(): K8sDoc[] {
 
 describe("deploy/k8s/components/postgres", () => {
 	test(
-		"kubectl kustomize of an including overlay renders all eight objects",
+		"kubectl kustomize of an including overlay renders all seven objects",
 		() => {
 			if (!hasKubectl()) {
 				console.warn("kubectl not found — skipping kustomize render check");
@@ -74,8 +75,11 @@ describe("deploy/k8s/components/postgres", () => {
 			const byName = (kind: string, name: string) =>
 				docs.some((d) => d.kind === kind && d.metadata?.name === name);
 
-			// Four database objects (warren-9f5a) + four backup objects (warren-6db7).
-			expect(docs).toHaveLength(8);
+			// Four database objects (warren-9f5a) + three backup objects (warren-6db7).
+			// restore-job.template.yaml is a sed template, not a rendered resource
+			// (warren-a413): Job pod templates are immutable, so a standing
+			// postgres-restore Job cannot be parameterised with kubectl set env.
+			expect(docs).toHaveLength(7);
 			expect(byName("StatefulSet", "postgres")).toBeTrue();
 			expect(byName("Service", "postgres")).toBeTrue();
 			expect(byName("Secret", "postgres-credentials")).toBeTrue();
@@ -83,7 +87,7 @@ describe("deploy/k8s/components/postgres", () => {
 			expect(byName("ServiceAccount", "postgres-backup")).toBeTrue();
 			expect(byName("ConfigMap", "postgres-backup-config")).toBeTrue();
 			expect(byName("CronJob", "postgres-backup")).toBeTrue();
-			expect(byName("Job", "postgres-restore")).toBeTrue();
+			expect(byName("Job", "postgres-restore")).toBeFalse();
 			for (const d of docs) {
 				expect(d.metadata?.namespace).toBe("warren");
 			}
@@ -92,7 +96,7 @@ describe("deploy/k8s/components/postgres", () => {
 	);
 
 	test(
-		"backup CronJob runs pg_dump nightly with Forbid concurrency and the restore Job is suspended",
+		"backup CronJob runs pg_dump nightly with Forbid concurrency and the restore template ships placeholders",
 		() => {
 			if (!hasKubectl()) {
 				console.warn("kubectl not found — skipping kustomize render check");
@@ -124,11 +128,6 @@ describe("deploy/k8s/components/postgres", () => {
 				"postgres-backup",
 			);
 
-			const restore = docs.find(
-				(d) => d.kind === "Job" && (d.metadata as { name?: string }).name === "postgres-restore",
-			) as { spec?: { suspend?: boolean } };
-			expect(restore.spec?.suspend).toBe(true);
-
 			const sa = docs.find(
 				(d) =>
 					d.kind === "ServiceAccount" &&
@@ -144,4 +143,54 @@ describe("deploy/k8s/components/postgres", () => {
 		},
 		{ timeout: 2 * KUBECTL_TIMEOUT_MS + 5_000 },
 	);
+
+	test("restore-job.template.yaml renders a substitutable throwaway Job (warren-a413)", () => {
+		const templatePath = join(
+			REPO_ROOT,
+			"deploy",
+			"k8s",
+			"components",
+			"postgres",
+			"backup",
+			"restore-job.template.yaml",
+		);
+		const raw = readFileSync(templatePath, "utf8");
+		expect(raw).toContain("__RESTORE_NAME__");
+		expect(raw).toContain("__RESTORE_DUMP__");
+
+		// The documented one-liner pipes sed output to kubectl create -f -.
+		// Replay the sed substitution and parse the result; the same guarantee
+		// (placeholders fully consumed, a valid Job spec) holds for sed and
+		// envsubst alike.
+		const rendered = raw
+			.replaceAll("__RESTORE_NAME__", "postgres-restore-20260903")
+			.replaceAll("__RESTORE_DUMP__", "20260903");
+		expect(rendered).not.toContain("__RESTORE");
+
+		const [job] = loadAll(rendered) as Array<{
+			kind?: string;
+			metadata?: { name?: string; namespace?: string };
+			spec?: {
+				backoffLimit?: number;
+				template?: {
+					spec?: {
+						serviceAccountName?: string;
+						initContainers?: Array<{
+							name?: string;
+							env?: Array<{ name?: string; value?: string }>;
+						}>;
+					};
+				};
+			};
+		}>;
+		expect(job).toBeDefined();
+		if (!job) throw new Error("rendered restore Job missing");
+		expect(job.kind).toBe("Job");
+		expect(job.metadata?.name).toBe("postgres-restore-20260903");
+		expect(job.metadata?.namespace).toBe("warren");
+		expect(job.spec?.backoffLimit).toBe(0);
+		expect(job.spec?.template?.spec?.serviceAccountName).toBe("postgres-backup");
+		const fetch = job.spec?.template?.spec?.initContainers?.find((c) => c.name === "fetch");
+		expect(fetch?.env?.find((e) => e.name === "RESTORE_DUMP")?.value).toBe("20260903");
+	});
 });

@@ -170,16 +170,20 @@ gcloud storage ls "gs://warren-pg-backups-502318/warren/" | tail -5
 kubectl -n warren get cronjob postgres-backup -o wide
 ```
 
-**Restore from a GCS dump (cold start).** Run this against an idle warren only. `--clean` drops all objects in the target database first, so drain the control plane (§7.6) before you restore.
+**Restore from a GCS dump (cold start).** Run this against an idle warren only. `--clean` drops all objects in the target database first, so drain the control plane (§7.6) before you restore. Scale warren to 0 first and keep it there until the smoke check passes. Do not edit a standing restore Job: a Job pod template is immutable, so the API server rejects `kubectl set env job/postgres-restore ...`. Render the template into a uniquely named throwaway Job instead.
 
 ```bash
 # 1. Scale warren down so nothing writes to the DB.
 kubectl -n warren scale deploy/warren --replicas=0
 
-# 2. Set the dump to restore (name without the .dump suffix), then unsuspend.
-kubectl -n warren set env job/postgres-restore RESTORE_DUMP=20260903
-kubectl -n warren patch job postgres-restore --type merge -p '{"spec":{"suspend":false}}'
-kubectl -n warren logs job/postgres-restore -c restore -f
+# 2. Render the template with the dump name (without the .dump suffix)
+#    and a unique job name, then create it.
+sed -e 's/__RESTORE_NAME__/postgres-restore-20260903/' \
+    -e 's/__RESTORE_DUMP__/20260903/' \
+    deploy/k8s/components/postgres/backup/restore-job.template.yaml \
+  | kubectl -n warren create -f -
+kubectl -n warren logs job/postgres-restore-20260903 -c restore -f
+kubectl -n warren delete job postgres-restore-20260903
 
 # 3. Smoke-check, then bring warren back.
 kubectl -n warren run psql-check --rm -it --restart=Never \
@@ -188,9 +192,8 @@ kubectl -n warren run psql-check --rm -it --restart=Never \
 kubectl -n warren scale deploy/warren --replicas=1
 ```
 
-If kubectl already consumed the Job template (kubectl Jobs are immutable once
-unsuspended), create a throwaway copy:
-`kubectl -n warren create job --from=job/postgres-restore restore-<date>`.
+If the rendered job name already exists from a previous attempt, delete it
+first: `kubectl -n warren delete job postgres-restore-20260903`.
 
 **Restore from a PD snapshot (cold start).** The snapshot is the disk, so it
 restores the whole volume, not just warren-owned schemas. Use it when you lost
