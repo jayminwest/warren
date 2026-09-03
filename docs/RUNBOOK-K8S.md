@@ -118,35 +118,111 @@ Nothing in code *forces* Postgres under `k8s` — `run_inbox` has both a sqlite 
 But SQLite on a `ReadWriteOnce` PVC is a single-replica trap.
 Set `WARREN_DB_URL=postgres://...` deliberately.
 Agent run pods never get the DB URL — only the control plane does (§3, blast-radius minimization).
+Run pods talk to warren over HTTP and never to the DB, so a database cutover does not touch them.
 
-Supabase Postgres is the reference backend. Three of its gotchas each cost a deploy session (warren-4e36):
+**In-cluster Postgres (opt-in Component, warren-9f5a).**
+The kustomize Component `deploy/k8s/components/postgres/` runs Postgres inside the cluster: a
+StatefulSet on the postgres 17 image (one replica, 250m/1Gi requests, 1/2Gi limits, 10Gi PVC with
+`pg_isready` readiness), a ClusterIP Service on 5432, and a placeholder Secret template
+(`postgres-credentials`, never apply it as-is).
+
+A NetworkPolicy admits ingress only from the warren control-plane pods in namespace `warren`.
+Run pods in `warren-runs` stay denied.
+The PVC omits `storageClassName`, so the GKE default `standard-rwo` binds.
+
+The image major must match the Supabase source (17 today) so the cutover `pg_restore` is same-major.
+This path is not production-ready until the backup CronJob layer lands
+(`deploy/k8s/components/postgres/backup/`, warren-6db7).
+
+**Supabase rollback anchor (warren-4e36).**
+Supabase Postgres is the reference backend until warren-a3ed completes the cutover, and it is the
+rollback target for the whole cutover window (7 days).
+Three of its gotchas each cost a deploy session:
 
 - **The URL must carry `sslmode=require&uselibpqcompat=true`.** Without the compat flag, `pg-connection-string` reads `sslmode=require` as verify-full and rejects the pooler certificate chain with `SELF_SIGNED_CERT_IN_CHAIN`.
 - **Point at the session pooler host, not the direct host.** `db.<ref>.supabase.co` resolves over IPv6 only, and GKE Autopilot pods speak IPv4 by default. Use `aws-1-<region>.pooler.supabase.com:5432` with the tenant username form `postgres.<ref>`. The older `aws-0-` pooler generation answers "tenant not found".
 - **Single-quote the value in a shell.** The `&` in the query string forks the command otherwise.
 
-**In-cluster Postgres (opt-in Component, warren-9f5a).**
-Instead of Supabase, an operator can run Postgres inside the cluster by including the
-kustomize Component `deploy/k8s/components/postgres/` from their overlay (see
-`deploy/k8s/README.md` "Components"), which ships a StatefulSet on the postgres 17
-image (one replica, 250m/1Gi requests, 1/2Gi limits, 10Gi PVC with `pg_isready` readiness), a
-ClusterIP Service on 5432, and a placeholder Secret template (`postgres-credentials`, never apply it as-is).
-
-A NetworkPolicy admits ingress only from the warren control-plane pods
-in namespace `warren` (the policy denies run pods in `warren-runs`). The PVC omits `storageClassName`,
-so the GKE default `standard-rwo` binds.
-
-The image major must match the Supabase source (17 today) so the `pg_restore`
-cutover (below, warren-c4b7) is same-major. Point `warren-secrets/warren-db-url`
-at `postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode
-flags, because traffic never leaves the cluster network and the Supabase
-`sslmode=require&uselibpqcompat=true` trap does not apply.
-
-This path is not production-ready until the backup CronJob layer lands
-(`deploy/k8s/components/postgres/backup/`, warren-6db7). The Supabase text
-below stays the reference backend until warren-a3ed completes the cutover.
-
 **Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
+
+#### Backups (warren-6db7)
+
+An in-cluster database is only acceptable with independent restore paths.
+Three layers exist, deliberately independent of each other:
+
+| Layer | Mechanism | Retention |
+| --- | --- | --- |
+| Logical dumps | Nightly `pg_dump -Fc -n public -n drizzle --no-owner --no-privileges` CronJob (`postgres-backup`, 03:00 UTC) uploads to `gs://warren-pg-backups-502318/warren/<date>.dump` via Workload Identity (SA `postgres-backup` → GSA `postgres-backup@warren-502318.iam.gserviceaccount.com`) | 30 days (bucket lifecycle rule) |
+| Disk snapshots | GCP snapshot schedule `warren-pg-daily` attached to the PVC's PersistentDisk | 14 daily snapshots |
+| Volume itself | PVC `reclaimPolicy: Retain` — a deleted StatefulSet never deletes the disk | until an operator deletes it |
+
+The dump CronJob runs as two containers sharing an emptyDir:
+
+- `postgres:17` runs `pg_dump` (needs the same-major client. image major 17 matches the server).
+- `google/cloud-sdk:slim` uploads the file with `gcloud storage cp` (has the storage CLI but no postgres client).
+
+`concurrencyPolicy` is `Forbid`, the Job keeps 3 histories, and `backoffLimit` is 0. A failed backup shows `Failed` and never masks a broken dump. The bucket name is a ConfigMap key (`postgres-backup-config/backup-bucket-url`) so another operator can substitute their own bucket without editing the CronJob. The manifest directory is `deploy/k8s/components/postgres/backup/`.
+
+Verify a nightly dump ran:
+
+```bash
+gcloud storage ls "gs://warren-pg-backups-502318/warren/" | tail -5
+kubectl -n warren get cronjob postgres-backup -o wide
+```
+
+**Restore from a GCS dump (cold start).** Run this against an idle warren only. `--clean` drops all objects in the target database first, so drain the control plane (§7.6) before you restore.
+
+```bash
+# 1. Scale warren down so nothing writes to the DB.
+kubectl -n warren scale deploy/warren --replicas=0
+
+# 2. Set the dump to restore (name without the .dump suffix), then unsuspend.
+kubectl -n warren set env job/postgres-restore RESTORE_DUMP=20260903
+kubectl -n warren patch job postgres-restore --type merge -p '{"spec":{"suspend":false}}'
+kubectl -n warren logs job/postgres-restore -c restore -f
+
+# 3. Smoke-check, then bring warren back.
+kubectl -n warren run psql-check --rm -it --restart=Never \
+  --image=postgres:17 --env "PGPASSWORD=$(kubectl -n warren get secret postgres-credentials -o jsonpath='{.data.postgres-password}' | base64 -d)" \
+  -- psql -h postgres.warren.svc -U warren -d warren -c "select count(*) from runs;"
+kubectl -n warren scale deploy/warren --replicas=1
+```
+
+If kubectl already consumed the Job template (kubectl Jobs are immutable once
+unsuspended), create a throwaway copy:
+`kubectl -n warren create job --from=job/postgres-restore restore-<date>`.
+
+**Restore from a PD snapshot (cold start).** The snapshot is the disk, so it
+restores the whole volume, not just warren-owned schemas. Use it when you lost
+the disk, not for point-in-time schema repair:
+
+```bash
+gcloud compute snapshots list --filter="name~warren-pg-daily"
+gcloud compute disks create warren-pg-restored-<date> \
+  --source-snapshot=<SNAPSHOT_NAME> --zone=<ZONE> --type=pd-balanced
+# stop postgres, swap the disk onto the postgres PVC (delete the PVC first;
+# reclaimPolicy Retain keeps the old disk as the rollback), then restart.
+```
+
+The old disk survives deletion thanks to `reclaimPolicy: Retain`. Keep it
+until you verify the restored volume. This snapshot is the restore point for anything that predates the cutover.
+
+#### The cutover checklist (warren-c4b7)
+
+Run this at an idle window.
+The tooling lives in `scripts/pg-migrate/`: `dump.ts`, `restore.ts`, and `parity.ts` (tests beside them).
+Every step is reversible until step 6.
+
+1. **Idle check.** Confirm no work is in flight: `kubectl -n warren-runs get pods` shows nothing non-terminal, and the warren HTTP log is quiet.
+2. **Scale warren to 0.** `kubectl -n warren scale deploy/warren --replicas=0`. The database now has no warren writers. Run pods keep working. They talk to warren over HTTP and never to the DB.
+3. **Dump.** `SOURCE_DB_URL=<supabase-url> bun run scripts/pg-migrate/dump.ts`. The script writes a dated `-Fc` archive of the `public` and `drizzle` schemas with `--no-owner --no-privileges`, prints the archive size, and lists the tables from `pg_restore --list`. Read that table list before moving on.
+4. **Restore.** `TARGET_DB_URL=<in-cluster-dsn> bun run scripts/pg-migrate/restore.ts <dump-file>`. The script refuses to run while the target has live connections other than its own.
+5. **Parity.** `SOURCE_DB_URL=<supabase-url> TARGET_DB_URL=<in-cluster-dsn> bun run scripts/pg-migrate/parity.ts`. It compares per-table row counts, `max(events.id)`, `max(runs.created_at)`, and the drizzle journal hash list, then exits non-zero with a diff table on any mismatch. Do not proceed on red.
+6. **Rewrite the DB URL.** Point `warren-secrets/warren-db-url` at `postgres://warren:<pw>@postgres.warren.svc:5432/warren` with no sslmode flags, because traffic never leaves the cluster network. Re-apply the secret:
+   `kubectl -n warren create secret generic warren-secrets --from-literal=warren-db-url='postgres://...' --dry-run=client -o yaml | kubectl apply -f -`.
+7. **Scale up.** `kubectl -n warren scale deploy/warren --replicas=1`, then wait on `kubectl -n warren rollout status deploy/warren`.
+8. **Smoke dispatch.** Dispatch one run and watch it reach a terminal state. Confirm events stream and the delivery path works.
+9. **Rollback (if needed).** Swap `warren-secrets/warren-db-url` back to the Supabase DSN and scale up again. Steps 2 to 8 never write to Supabase, so the rollback anchor stays intact for 7 days.
 
 ### 1.6 Automated CI/CD (GitHub Actions)
 
@@ -510,9 +586,9 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_ANTHROPIC_SECRET_NAME` / `_KEY` | `warren-anthropic-key` / `api-key` | optional agent-key `secretKeyRef` |
 | `WARREN_K8S_GIT_SECRET_NAME` / `_KEY` | `warren-git-token` / `token` | init-container git token source |
 | `WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB` / `_LIMIT_MIB` | `10240` / `10240` (10Gi) | cluster-wide default ephemeral-storage budget (request + limit + emptyDir `sizeLimit`). A per-project `resources` block beats it (§7.3.1) |
-| `WARREN_K8S_MEMORY_REQUEST_MIB` / `_LIMIT_MIB` | `2048` / `4096` | cluster-wide default memory budget; a per-project `resources` block beats it |
+| `WARREN_K8S_MEMORY_REQUEST_MIB` / `_LIMIT_MIB` | `2048` / `4096` | cluster-wide default memory budget; a per-project `resources` block beats it. On the deploy-gke pipeline, set via the repo variables of the same names (warren-ff6f) — the render step re-wires the env on each deploy so the sizing survives releases |
 | `WARREN_K8S_CPU_REQUEST_MILLICORES` / `_LIMIT_MILLICORES` | `1000` / `4000` | cluster-wide default cpu budget; a per-project `resources` block beats it. Lower the request on a small node (a two-core laptop VM never schedules the 1-CPU default) |
-| `WARREN_K8S_SPOT` | unset (On-Demand) | run pods only: pin every run pod onto GKE Autopilot Spot nodes (`nodeSelector cloud.google.com/gke-spot=true` plus the matching NoSchedule toleration, warren-2e2e). Truthy values are exactly `1`/`true` (case-insensitive); anything else stays off. Never applies to the control-plane Deployment. See "Spot run pods" below |
+| `WARREN_K8S_SPOT` | unset (On-Demand) | run pods only: pin every run pod onto GKE Autopilot Spot nodes (`nodeSelector cloud.google.com/gke-spot=true` plus the matching NoSchedule toleration, warren-2e2e). Truthy values are exactly `1`/`true` (case-insensitive); anything else stays off. Never applies to the control-plane Deployment. On the deploy-gke pipeline, set via the repo variable of the same name (warren-ff6f). See "Spot run pods" below |
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
 | `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
 | `WARREN_GITHUB_APP_REGISTRATION` | unset (fail-safe default, §2.6) | existence gate for the `/github-app/*` registration surface (warren-e320). `on`/`off` overrides the default. Gated-off routes answer 404 |
