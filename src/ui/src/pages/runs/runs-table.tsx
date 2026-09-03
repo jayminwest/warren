@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { RunRow } from "@/api/types.ts";
 import { cn, relativeTime } from "../../lib/utils.ts";
@@ -8,6 +9,7 @@ import {
 	runCostLabel,
 	shortSha,
 	startedAtOf,
+	truncateRuntimeHandle,
 } from "./runs-format.ts";
 
 /**
@@ -78,26 +80,55 @@ function RunSubLine({ row }: { row: RunRow }) {
 }
 
 /**
- * Runtime column. The wire carries no runtime *kind* per run (the ops
- * overview API is the future source), so the column shows the real
- * per-run handle the server does serve — `sandboxRunId` / `sandboxId`
- * (the pod name under k8s) — and a quiet "—" when absent.
+ * Runtime column (warren-a0f4): line one is the backend kind
+ * (`local` / `docker` / `k8s`) frozen at dispatch; line two is the real
+ * per-run handle the server serves — `sandboxRunId` / `sandboxId` (the
+ * pod name under k8s) — truncated to ~10 chars with the full value in
+ * `title` and a click-to-copy that does not fire the row link. Rows with
+ * neither fact keep the quiet "—" / "not scheduled".
  */
 function RuntimeCell({ row }: { row: RunRow }) {
+	const kind = row.runtimeBackend ?? null;
 	const handle = row.sandboxRunId ?? row.sandboxId ?? null;
-	const sub =
-		handle !== null && handle !== undefined && handle.length > 0
-			? handle
-			: row.state === "queued"
-				? "not scheduled"
-				: "—";
+	const hasHandle = handle !== null && handle !== undefined && handle.length > 0;
+	if (kind === null) {
+		const sub = hasHandle ? (handle as string) : row.state === "queued" ? "not scheduled" : "—";
+		return (
+			<span className="flex min-w-0 flex-col gap-0.5">
+				<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-2)">
+					{sub}
+				</span>
+			</span>
+		);
+	}
 	return (
-		<span
-			className="flex min-w-0 flex-col gap-0.5"
-			title="Runtime handle; a per-run runtime-kind figure needs an API (warren-d850)"
-		>
-			<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-2)">{sub}</span>
+		<span className="flex min-w-0 flex-col gap-0.5">
+			<span className="font-mono text-[10px] leading-3 text-(--color-text-2)">{kind}</span>
+			{hasHandle ? <CopyHandle handle={handle as string} /> : null}
 		</span>
+	);
+}
+
+/** Second line of the runtime cell: the full handle on hover, click copies it. */
+function CopyHandle({ handle }: { handle: string }) {
+	const [copied, setCopied] = useState(false);
+	const short = truncateRuntimeHandle(handle);
+	return (
+		<button
+			type="button"
+			title={handle}
+			aria-label={`Copy runtime handle ${handle}`}
+			onClick={(e) => {
+				e.stopPropagation();
+				void navigator.clipboard?.writeText(handle).then(() => {
+					setCopied(true);
+					setTimeout(() => setCopied(false), 1500);
+				});
+			}}
+			className="max-w-full cursor-pointer truncate text-left font-mono text-[9px] leading-3 text-(--color-text-3) hover:text-(--color-text-2)"
+		>
+			{copied ? "copied" : short}
+		</button>
 	);
 }
 

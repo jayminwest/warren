@@ -195,13 +195,14 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		const stored = await repos.runs.require(runId);
 		const body = await get("/runs", TOKEN);
 		const list = body.runs as Record<string, unknown>[];
-		// The list overlays the dispatch-context spend cap on each row — a
-		// field the stored row itself does not carry. No context row exists
-		// for this run, so it reads null, never absent.
+		// The list overlays the dispatch-context spend cap and runtime backend
+		// on each row — fields the stored row itself does not carry. No context
+		// row exists for this run, so both read null, never absent.
 		expect(new Set(Object.keys(list[0] ?? {}))).toEqual(
-			new Set([...Object.keys(stored), "maxCostUsd"]),
+			new Set([...Object.keys(stored), "maxCostUsd", "runtimeBackend"]),
 		);
 		expect(list[0]?.maxCostUsd).toBeNull();
+		expect(list[0]?.runtimeBackend).toBeNull();
 		expect(body.costTotalUsd).toBe(1.25);
 		expect(body.costPricedCount).toBe(1);
 		const detailBody = await get(`/runs/${runId}`, TOKEN);
@@ -215,16 +216,19 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		});
 	});
 
-	test("the operator list carries the dispatch-context cap; spectators never do (warren-f8a2)", async () => {
+	test("the operator list carries the dispatch-context facts; spectators never do (warren-f8a2 / warren-a0f4)", async () => {
 		await repos.dispatchContext.insert({
 			runId,
 			createdAt: "2026-07-01T00:00:00.000Z",
 			maxCostUsd: 5,
+			runtimeBackend: "k8s",
 		});
 		const authed = await get("/runs", TOKEN);
 		expect((authed.runs as Record<string, unknown>[])[0]?.maxCostUsd).toBe(5);
+		expect((authed.runs as Record<string, unknown>[])[0]?.runtimeBackend).toBe("k8s");
 		const anon = await get("/runs");
 		expect((anon.runs as Record<string, unknown>[])[0]).not.toHaveProperty("maxCostUsd");
+		expect((anon.runs as Record<string, unknown>[])[0]).not.toHaveProperty("runtimeBackend");
 	});
 
 	test("the operator envelope keeps its historical key order", async () => {

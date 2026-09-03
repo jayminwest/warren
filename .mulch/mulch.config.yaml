@@ -73,6 +73,7 @@ domains:
   postgres: {}
   usage-hydrate: {}
   ops-overview: {}
+  telemetry: {}
 governance:
   max_entries: 100
   warn_entries: 150

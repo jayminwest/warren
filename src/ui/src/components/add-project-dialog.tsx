@@ -77,8 +77,7 @@ export function AddProjectDialog({
 				<DialogHeader>
 					<DialogTitle>Add a project</DialogTitle>
 					<DialogDescription>
-						Clone a GitHub repository into warren's workspace storage so it can be materialized into
-						run workspaces.
+						Clone a GitHub repository so warren can run against it.
 					</DialogDescription>
 				</DialogHeader>
 				<form onSubmit={handleSubmit} className="grid gap-4">
