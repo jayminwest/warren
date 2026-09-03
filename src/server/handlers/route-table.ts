@@ -98,8 +98,8 @@ interface RouteEntry {
  * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
  *   run / project / agent / plan-run listings and details, the run event stream,
  *   `/whoami`, `/instance` (a reduced static facts projection, warren-2eec),
- *   `/analytics/runs`, the reduced `GET /ops/overview` snapshot (run counts
- *   only, warren-d850), and the cross-run `GET /events` query (per-row
+ *   `/analytics/runs`, the reduced `GET /ops/overview` snapshot (USD sums
+ *   stripped, warren-d850 + warren-7194), and the cross-run `GET /events` query (per-row
  *   `projectEvent` reduction, warren-5eec). Each is served through a public
  *   projection (pl-b82d steps 14-16) before an instance is actually exposed;
  *   the policy is what makes the projection reachable, not what makes it safe.

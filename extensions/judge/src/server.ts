@@ -95,7 +95,13 @@ function serveVerdicts(verdicts: VerdictStore, url: URL): Response {
 	}
 	const limit = parsePageLimit(url);
 	if (limit instanceof Response) return limit;
-	const rows: readonly StoreRow[] = verdicts.rowsSince(since, limit);
+	// `order=desc` serves the newest page (warren-f282): the rows with the
+	// highest ids, descending. Default stays ascending for cursor paging.
+	const rawOrder = url.searchParams.get("order") ?? "asc";
+	if (rawOrder !== "asc" && rawOrder !== "desc") {
+		return badRequest(`order must be 'asc' or 'desc'; got '${rawOrder}'`);
+	}
+	const rows: readonly StoreRow[] = verdicts.rowsSince(since, limit, rawOrder);
 	const body = rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length > 0 ? "\n" : "");
 	return new Response(body, {
 		headers: {

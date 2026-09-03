@@ -75,6 +75,15 @@ export function shortSha(sha: string | null | undefined): string {
 }
 
 /**
+ * Runtime handle as it renders on the cell's second line (warren-a0f4):
+ * truncated to ~10 chars with a trailing ellipsis when longer, verbatim
+ * otherwise — the full value rides on the element's `title`.
+ */
+export function truncateRuntimeHandle(handle: string): string {
+	return handle.length > 10 ? `${handle.slice(0, 10)}…` : handle;
+}
+
+/**
  * Run cost as "$0.412"; "—" when unmeasured (never a fabricated $0.00).
  * A subscription-authenticated run (warren-f3c3) renders as an estimate:
  * "~$0.412 est." — the API-priced number is not a bill.

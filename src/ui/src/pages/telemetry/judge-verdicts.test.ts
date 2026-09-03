@@ -109,6 +109,18 @@ describe("fetchJudgeVerdicts", () => {
 		await fetchJudgeVerdicts(SIGNAL);
 		expect(seenUrl).toStartWith("/extensions/judge/verdicts.jsonl?limit=");
 	});
+
+	test("requests the newest page with order=desc (warren-f282)", async () => {
+		let seenUrl = "";
+		globalThis.fetch = async (input: unknown) => {
+			seenUrl = String(input);
+			return ndjsonResponse("");
+		};
+		await fetchJudgeVerdicts(SIGNAL);
+		const url = new URL(seenUrl, "http://x.test");
+		expect(url.searchParams.get("order")).toBe("desc");
+		expect(url.searchParams.get("limit")).toBe("500");
+	});
 });
 
 describe("summarizeJudgeVerdicts", () => {
@@ -119,9 +131,29 @@ describe("summarizeJudgeVerdicts", () => {
 			fail: 0,
 			unjudged: 0,
 			passRate: null,
+			judgedRate: null,
 			failingClasses: [],
 			rubricVersions: [],
 		});
+	});
+
+	test("judgedRate counts unjudged markers in the denominator (warren-f282)", () => {
+		const failing = row({
+			id: 2,
+			verdict: {
+				runId: "run-2",
+				assignments: [{ class: "tests_failing", confidence: "high" }],
+				provenance: { provider: "p", model: "m", rubricVersion: "v", judgedAt: "t", costUsd: 0 },
+			},
+		});
+		const s = summarizeJudgeVerdicts([
+			row(),
+			failing,
+			row({ id: 3, kind: "unjudged", verdict: null, reason: "malformed_verdict" }),
+			row({ id: 4, kind: "unjudged", verdict: null, reason: "malformed_verdict" }),
+		]);
+		expect(s.passRate).toBe(0.5); // 1 pass of 2 judged
+		expect(s.judgedRate).toBe(0.5); // but only 2 of 4 rows were judged
 	});
 
 	test("counts clean verdicts as pass", () => {

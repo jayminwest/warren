@@ -184,9 +184,9 @@ export interface RunRow {
 	costUsd: number | null;
 	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
 	maxCostUsd?: number | null; // warren-f8a2: runs-list cap overlay; absent for spectators and detail GETs
-	/** Input tokens consumed (warren-a7dc); see `costUsd` for nullability. */
+	runtimeBackend?: string | null; // warren-a0f4: local|docker|k8s frozen at dispatch; operator-only overlay beside maxCostUsd
+	/** Input/output tokens consumed/produced (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;
-	/** Output tokens produced (warren-a7dc); see `costUsd` for nullability. */
 	tokensOutput: number | null;
 	/** Cache-read tokens (warren-a7dc); see `costUsd` for nullability. */
 	tokensCacheRead: number | null;

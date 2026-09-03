@@ -13,7 +13,7 @@ import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
  * (directory names are repo layout, so it never renders for a
  * spectator); the failure causes read the public
  * `byFailureReason` from `GET /analytics/runs` — the failure-cause
- * discriminator, not log spelunking.
+ * discriminator.
  */
 
 /** How many directories the struggle table renders. */
@@ -167,10 +167,6 @@ function StrugglePanel() {
 			) : (
 				<StruggleTable directories={directories} />
 			)}
-			<p className="text-[12px] leading-4 text-(--color-text-2)">
-				Failure share + path-level retry loops per directory, with denominators. No insight without
-				evidence.
-			</p>
 		</TelemetryPanel>
 	);
 }
@@ -202,9 +198,6 @@ export function TelemetryBehaviorTab() {
 						<FailureCauseRow key={c.key} label={failureLabel(c.key)} runs={c.runs} max={maxCause} />
 					))
 				)}
-				<p className="text-[12px] leading-4 text-(--color-text-2)">
-					Failure causes from the failure-cause discriminator, not log spelunking.
-				</p>
 			</TelemetryPanel>
 		</div>
 	);

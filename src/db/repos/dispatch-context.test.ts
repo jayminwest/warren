@@ -122,18 +122,18 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
-		test("getMaxCostUsdByRunIds returns only known caps, empty input is a no-op (warren-f8a2)", async () => {
+		test("getDispatchFactsByRunIds returns caps + backend kind, empty input is a no-op (warren-f8a2 / warren-a0f4)", async () => {
 			const { handle, dispatchContext, runId } = await open();
 			try {
-				expect(await dispatchContext.getMaxCostUsdByRunIds([])).toEqual(new Map());
+				expect(await dispatchContext.getDispatchFactsByRunIds([])).toEqual(new Map());
 				await dispatchContext.insert({
 					runId,
 					createdAt: "2026-08-18T00:00:00.000Z",
 					maxCostUsd: 5,
+					runtimeBackend: "k8s",
 				});
-				// Unknown run id (no dispatch-context row) and a null cap are both absent.
-				expect(await dispatchContext.getMaxCostUsdByRunIds([runId, "run_missing"])).toEqual(
-					new Map([[runId, 5]]),
+				expect(await dispatchContext.getDispatchFactsByRunIds([runId, "run_missing"])).toEqual(
+					new Map([[runId, { maxCostUsd: 5, runtimeBackend: "k8s" }]]),
 				);
 			} finally {
 				await handle.close();
