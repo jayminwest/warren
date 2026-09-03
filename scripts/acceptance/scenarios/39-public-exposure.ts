@@ -45,10 +45,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { INTERNAL_ERROR_MESSAGE } from "../../../src/server/errors.ts";
-import {
-	REDACTED_RUN_GROUP_FIELDS,
-	REDACTED_RUN_TOTALS_FIELDS,
-} from "../../../src/server/handlers/runs/analytics.ts";
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
@@ -264,14 +260,11 @@ async function assertNoLeakOnPublicReads(
 		debug(`scenario-39: GET ${call.pattern} clean (${res.status}, ${body.length} bytes)`);
 	}
 
-	// The two rollup families whose names collide with public ones, checked
-	// structurally instead of by substring.
+	// The rollup families whose names collide with public ones, checked
+	// structurally instead of by substring (field lists imported inside
+	// 39-public-exposure.leaks.ts, so a re-classification reaches them).
 	const analytics = await fetch(`${base}/analytics/runs`);
-	assertAnalyticsRollupsAbsent(
-		(await analytics.json()) as Record<string, unknown>,
-		REDACTED_RUN_TOTALS_FIELDS,
-		REDACTED_RUN_GROUP_FIELDS,
-	);
+	assertAnalyticsRollupsAbsent((await analytics.json()) as Record<string, unknown>);
 
 	// warren-30cc: `to=` without `from=` must not drop the lower bound and
 	// scan the whole runs table — the default window applies and the span

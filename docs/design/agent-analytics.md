@@ -120,7 +120,11 @@ Warren already has a first-party analytics layer.
   already a dependency.
 - **Public-projection discipline.** `PUBLIC_RUN_ANALYTICS_FIELDS` and
   the redaction allowlists classify every aggregate field for spectator
-  visibility. That pattern stays.
+  visibility. That pattern stays. One deliberate exception since
+  warren-97ae: the instance-wide `costPerMergedPrUsd` ratio on
+  `outcomes.costPerMergedPr.overall` is public — nothing alongside it
+  reconstructs spend — while the byAgent/byModel/byProvider buckets keep
+  their USD figures redacted.
 
 So the direction is not "add analytics". It is "promote analytics from
 a feature to a pillar, and fix the data problems that cap its depth."

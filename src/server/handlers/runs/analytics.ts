@@ -286,7 +286,10 @@ export const PUBLIC_RUN_ANALYTICS_FIELDS = [
 	"delivery",
 	// warren-be04: rates + counts are public (same call as the warren-bd57
 	// landed-work fields); the cost halves inside are redacted one level
-	// down — see PUBLIC_COST_PER_MERGED_PR_*_FIELDS below.
+	// down — see PUBLIC_COST_PER_MERGED_PR_*_FIELDS below. warren-97ae:
+	// the exception is the instance-wide cost/merged-PR ratio, which is
+	// public on the overall shape — the buckets keep it redacted because a
+	// ratio × its merged count reconstructs spend.
 	"outcomes",
 ] as const satisfies readonly (keyof RunAnalyticsBody)[];
 
@@ -377,16 +380,23 @@ export const REDACTED_COST_PER_MERGED_PR_BUCKET_FIELDS = [
 	"costPerMergedPrUsd",
 ] as const satisfies readonly (keyof CostPerMergedPrBucket)[];
 
-/** The keyless `overall` shape shares the bucket's classification minus `key`. */
+/**
+ * The keyless `overall` shape shares the bucket's classification minus `key`.
+ * warren-97ae: unlike the per-group buckets, the instance-wide ratio is
+ * public (`costPerMergedPrUsd`) — there is no per-group table alongside it
+ * to multiply back through, so the ratio alone reconstructs nothing about
+ * `totals.cost`. The numerator (`costUsd`) and the priced-run count still
+ * stay redacted.
+ */
 export const PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS = [
 	"prStateKnown",
 	"prsMerged",
+	"costPerMergedPrUsd",
 ] as const satisfies readonly (keyof CostPerMergedPr["overall"])[];
 
 export const REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS = [
 	"costUsd",
 	"priced",
-	"costPerMergedPrUsd",
 ] as const satisfies readonly (keyof CostPerMergedPr["overall"])[];
 
 /** The `GET /analytics/runs` body as a `readPublic`-only caller sees it. */
@@ -395,7 +405,11 @@ type PublicCostPerMergedPrBucket = Pick<
 	(typeof PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS)[number]
 >;
 
-/** `RunOutcomes` as a spectator sees it: steering intact, USD figures gone. */
+/**
+ * `RunOutcomes` as a spectator sees it: steering intact, USD figures gone —
+ * except the instance-wide cost/merged-PR ratio (warren-97ae, see the
+ * allowlist comment above). The per-group buckets stay fully redacted.
+ */
 export type PublicRunOutcomes = Omit<RunOutcomes, "costPerMergedPr"> & {
 	readonly costPerMergedPr: Omit<
 		CostPerMergedPr,

@@ -291,7 +291,8 @@
 		"costPerMergedPr": {
 			"overall": {
 				"prStateKnown": 1,
-				"prsMerged": 1
+				"prsMerged": 1,
+				"costPerMergedPrUsd": 0
 			},
 			"byAgent": [
 				{

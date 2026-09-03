@@ -3,8 +3,10 @@
  * (warren-bc9c). The spectator body is a stable wire shape the Telemetry
  * pages consume in public mode, so it is pinned the same way the ops-overview
  * projection is (`ops-overview.golden.test.ts`): the live public body must
- * byte-match the fixture. Delivery timings (`delivery`) and the autonomy
- * rollup (`outcomes.autonomy`) are public — cost figures stay redacted.
+ * byte-match the fixture. Delivery timings (`delivery`), the autonomy
+ * rollup (`outcomes.autonomy`) and the instance-wide cost/merged-PR ratio
+ * (`outcomes.costPerMergedPr.overall.costPerMergedPrUsd`, warren-97ae) are
+ * public — every other cost figure stays redacted.
  *
  * Regenerate with `WARREN_UPDATE_GOLDENS=1 bun test
  * src/server/handlers/runs.analytics.golden.test.ts`, then inspect the diff

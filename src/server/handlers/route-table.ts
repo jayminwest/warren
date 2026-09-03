@@ -241,6 +241,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		policy: "readOperator",
 		build: listCostAnalyticsHandler,
 	},
+	// warren-97ae: spectators get the reduced projection — counts, rates
+	// and timings survive; USD aggregates stay redacted except the
+	// instance-wide cost/merged-PR ratio. The per-agent/per-model/
+	// per-provider buckets keep their USD figures redacted because
+	// ratio × merged count reconstructs spend.
 	{
 		method: "GET",
 		pattern: "/analytics/runs",
