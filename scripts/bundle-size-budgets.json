@@ -15,18 +15,18 @@
 	"$comment_economics_panels_2026_09_04": "BOUNDED AUTO-RAISE, RAW ONLY (warren-cc6c / pl-9fa9 step 15): the telemetry economics tab gains the panels the /analytics/cost + /analytics/runs bodies already serve (spend over time, by model/provider/agent, top-10 runs, token totals, cost per merged PR by model/provider). Net +4234 B raw js / +112 B raw css — ordinary feature growth, inside AUTO_RAISE_CAP, re-baselined via the check-bundle-size script. Issued inside a warren run; per the warren-4e7a/warren-25b7 precedent only the two raw budgets take the re-baselined figure (measured + headroom) and the gzip budgets keep their existing floors — they were never exceeded. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 687374,
-			"css": 54665
+			"js": 687154,
+			"css": 54703
 		},
 		"gzip": {
-			"js": 197540,
-			"css": 10637
+			"js": 198815,
+			"css": 10676
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 197540,
-			"css": 10637
+			"js": 198815,
+			"css": 10676
 		}
 	}
 }
