@@ -104,6 +104,7 @@ async function seedSnapshotFixture(repos: Repos): Promise<void> {
 	// Delivery: one branch push measured, one PR opened + merged.
 	await repos.runs.setOutcomeFacts(succeeded.id, {
 		commitsAhead: 3,
+		baseSha: null,
 		filesChanged: 4,
 		insertions: 100,
 		deletions: 2,

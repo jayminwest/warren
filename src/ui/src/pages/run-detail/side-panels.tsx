@@ -86,7 +86,17 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 						: DASH}
 			</MetaRow>
 			<MetaRow label="base commit">
-				{shortSha(run.baseCommit) !== "" ? shortSha(run.baseCommit) : DASH}
+				{run.baseSha !== null ? (
+					shortSha(run.baseSha)
+				) : run.baseCommit !== null ? (
+					// warren-b19e: the pin is a fallback — the dispatch-time cut
+					// point, not the resolved base the diff was measured against.
+					<span>
+						{shortSha(run.baseCommit)} <span className="text-(--color-text-3)">base pin</span>
+					</span>
+				) : (
+					DASH
+				)}
 			</MetaRow>
 			<MetaRow label="branch">{workspaceBranch ?? DASH}</MetaRow>
 			{showTarget ? <MetaRow label="target">{run.targetBranch}</MetaRow> : null}
@@ -95,10 +105,12 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 }
 
 export function SpendPanel({ run }: { run: RunRow }) {
-	// The run row carries no dispatch-time cap, so the export's "OF $5.00"
-	// denominator would be a fabricated number — only the measured figures
-	// render (warren-8c85, no fabricated numbers). No MEASURED chip: the
-	// CostBasisNote beside the figure already qualifies its basis.
+	// warren-b19e: the detail GET overlays the dispatch-context spend cap
+	// (operator-only), so the "$X of $Y cap" denominator is real when the
+	// run carries a cap — and unrenderable when it does not (warren-8c85, no
+	// fabricated numbers). No MEASURED chip: the CostBasisNote beside the
+	// figure already qualifies.
+	const cap = run.maxCostUsd ?? null;
 	return (
 		<PanelShell title="Spend">
 			<div className="flex items-baseline justify-between gap-2">
@@ -109,18 +121,24 @@ export function SpendPanel({ run }: { run: RunRow }) {
 							: formatCostUsd(run.costUsd)
 						: DASH}
 				</span>
+				{cap !== null ? (
+					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+						of {formatCostUsd(cap)} cap
+					</span>
+				) : null}
 				<CostBasisNote run={run} />
 			</div>
 			{/*
 			 * Mobile (warren-ecd8): the mock's inline "N% OF CAP · x TOKENS" line.
-			 * The "% OF CAP" arm is unrenderable — the run row carries no
-			 * dispatch-time cap (same reason the progress bar stays out above),
-			 * and warren never fabricates numbers — so only the measured total
-			 * token count renders. The four token MetaRows stay (deliberate
-			 * divergence from the mock, which drops them).
+			 * The "% OF CAP" arm renders only when the detail GET overlay supplied
+			 * a dispatch-time cap (warren-b19e); without one it stays out — warren
+			 * never fabricates numbers — so only the measured total token count
+			 * renders. The four token MetaRows stay (deliberate divergence from
+			 * the mock, which drops them).
 			 */}
-			{totalTokens(run) !== null ? (
+			{cap !== null && totalTokens(run) !== null ? (
 				<p className="font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+					{Math.round(((run.costUsd ?? 0) / cap) * 100)}% OF CAP ·{" "}
 					{formatTokens(totalTokens(run) ?? 0)} TOKENS
 				</p>
 			) : null}

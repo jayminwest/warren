@@ -63,6 +63,7 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		branch: null,
 		ref: null,
 		baseCommit: null,
+		baseSha: null,
 		provider: null,
 		model: null,
 		salvageRef: null,

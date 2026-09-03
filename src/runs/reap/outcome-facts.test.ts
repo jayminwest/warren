@@ -8,8 +8,18 @@ import {
 } from "./outcome-facts.ts";
 import type { ReapExec } from "./types.ts";
 
-/** Exec stub routing `git diff --numstat` to a canned stdout (or a throw). */
-function stubExec(numstat: string | Error): {
+/** A 40-hex SHA served as the merge-base stdout when the stub carries one. */
+const MERGE_BASE_SHA = "a".repeat(40);
+
+/**
+ * Exec stub routing `git diff --numstat` to a canned stdout (or a throw);
+ * `git merge-base` returns `mergeBase` (a 40-hex SHA or a throw), everything
+ * else the numstat payload. `null` mergeBase degrades the SHA measurement.
+ */
+function stubExec(
+	numstat: string | Error,
+	mergeBase: string | null = null,
+): {
 	exec: ReapExec;
 	calls: { cmd: string; args: readonly string[]; cwd: string }[];
 } {
@@ -19,6 +29,10 @@ function stubExec(numstat: string | Error): {
 		exec: {
 			run: async (cmd, args, opt) => {
 				calls.push({ cmd, args, cwd: opt.cwd });
+				if (args[0] === "merge-base") {
+					if (mergeBase === null) throw new Error("merge-base failed");
+					return { stdout: mergeBase, stderr: "" };
+				}
 				if (numstat instanceof Error) throw numstat;
 				return { stdout: numstat, stderr: "" };
 			},
@@ -79,6 +93,7 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		expect(calls).toHaveLength(0);
 		expect(captured.facts).toEqual({
 			commitsAhead: null,
+			baseSha: null,
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
@@ -93,6 +108,7 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		expect(calls).toHaveLength(0);
 		expect(captured.facts).toEqual({
 			commitsAhead: 0,
+			baseSha: null,
 			filesChanged: 0,
 			insertions: 0,
 			deletions: 0,
@@ -104,11 +120,13 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		const captured: { facts: Record<string, unknown> | null } = { facts: null };
 		const stats = await recordOutcomeFacts(inputFor({}, exec, captured));
 		expect(stats).toEqual({ filesChanged: 1, insertions: 5, deletions: 2 });
-		expect(calls).toHaveLength(1);
+		// numstat + merge-base (parallel) — the SHA measurement rides the diff read.
+		expect(calls).toHaveLength(2);
 		expect(calls[0]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
 		expect(calls[0]?.cwd).toBe("/data/sandbox/ws");
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
+			baseSha: null,
 			filesChanged: 1,
 			insertions: 5,
 			deletions: 2,
@@ -122,10 +140,23 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		expect(stats).toBeNull();
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
+			baseSha: null,
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
 		});
+	});
+
+	test("the local path resolves base_sha off the workspace merge-base (warren-b19e)", async () => {
+		const { exec, calls } = stubExec("5\t2\tsrc/a.ts\n", MERGE_BASE_SHA);
+		const captured: { facts: Record<string, unknown> | null } = { facts: null };
+		await recordOutcomeFacts(inputFor({}, exec, captured));
+		expect(captured.facts).toMatchObject({ baseSha: MERGE_BASE_SHA });
+		// merge-base(baseBranch, HEAD) = the commit the workspace was cut at,
+		// covering the unpinned dispatch case base_commit misses.
+		expect(
+			calls.some((c) => c.args[0] === "merge-base" && c.args[1] === "main" && c.args[2] === "HEAD"),
+		).toBe(true);
 	});
 
 	test("K8s without a forge credential leaves the diff unknown", async () => {
@@ -138,6 +169,7 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		expect(calls).toHaveLength(0);
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
+			baseSha: null,
 			filesChanged: null,
 			insertions: null,
 			deletions: null,
@@ -159,16 +191,18 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 			inputFor({ workspacePath: null, forge: forge as never }, exec, captured),
 		);
 		expect(stats).toEqual({ filesChanged: 1, insertions: 7, deletions: 3 });
-		// fetch → numstat base..tempRef → temp-ref cleanup.
-		expect(calls).toHaveLength(3);
+		// fetch → numstat + merge-base (parallel) → temp-ref cleanup.
+		expect(calls).toHaveLength(4);
 		expect(calls[0]?.args[0]).toBe("fetch");
 		expect(calls[0]?.args[3]).toBe("https://x-access-token:tok@github.com/x/y.git");
 		expect(calls[0]?.args[4]).toBe("agent/bot/run-1:refs/warren/outcome-facts/run-1");
 		expect(calls[0]?.cwd).toBe("/data/projects/x/y");
 		expect(calls[1]?.args).toEqual(["diff", "--numstat", "main..refs/warren/outcome-facts/run-1"]);
-		expect(calls[2]?.args).toEqual(["update-ref", "-d", "refs/warren/outcome-facts/run-1"]);
+		expect(calls[2]?.args).toEqual(["merge-base", "main", "refs/warren/outcome-facts/run-1"]);
+		expect(calls[3]?.args).toEqual(["update-ref", "-d", "refs/warren/outcome-facts/run-1"]);
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
+			baseSha: null,
 			filesChanged: 1,
 			insertions: 7,
 			deletions: 3,

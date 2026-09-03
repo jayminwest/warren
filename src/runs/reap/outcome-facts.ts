@@ -2,7 +2,9 @@
  * Reap-time outcome facts (warren-ab2b / pl-103e step 5): persist what the
  * reap pipeline MEASURED at finalize onto the run row — `commits_ahead`
  * (finalize's own count) plus the parsed `git diff --numstat` totals
- * (`files_changed` / `insertions` / `deletions`).
+ * (`files_changed` / `insertions` / `deletions`), plus `base_sha` — the
+ * resolved workspace base SHA (warren-b19e), the merge-base of the diff
+ * base and the workspace HEAD, read in the same pass.
  *
  * Facts are recorded, not interpreted: no derived judgments, and NULL means
  * unknown — a skipped/failed finalize, a missing base branch, or a diff
@@ -57,6 +59,7 @@ export interface RecordOutcomeFactsInput {
 		id: string,
 		facts: {
 			commitsAhead: number | null;
+			baseSha: string | null;
 			filesChanged: number | null;
 			insertions: number | null;
 			deletions: number | null;
@@ -64,22 +67,30 @@ export interface RecordOutcomeFactsInput {
 	) => Promise<unknown>;
 }
 
+/** The diff totals plus the resolved base SHA, read in one pass. */
+interface OutcomeMeasurement {
+	readonly stats: DiffStats | null;
+	/** Resolved workspace base SHA (warren-b19e); null = unmeasurable. */
+	readonly baseSha: string | null;
+}
+
 /** Temp-ref namespace for the K8s clone fetch; deleted after the read. */
 const FETCH_REF_PREFIX = "refs/warren/outcome-facts/";
 
 /**
- * Measure the diff totals and persist all four facts. Returns the measured
- * stats (null when unmeasurable) so the pipeline can carry them on its
- * state accumulator. The row write itself is best-effort bookkeeping: a
- * failure is logged, never thrown out of reap.
+ * Measure the diff totals and the resolved base SHA, then persist all five
+ * facts. Returns the measured stats (null when unmeasurable) so the pipeline
+ * can carry them on its state accumulator. The row write itself is best-effort
+ * bookkeeping: a failure is logged, never thrown out of reap.
  */
 export async function recordOutcomeFacts(
 	input: RecordOutcomeFactsInput,
 ): Promise<DiffStats | null> {
-	const stats = await measureDiffStats(input);
+	const { stats, baseSha } = await measureOutcome(input);
 	try {
 		await input.setOutcomeFacts(input.runId, {
 			commitsAhead: input.commitsAhead,
+			baseSha,
 			filesChanged: stats?.filesChanged ?? null,
 			insertions: stats?.insertions ?? null,
 			deletions: stats?.deletions ?? null,
@@ -98,28 +109,39 @@ export async function recordOutcomeFacts(
 }
 
 /**
- * Resolve the diff totals for the run's `base..head` range.
- * `commitsAhead === 0` means the range is empty by finalize's own
- * measurement, so the totals are known zeros without a git read;
- * `commitsAhead === null` means finalize never measured, so the diff is
- * unknown too.
+ * Resolve the diff totals and the resolved workspace base SHA
+ * (warren-b19e) for the run's `base..head` range. `commitsAhead === 0`
+ * means the range is empty by finalize's own measurement, so the totals
+ * are known zeros without a git read; `commitsAhead === null` means
+ * finalize never measured, so the diff is unknown too. The base SHA is
+ * measured only where a git read actually happens (alongside the diff),
+ * as the merge-base of the diff base and the workspace HEAD — the commit
+ * the workspace was actually cut at, pin or not.
  */
-async function measureDiffStats(input: RecordOutcomeFactsInput): Promise<DiffStats | null> {
-	if (input.commitsAhead === null) return null;
-	if (input.commitsAhead === 0) return { filesChanged: 0, insertions: 0, deletions: 0 };
-	if (input.baseBranch === null) return null;
+async function measureOutcome(input: RecordOutcomeFactsInput): Promise<OutcomeMeasurement> {
+	if (input.commitsAhead === null) return { stats: null, baseSha: null };
+	if (input.commitsAhead === 0) {
+		return { stats: { filesChanged: 0, insertions: 0, deletions: 0 }, baseSha: null };
+	}
+	if (input.baseBranch === null) return { stats: null, baseSha: null };
 	// LocalProvider: read straight off the still-live host worktree.
 	if (input.workspacePath !== null) {
-		return numstat(input.exec, input.workspacePath, input.baseBranch, "HEAD");
+		const [stats, baseSha] = await Promise.all([
+			numstat(input.exec, input.workspacePath, input.baseBranch, "HEAD"),
+			mergeBase(input.exec, input.workspacePath, input.baseBranch, "HEAD"),
+		]);
+		return { stats, baseSha };
 	}
 	// K8s: no host worktree — fetch the pushed branch into the project clone
 	// and read the range there (warren-ab66 posture). Requires the push to
 	// have landed and a forge credential for the fetch.
-	if (!input.branchPushed || input.branch === null || input.forge === undefined) return null;
+	if (!input.branchPushed || input.branch === null || input.forge === undefined) {
+		return { stats: null, baseSha: null };
+	}
 	const gitCredential = await mintGitCredential(input.forge, input.project.gitUrl).catch(() => {
 		return undefined;
 	});
-	if (gitCredential === undefined) return null;
+	if (gitCredential === undefined) return { stats: null, baseSha: null };
 	return numstatFromClone(input, gitCredential);
 }
 
@@ -127,9 +149,9 @@ async function measureDiffStats(input: RecordOutcomeFactsInput): Promise<DiffSta
 async function numstatFromClone(
 	input: RecordOutcomeFactsInput,
 	gitCredential: GitSpawnCredential,
-): Promise<DiffStats | null> {
+): Promise<OutcomeMeasurement> {
 	const { branch, baseBranch, runId, exec, project } = input;
-	if (branch === null || baseBranch === null) return null;
+	if (branch === null || baseBranch === null) return { stats: null, baseSha: null };
 	const tempRef = `${FETCH_REF_PREFIX}${runId}`;
 	const url = authenticatedCloneUrl(project.gitUrl, gitCredential);
 	try {
@@ -138,10 +160,14 @@ async function numstatFromClone(
 			timeoutMs: 30_000,
 		});
 	} catch {
-		return null;
+		return { stats: null, baseSha: null };
 	}
 	try {
-		return await numstat(exec, project.localPath, baseBranch, tempRef);
+		const [stats, baseSha] = await Promise.all([
+			numstat(exec, project.localPath, baseBranch, tempRef),
+			mergeBase(exec, project.localPath, baseBranch, tempRef),
+		]);
+		return { stats, baseSha };
 	} finally {
 		try {
 			await exec.run("git", ["update-ref", "-d", tempRef], {
@@ -152,6 +178,25 @@ async function numstatFromClone(
 			// Best-effort cleanup — a leaked temp ref is harmless (`--force`
 			// overwrites it on the next reap of the same run id).
 		}
+	}
+}
+
+/** Run `git merge-base base head` in `cwd`; null on failure (best-effort, warren-b19e). */
+async function mergeBase(
+	exec: ReapExec,
+	cwd: string,
+	baseRef: string,
+	headRef: string,
+): Promise<string | null> {
+	try {
+		const out = await exec.run("git", ["merge-base", baseRef, headRef], {
+			cwd,
+			timeoutMs: 10_000,
+		});
+		const sha = out.stdout.trim();
+		return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+	} catch {
+		return null;
 	}
 }
 

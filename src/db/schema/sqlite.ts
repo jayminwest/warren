@@ -168,6 +168,9 @@ export const runs = sqliteTable(
 		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR
 		// base). Null = the workspace cut follows `ref`/continuation/default.
 		baseCommit: text("base_commit"),
+		// Resolved workspace base SHA (warren-b19e): the merge-base read at reap
+		// where commits_ahead is measured — covers the unpinned case. Null = never measured.
+		baseSha: text("base_sha"),
 		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
 		// landed, the workspace's committed work is captured BEFORE destroy:
 		// `salvage_ref` is the rescue branch pushed to origin

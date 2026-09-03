@@ -20,3 +20,17 @@ test("run detail page renders SpendPanel", async () => {
 	expect(src.includes("<SpendPanel run={r} />")).toBe(true);
 	expect(src.includes("BudgetPanel")).toBe(false);
 });
+
+test("base commit row renders the resolved base_sha with the pin as labelled fallback (warren-b19e)", async () => {
+	const src = await Bun.file(new URL("./side-panels.tsx", import.meta.url)).text();
+	expect(src.includes('label="base commit"')).toBe(true);
+	expect(src.includes("run.baseSha")).toBe(true);
+	// The fallback arm shows the dispatch-time pin, explicitly labelled.
+	expect(src.includes("base pin")).toBe(true);
+});
+
+test("Spend panel renders the '$X of $Y cap' denominator only when the overlay supplied a cap (warren-b19e)", async () => {
+	const src = await Bun.file(new URL("./side-panels.tsx", import.meta.url)).text();
+	expect(src.includes("of {formatCostUsd(cap)} cap")).toBe(true);
+	expect(src.includes("% OF CAP")).toBe(true);
+});
