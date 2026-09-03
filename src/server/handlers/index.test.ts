@@ -74,6 +74,9 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /agents/:name",
 		"GET /projects",
 		"GET /projects/:id", // same projection as the list (warren-2a89)
+		// warren-b754: spectator-visible on the project detail page.
+		"GET /projects/:id/ready-plans", // ids + open-child counts only
+		"GET /projects/:id/warren-config", // narrowed envelope (no triggers/errors, redacted defaults)
 		"GET /analytics/runs",
 		// pl-7e38 step 12 (warren-d850): reduced projection — the USD sums are
 		// stripped, windowRuns/delivery/services stay (./ops-overview.ts).
@@ -112,11 +115,19 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /runs/:id/inbox", // DESTRUCTIVE ON READ — drains the steering queue
 		"GET /runs/:id/finalize-intent", // pod callback; pollable to race the pod
 		"GET /projects/:id/triggers", // trigger prompts + qualityGate commands
-		"GET /projects/:id/warren-config", // admission caps + executable strings
 		"GET /projects/:id/seeds/plans", // project issue contents
 		"GET /projects/:id/seeds/:seedId", // project issue contents
-		"GET /projects/:id/ready-plans", // project issue contents
 		"GET /preview/config", // discloses WARREN_PREVIEW_HOST
+	];
+
+	/**
+	 * Reads promoted to `readPublic` (warren-b754) with what the spectator
+	 * body still drops — recorded beside the old operator entries so the
+	 * promotion is a decision on record, not a silent gate change.
+	 */
+	const PROMOTED_READS: readonly string[] = [
+		"GET /projects/:id/ready-plans", // ids + open-child counts only
+		"GET /projects/:id/warren-config", // narrowed envelope: no triggers, no errors, redacted defaults
 	];
 
 	test("every route declares a policy from the known vocabulary", () => {
@@ -143,6 +154,11 @@ describe("ROUTE_TABLE policy classification", () => {
 	test("every operator-only read is blocked to a spectator", () => {
 		const misclassified = OPERATOR_READS.filter((r) => policyOf(r) !== "readOperator");
 		expect(misclassified).toEqual([]);
+	});
+
+	test("promoted reads answer a spectator", () => {
+		const stale = PROMOTED_READS.filter((r) => policyOf(r) === "readOperator");
+		expect(stale).toEqual([]);
 	});
 
 	test("every POST and DELETE requires dispatch or admin", () => {
