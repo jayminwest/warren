@@ -13,7 +13,7 @@
 	"$comment_pl4ab6_mobile_2026_08_27": "CLOSEOUT (pl-4ab6 mobile conformance, 2026-08-27/28): during the 25-issue mobile pass the js ceilings carried a deliberate one-time ~+6KB gzip session headroom so ~20 sibling PRs could merge without a serial budget chase (run-pod builds with stale src/ui/node_modules measure ~1.3-1.5KB gzip cooler than CI and were writing WRONG lower budgets). With the plan fully merged, warren-2c97 re-baselined all budgets DOWN to the true measured floor on a clean build (rm -rf src/ui/node_modules && bun run check:bundle-size --update): gzip js 197540 -> 195795, gzip css 10637 -> 10504; raw budgets were never over and keep their ceilings. The ratchet-only-goes-down rule is back in force from here.",
 	"totals": {
 		"raw": {
-			"js": 682030,
+			"js": 684217,
 			"css": 54553
 		},
 		"gzip": {

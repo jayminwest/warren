@@ -59,6 +59,31 @@ function MetricCell({
 	);
 }
 
+/** Copy + tone for the JUDGE PASS cell (warren-f282): the pass rate is
+ * neutral (default text colour) when judged coverage is below 80%, and
+ * the note carries the 'N of M judged' denominator honestly. */
+function judgePassCell(judgeSummary: ReturnType<typeof summarizeJudgeVerdicts> | null): {
+	value: string;
+	valueClassName?: string;
+	note: string;
+} {
+	if (judgeSummary === null) {
+		return { value: "—", note: "judge extension not deployed" };
+	}
+	const judged = judgeSummary.pass + judgeSummary.fail;
+	if (judgeSummary.passRate === null) {
+		return { value: "—", note: "no verdicts recorded yet" };
+	}
+	return {
+		value: `${String(Math.round(judgeSummary.passRate * 100))}%`,
+		valueClassName:
+			judgeSummary.judgedRate !== null && judgeSummary.judgedRate >= 0.8
+				? "text-(--color-primary)"
+				: undefined,
+		note: `${String(judged)} of ${String(judged + judgeSummary.unjudged)} judged against rubric v1`,
+	};
+}
+
 export function TelemetryMetricStrip() {
 	const { runs } = useTelemetryWindow();
 	const verdicts = useJudgeVerdicts();
@@ -68,6 +93,7 @@ export function TelemetryMetricStrip() {
 
 	const judgeSummary =
 		verdicts.data?.available === true ? summarizeJudgeVerdicts(verdicts.data.rows) : null;
+	const judgeCell = judgePassCell(judgeSummary);
 
 	return (
 		<div className="grid w-full grid-cols-2 overflow-hidden rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:flex">
@@ -110,23 +136,9 @@ export function TelemetryMetricStrip() {
 			/>
 			<MetricCell
 				label="JUDGE PASS"
-				value={
-					judgeSummary === null || judgeSummary.passRate === null
-						? "—"
-						: `${Math.round(judgeSummary.passRate * 100)}%`
-				}
-				valueClassName={
-					judgeSummary?.passRate !== null && judgeSummary !== null
-						? "text-(--color-primary)"
-						: undefined
-				}
-				note={
-					judgeSummary === null
-						? "judge extension not deployed"
-						: judgeSummary.passRate === null
-							? "no verdicts recorded yet"
-							: `${judgeSummary.pass + judgeSummary.fail} verdicts against rubric v1`
-				}
+				value={judgeCell.value}
+				valueClassName={judgeCell.valueClassName}
+				note={judgeCell.note}
 				title="Verdict export GET /verdicts.jsonl (judge extension)"
 				hasRightBorder={false}
 			/>
