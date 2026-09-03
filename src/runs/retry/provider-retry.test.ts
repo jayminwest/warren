@@ -138,6 +138,12 @@ describe("createProviderRetryLifecycleExtension", () => {
 		expect(spawn.calls).toHaveLength(1);
 	});
 
+	test("retries an OpenRouter stream break with no structured status", async () => {
+		const fixture = await setup({ providerMessage: "Stream ended without finish_reason" });
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+	});
+
 	test("does not retry a 401 httpStatus even when the upstreamBody looks 5xx", async () => {
 		const fixture = await setup({
 			providerMessage: "Provider returned error",

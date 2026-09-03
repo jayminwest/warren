@@ -141,6 +141,11 @@ const TRANSIENT_PATTERNS: readonly RegExp[] = [
 	/epipe/,
 	/socket hang up/,
 	/socket.*(closed|timeout)/,
+	// Stream breaks can arrive after headers with no status/body left to parse.
+	/stream ended/,
+	/without finish_reason/,
+	/premature close/,
+	/\baborted\b/,
 	/fetch failed/,
 	/network error/,
 	/\bnetwork\b/,
