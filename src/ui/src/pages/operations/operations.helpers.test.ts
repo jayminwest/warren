@@ -8,7 +8,6 @@ import {
 	oldestPhaseInstant,
 	phaseElapsedMs,
 	phaseInstant,
-	priorityEntries,
 	refreshedAgeLabel,
 	shortRepo,
 } from "./operations.helpers.ts";
@@ -119,17 +118,6 @@ describe("activeWorkloads", () => {
 describe("LIFECYCLE_ORDER", () => {
 	test("follows the canvas phase order", () => {
 		expect(LIFECYCLE_ORDER).toEqual(["queued", "running", "succeeded", "failed", "cancelled"]);
-	});
-});
-
-describe("priorityEntries", () => {
-	test("orders known priorities most severe first and drops zero counts", () => {
-		const entries = priorityEntries({ low: 1, urgent: 2, normal: 0, weird: 3 });
-		expect(entries).toEqual([
-			{ priority: "urgent", count: 2 },
-			{ priority: "low", count: 1 },
-			{ priority: "weird", count: 3 },
-		]);
 	});
 });
 

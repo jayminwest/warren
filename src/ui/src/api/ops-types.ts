@@ -4,15 +4,15 @@
 /* run-analytics-types.ts).                                                */
 /* ----------------------------------------------------------------------- */
 
-import type { RunState } from "../../../core/wire.ts";
+import type { OpsWindow, RunState } from "../../../core/wire.ts";
 
 /**
  * Wire envelope of `GET /ops/overview` (pl-7e38 step 12 / warren-d850).
  * The operator body carries every section; a `WARREN_AUTH=public`
- * spectator is served the reduced projection (run lifecycle counts +
- * `generatedAt` only), so every operator section is OPTIONAL here and
- * renders on presence — an absent section must never read as zero
- * (warren-f53e, same rule as `costTotalUsd`).
+ * spectator is served the reduced projection (USD sums stripped; windowRuns,
+ * delivery, and the service facts stay — warren-7194), so the operator-only
+ * fields are OPTIONAL here and render on presence — an absent field must
+ * never read as zero (warren-f53e, same rule as `costTotalUsd`).
  */
 export interface OpsOverviewResponse {
 	readonly runs: {
@@ -20,19 +20,17 @@ export interface OpsOverviewResponse {
 		readonly nonTerminal: number;
 		readonly total: number;
 	};
+	/** Trailing window the spend/delivery buckets cover (warren-7194). */
+	readonly window: OpsWindow;
 	readonly spend?: {
-		readonly totalUsd: number;
-		readonly last24hUsd: number;
-		readonly last24hRuns: number;
+		readonly totalUsd?: number;
+		readonly windowUsd?: number;
+		readonly windowRuns: number;
 	};
 	readonly delivery?: {
 		readonly branchesPushed: number;
 		readonly prsOpened: number;
 		readonly prsMerged: number;
-	};
-	readonly interventions?: {
-		readonly pendingByPriority: Readonly<Record<string, number>>;
-		readonly pendingTotal: number;
 	};
 	readonly services?: {
 		readonly dbReachable: boolean;
