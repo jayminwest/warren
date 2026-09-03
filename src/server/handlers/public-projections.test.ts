@@ -375,7 +375,8 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		expect(totals).not.toHaveProperty("costUsd");
 		expect(body).not.toHaveProperty("capHits");
 		// warren-be04: outcomes survives — steering tallies and merged counts
-		// are public — but every USD figure inside is redacted.
+		// are public — and warren-97ae makes the instance-wide cost/merged-PR
+		// ratio public too; the per-bucket USD figures stay redacted.
 		const outcomes = body.outcomes as {
 			steering: { steered: { prStateKnown: number }; unsteered: { prStateKnown: number } };
 			costPerMergedPr: {
@@ -388,7 +389,11 @@ describe("public projections over the wire (warren-4f6c)", () => {
 			[...PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS].sort(),
 		);
 		expect(outcomes.costPerMergedPr.overall).not.toHaveProperty("costUsd");
+		expect(outcomes.costPerMergedPr.overall).not.toHaveProperty("priced");
 		expect(outcomes.costPerMergedPr.overall.prsMerged).toBe(1);
+		// warren-97ae: the public ratio itself.
+		expect(outcomes.costPerMergedPr.overall.costPerMergedPrUsd).toBeDefined();
+		expect(outcomes.costPerMergedPr.overall.costPerMergedPrUsd).not.toBeNull();
 		// warren-bc9c: delivery timings (public like queueWaitMs) and the
 		// autonomy rollup (counts + a rate) survive the projection.
 		const delivery = body.delivery as { branchPushToPrOpenMs: unknown };
@@ -437,8 +442,13 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		// figure like "1.25" can collide with an ISO millisecond timestamp
 		// ("...:01.250Z") and flake the assertion. Walk the parsed body and
 		// fail on any cost-named key or any occurrence of the seeded figure.
+		// warren-97ae: the one deliberate exception is the instance-wide
+		// cost/merged-PR ratio, which is public — with one merged PR it
+		// numerically equals the seeded spend, so it shows up as exactly
+		// that one value hit and nothing else (flattenEntries reports
+		// immediate keys, not dotted paths).
 		const leaks = findCostLeaks(body, 987.6543);
-		expect(leaks).toEqual([]);
+		expect(leaks).toEqual(["value:costPerMergedPrUsd"]);
 		expect(JSON.stringify(body)).not.toContain("warren-4f6c");
 	});
 });
