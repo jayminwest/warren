@@ -116,7 +116,7 @@ export function PlanRunsPage() {
 						Plan runs
 					</h1>
 					<p className="text-[12px] leading-4 text-(--color-text-2)">
-						Sequential multi-issue walks. Each child seed gates on the previous PR merging.
+						Plans dispatched as sequential runs, one child at a time.
 					</p>
 				</div>
 				<OperatorOnly>

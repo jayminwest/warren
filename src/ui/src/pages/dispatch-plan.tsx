@@ -38,8 +38,7 @@ export function DispatchPlanPage() {
 					Dispatch plan
 				</h1>
 				<p className="max-w-prose text-[12px] leading-4 text-(--color-text-2)">
-					Define a sequential multi-issue walk over one plan&apos;s children and inspect the
-					resolved walk policy.
+					Dispatch each child issue of a plan as its own run, in order.
 				</p>
 			</div>
 

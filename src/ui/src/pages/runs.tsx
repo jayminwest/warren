@@ -193,7 +193,7 @@ export function RunsPage() {
 						Runs
 					</h1>
 					<p className="text-[11px] leading-[14px] text-(--color-text-2) md:text-[12px] md:leading-4">
-						Managed agent workloads across every project and runtime.
+						Runs across every project.
 					</p>
 				</div>
 				{/* Below md the trailing slot is the mono run count; dispatch

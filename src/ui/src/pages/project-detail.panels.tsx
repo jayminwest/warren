@@ -60,7 +60,7 @@ export function DispatchDefaultsPanel({
 				{errors.length > 0 ? (
 					<span className={`${HEAD_NOTE} text-(--color-danger)`}>{errors.length} ERRORS</span>
 				) : (
-					<span className={HEAD_NOTE}>READ FROM CLONE · VALID</span>
+					<span className={HEAD_NOTE}>VALID</span>
 				)}
 			</div>
 			<div className="px-3.5 py-3">
@@ -186,7 +186,6 @@ export function TriggersPanel({ projectId }: { projectId: string }) {
 				<h2 className={PANEL_TITLE}>Triggers</h2>
 				<span className={PANEL_META}>.warren/triggers.yaml</span>
 				<div className="min-w-0 flex-1" />
-				<span className={HEAD_NOTE}>PROTECTED PATH · ARTICLE IX</span>
 			</div>
 			{triggers.isLoading ? (
 				<div className="px-3.5 py-3">
@@ -380,7 +379,7 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 			<div className={PANEL_HEAD}>
 				<h2 className={PANEL_TITLE}>Ready plans</h2>
 				<div className="min-w-0 flex-1" />
-				<span className={HEAD_NOTE}>FROM THE .seeds QUEUE · UNBLOCKED ONLY</span>
+				<span className={HEAD_NOTE}>UNBLOCKED ONLY</span>
 			</div>
 			{readyPlans.isLoading ? (
 				<div className="px-3.5 py-3">
