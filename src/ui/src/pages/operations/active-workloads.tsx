@@ -53,10 +53,9 @@ export function ActiveWorkloads({
 	total: number | undefined;
 }) {
 	const active = runs !== undefined ? activeWorkloads(runs, MAX_ROWS) : [];
-	const running = runs?.filter((r) => r.state === "running").length ?? null;
-	const queued = runs?.filter((r) => r.state === "queued").length ?? null;
-	const windowSummary =
-		running === null || queued === null ? "…" : `${running} RUNNING · ${queued} QUEUED`;
+	const running = runs?.filter((r) => r.state === "running").length ?? 0;
+	const queued = runs?.filter((r) => r.state === "queued").length ?? 0;
+	const windowSummary = `${running} RUNNING · ${queued} QUEUED`;
 	const projectIndex = new Map<string, string>();
 	for (const p of projects ?? []) projectIndex.set(p.id, shortRepo(p.gitUrl));
 	return (
@@ -82,7 +81,18 @@ export function ActiveWorkloads({
 				</div>
 				{active.length === 0 ? (
 					<p className="px-3 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
-						{loading ? "loading active workloads…" : "No active workloads — the instance is quiet."}
+						{loading ? (
+							"loading active workloads…"
+						) : (
+							<>
+								0 active
+								<span
+									className="mx-1.5 inline-block h-1.5 w-1.5 rounded-full bg-(--color-text-3)"
+									aria-hidden
+								/>
+								idle
+							</>
+						)}
 					</p>
 				) : (
 					<InventoryCardList>
