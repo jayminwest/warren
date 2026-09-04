@@ -7,9 +7,11 @@ import {
 	type CoverageBudgets,
 	type CoverageTotals,
 	checkBudgets,
+	installExtensionDeps,
 	loadBudgets,
 	parseAllFilesRow,
 } from "./check-coverage.ts";
+import type { ExtensionPlan, RunCommand } from "./check-extensions.ts";
 
 describe("loadBudgets", () => {
 	test("parses valid percentages", () => {
@@ -125,5 +127,56 @@ describe("check-coverage CLI (--parse)", () => {
 		const r = runParse(undefined);
 		expect(r.status).toBe(2);
 		expect(r.stderr).toContain("--parse expected an existing file");
+	});
+});
+
+describe("installExtensionDeps", () => {
+	const plan = (name: string, installed: boolean, hasDependencies: boolean): ExtensionPlan => ({
+		dir: `/repo/extensions/${name}`,
+		name: `extensions/${name}`,
+		gates: ["typecheck"],
+		installed,
+		hasDependencies,
+	});
+
+	function recorder(failing: ReadonlySet<string> = new Set()) {
+		const calls: string[] = [];
+		const run: RunCommand = (cwd, argv) => {
+			const key = `${cwd.split("/").pop()} ${argv.join(" ")}`;
+			calls.push(key);
+			return failing.has(key)
+				? { ok: false, output: `lockfile drift in ${key}` }
+				: { ok: true, output: "" };
+		};
+		return { run, calls };
+	}
+
+	test("installs only the packages that declare dependencies and have none on disk", () => {
+		const { run, calls } = recorder();
+		const failures = installExtensionDeps(
+			[plan("judge", false, true), plan("done", true, true), plan("bare", false, false)],
+			run,
+			() => {},
+		);
+		expect(calls).toEqual(["judge bun install --frozen-lockfile"]);
+		expect(failures).toEqual([]);
+	});
+
+	test("names the package and keeps the install output when it fails", () => {
+		const { run } = recorder(new Set(["judge bun install --frozen-lockfile"]));
+		const failures = installExtensionDeps([plan("judge", false, true)], run, () => {});
+		expect(failures).toHaveLength(1);
+		expect(failures[0]).toContain("extensions/judge");
+		expect(failures[0]).toContain("lockfile drift");
+	});
+
+	test("says which package it is installing before the wait", () => {
+		const { run } = recorder();
+		const lines: string[] = [];
+		installExtensionDeps([plan("judge", false, true), plan("done", true, true)], run, (m) =>
+			lines.push(m),
+		);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toContain("extensions/judge");
 	});
 });

@@ -18,7 +18,9 @@
  *
  * An extension with no `node_modules` gets a frozen `bun install` first,
  * so a fresh clone's `bun run verify` does not fail on a resolution
- * error that `bun run ext:install` would have repaired.
+ * error that `bun run ext:install` would have repaired. That repair is
+ * exported as `ensureInstalled` because `check:coverage` needs the same
+ * one before the root test sweep reaches `extensions/**` (warren-fe72).
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -39,6 +41,8 @@ export interface ExtensionPlan {
 	readonly gates: readonly ExtensionGate[];
 	/** Whether the package's dependencies are installed. */
 	readonly installed: boolean;
+	/** Whether the manifest declares any dependency to install. */
+	readonly hasDependencies: boolean;
 }
 
 export interface GateResult {
@@ -49,7 +53,7 @@ export interface GateResult {
 	readonly output: string;
 }
 
-interface CommandResult {
+export interface CommandResult {
 	readonly ok: boolean;
 	readonly output: string;
 }
@@ -75,16 +79,35 @@ export function discoverExtensions(root: string = REPO_ROOT): ExtensionPlan[] {
 		if (!existsSync(manifestPath)) continue;
 		const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
 			scripts?: Record<string, string>;
+			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
 		};
 		const scripts = manifest.scripts ?? {};
+		const declared =
+			Object.keys(manifest.dependencies ?? {}).length +
+			Object.keys(manifest.devDependencies ?? {}).length;
 		plans.push({
 			dir,
 			name: relative(root, dir),
 			gates: EXTENSION_GATES.filter((gate) => typeof scripts[gate] === "string"),
 			installed: existsSync(join(dir, "node_modules")),
+			hasDependencies: declared > 0,
 		});
 	}
 	return plans.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Put a package's dependencies on disk when the manifest declares some
+ * and `node_modules` is absent. A package that is already installed, or
+ * that declares nothing, is left alone and reported ok.
+ */
+export function ensureInstalled(
+	plan: ExtensionPlan,
+	run: RunCommand = defaultRunCommand,
+): CommandResult {
+	if (plan.installed || !plan.hasDependencies) return { ok: true, output: "" };
+	return run(plan.dir, ["bun", "install", "--frozen-lockfile"]);
 }
 
 /**
@@ -99,18 +122,16 @@ export function runExtensionGates(
 	const results: GateResult[] = [];
 	for (const plan of plans) {
 		if (plan.gates.length === 0) continue;
-		if (!plan.installed) {
-			const install = run(plan.dir, ["bun", "install", "--frozen-lockfile"]);
-			if (!install.ok) {
-				const gate = plan.gates[0] ?? "typecheck";
-				results.push({
-					name: plan.name,
-					gate,
-					ok: false,
-					output: `bun install --frozen-lockfile failed before ${gate} could run:\n${install.output}`,
-				});
-				continue;
-			}
+		const install = ensureInstalled(plan, run);
+		if (!install.ok) {
+			const gate = plan.gates[0] ?? "typecheck";
+			results.push({
+				name: plan.name,
+				gate,
+				ok: false,
+				output: `bun install --frozen-lockfile failed before ${gate} could run:\n${install.output}`,
+			});
+			continue;
 		}
 		for (const gate of plan.gates) {
 			const result = run(plan.dir, ["bun", "run", gate]);

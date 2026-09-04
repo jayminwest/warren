@@ -22,6 +22,12 @@
  * floor requires deleting tests, which should be a conscious decision
  * with a tracker reference, not a silent ratchet move.
  *
+ * The sweep reaches `extensions/**` too, and those packages carry their
+ * own manifests, so this gate installs any that a bare root `bun install`
+ * left empty before it starts (warren-fe72). Without that, a fresh
+ * checkout fails on `Cannot find module` instead of on a real defect,
+ * and the 32 extension tests never run at all.
+ *
  * Usage:
  *   bun run scripts/check-coverage.ts             # run tests + enforce
  *   bun run scripts/check-coverage.ts --junit     # also emit junit.xml
@@ -31,6 +37,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+	defaultRunCommand,
+	discoverExtensions,
+	type ExtensionPlan,
+	ensureInstalled,
+	type RunCommand,
+} from "./check-extensions.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const BUDGETS_PATH = resolve(REPO_ROOT, "scripts/coverage-budgets.json");
@@ -163,6 +176,33 @@ function reportResult(
 	return testExitCode;
 }
 
+/**
+ * Install the dependencies of every extension package that declares some
+ * and has no `node_modules`. Returns one message per package whose install
+ * failed; an empty array means the sweep can resolve every import.
+ *
+ * The install itself is `ensureInstalled` from the extension gate guard,
+ * so the two gates repair a checkout the same way.
+ */
+export function installExtensionDeps(
+	plans: readonly ExtensionPlan[],
+	run: RunCommand = defaultRunCommand,
+	log: (message: string) => void = console.error,
+): string[] {
+	const failures: string[] = [];
+	for (const plan of plans) {
+		if (plan.installed || !plan.hasDependencies) continue;
+		log(`check-coverage: installing ${plan.name} dependencies (its tests ride the root sweep)`);
+		const result = ensureInstalled(plan, run);
+		if (!result.ok) {
+			failures.push(
+				`${plan.name}: bun install --frozen-lockfile failed\n${result.output.trimEnd()}`,
+			);
+		}
+	}
+	return failures;
+}
+
 function runBunTest(emitJUnit: boolean): {
 	exitCode: number;
 	stdout: string;
@@ -223,6 +263,14 @@ async function main(): Promise<void> {
 		}
 		const totals = parseAllFilesRow(readFileSync(file, "utf8"));
 		process.exitCode = reportResult(totals, budgets, 0);
+		return;
+	}
+
+	const installFailures = installExtensionDeps(discoverExtensions());
+	if (installFailures.length > 0) {
+		for (const failure of installFailures) console.error(`check-coverage: ${failure}`);
+		console.error("check-coverage: run `bun run ext:install` and re-run this gate.");
+		process.exitCode = 2;
 		return;
 	}
 

@@ -11,10 +11,15 @@ import {
 
 let root: string;
 
-function writeExtension(name: string, scripts: Record<string, string>, installed = false): void {
+function writeExtension(
+	name: string,
+	scripts: Record<string, string>,
+	installed = false,
+	dependencies: Record<string, string> = {},
+): void {
 	const dir = join(root, "extensions", name);
 	mkdirSync(dir, { recursive: true });
-	writeFileSync(join(dir, "package.json"), JSON.stringify({ name, scripts }));
+	writeFileSync(join(dir, "package.json"), JSON.stringify({ name, scripts, dependencies }));
 	if (installed) mkdirSync(join(dir, "node_modules"));
 }
 
@@ -63,10 +68,21 @@ describe("discoverExtensions", () => {
 		expect(plans[2]?.installed).toBe(false);
 	});
 
-	test("sees every shipped extension's typecheck script", () => {
+	test("reads whether the manifest declares anything to install", () => {
+		writeExtension("has-deps", { typecheck: "tsc" }, false, { "@sinclair/typebox": "^0.34.0" });
+		writeExtension("no-deps", { typecheck: "tsc" });
+		const byName = new Map(discoverExtensions(root).map((p) => [p.name, p]));
+		expect(byName.get("extensions/has-deps")?.hasDependencies).toBe(true);
+		expect(byName.get("extensions/no-deps")?.hasDependencies).toBe(false);
+	});
+
+	test("sees every shipped extension's typecheck script and its dependencies", () => {
 		const plans = discoverExtensions();
 		expect(plans.length).toBeGreaterThanOrEqual(6);
-		for (const plan of plans) expect(plan.gates).toContain("typecheck");
+		for (const plan of plans) {
+			expect(plan.gates).toContain("typecheck");
+			expect(plan.hasDependencies).toBe(true);
+		}
 	});
 });
 
@@ -75,11 +91,13 @@ describe("runExtensionGates", () => {
 		name: string,
 		gates: ExtensionPlan["gates"],
 		installed: boolean,
+		hasDependencies = true,
 	): ExtensionPlan => ({
 		dir: `/repo/extensions/${name}`,
 		name: `extensions/${name}`,
 		gates,
 		installed,
+		hasDependencies,
 	});
 
 	test("runs each declared gate in order and skips packages with none", () => {
@@ -97,6 +115,12 @@ describe("runExtensionGates", () => {
 		const { run, calls } = recorder();
 		runExtensionGates([plan("a", ["typecheck"], false)], run);
 		expect(calls).toEqual(["a bun install --frozen-lockfile", "a bun run typecheck"]);
+	});
+
+	test("skips the install when the package declares no dependencies", () => {
+		const { run, calls } = recorder();
+		runExtensionGates([plan("a", ["typecheck"], false, false)], run);
+		expect(calls).toEqual(["a bun run typecheck"]);
 	});
 
 	test("reports a red gate with its output and keeps running the rest", () => {
