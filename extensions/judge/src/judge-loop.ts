@@ -54,6 +54,15 @@ export interface JudgeSession {
 	/** Resolve when the agent loop has settled (verdict called or plain-text end). */
 	waitForIdle(): Promise<void>;
 	getSessionStats(): SessionStatsSnapshot;
+	/**
+	 * The provider error that ended the most recent turn, or null when the
+	 * turn ended normally. A provider failure (an expired key, a 401, a
+	 * model the account cannot reach) does not throw: the agent loop encodes
+	 * it on the final assistant message and goes idle, so without this the
+	 * loop cannot tell a dead credential from a model that talked instead of
+	 * calling report_verdict.
+	 */
+	getLastError(): string | null;
 	dispose(): void;
 }
 
@@ -191,6 +200,7 @@ export async function judgeRun(opts: JudgeRunOptions): Promise<JudgeOutcome> {
 		});
 		let session: JudgeSession | null = null;
 		let attemptError: unknown = null;
+		let providerError: string | null = null;
 		try {
 			session = await opts.sessionFactory({ systemPrompt, tools });
 			liveSession = session;
@@ -213,6 +223,13 @@ export async function judgeRun(opts: JudgeRunOptions): Promise<JudgeOutcome> {
 				} catch {
 					// Stats are accounting, not the judgment: a stats-capture
 					// failure never turns a good verdict into an unjudged marker.
+				}
+				try {
+					// Read before dispose, and in its own try for the same reason
+					// the stats capture has one.
+					providerError = session.getLastError();
+				} catch {
+					providerError = null;
 				}
 				session.dispose();
 			}
@@ -243,6 +260,15 @@ export async function judgeRun(opts: JudgeRunOptions): Promise<JudgeOutcome> {
 				reason: "judge_error",
 				detail:
 					attemptError instanceof Error ? attemptError.message : String(attemptError),
+			};
+		} else if (providerError !== null) {
+			// A retry against the same dead credential cannot succeed, and each
+			// one is billed. End the judgment on the provider's own words.
+			return {
+				kind: "unjudged",
+				reason: "judge_error",
+				detail: `provider error on attempt ${attempt}, not retried: ${providerError}`,
+				stats: toJudgmentStats(stats),
 			};
 		} else {
 			lastFailure = {

@@ -14,8 +14,12 @@ const RUBRIC_VERSION = "sha256:" + "ab".repeat(32);
 const JUDGED_AT = new Date("2026-08-15T17:00:00.000Z");
 
 interface StubBehavior {
-	/** Per-attempt behavior: report a verdict, end in plain text, or throw. */
-	kind: "verdict" | "plain_text" | "throw";
+	/**
+	 * Per-attempt behavior: report a verdict, end in plain text, throw, or
+	 * end the turn the way a provider failure does, with the text on the
+	 * session state and nothing thrown.
+	 */
+	kind: "verdict" | "plain_text" | "throw" | "provider_error";
 	args?: unknown;
 	message?: string;
 }
@@ -49,6 +53,10 @@ function makeStubFactory(
 				tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
 				costUsd: costPerAttempt,
 			}),
+			getLastError: () =>
+				behavior.kind === "provider_error"
+					? (behavior.message ?? "provider returned an error")
+					: null,
 			dispose: () => {},
 		};
 		return session;
@@ -228,6 +236,23 @@ describe("judgeRun", () => {
 	);
 
 	test(
+		"ends on the provider's error instead of spending the retry budget",
+		withFakeWarren(async (fake) => {
+			const { factory, calls } = makeStubFactory(
+				[{ kind: "provider_error", message: "401 invalid x-api-key" }],
+				0.001,
+			);
+			const outcome = await judgeRun({ ...judgeOpts(fake, factory), maxRetries: 2 });
+			expect(outcome.kind).toBe("unjudged");
+			if (outcome.kind !== "unjudged") throw new Error("expected unjudged");
+			expect(outcome.reason).toBe("judge_error");
+			expect(outcome.detail).toContain("401 invalid x-api-key");
+			expect(outcome.stats.attempts).toBe(1);
+			expect(calls).toHaveLength(1);
+		}),
+	);
+
+	test(
 		"stops early with budget_exceeded when accrued cost reaches the per-judgment cap",
 		withFakeWarren(async (fake) => {
 			const { factory } = makeStubFactory(
@@ -287,6 +312,7 @@ describe("judgeRun", () => {
 						tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
 						costUsd: 0.001,
 					}),
+					getLastError: () => null,
 					dispose: () => {},
 				};
 			};
@@ -340,6 +366,7 @@ describe("judgeRun", () => {
 						tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
 						costUsd: sessionCost,
 					}),
+					getLastError: () => null,
 					dispose: () => {},
 				};
 			};
@@ -389,6 +416,7 @@ describe("judgeRun", () => {
 						tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
 						costUsd: 0.15,
 					}),
+					getLastError: () => null,
 					dispose: () => {},
 				};
 			};
