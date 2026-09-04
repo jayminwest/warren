@@ -280,6 +280,32 @@ describe("calibrateOnce", () => {
 		verdicts.close();
 	});
 
+	test("a $0 failure is skipped, not marked, and the run is re-drawn next pass", async () => {
+		const judge: JudgeFn = () =>
+			Promise.resolve({
+				kind: "unjudged",
+				reason: "judge_error",
+				detail: "401 invalid x-api-key",
+				stats: stats(0),
+			});
+		const { deps, verdicts, spend } = makeDeps({ judge });
+		seedCheapVerdicts(verdicts, ["run-1"]);
+		const skips: string[] = [];
+
+		const result = await calibrateOnce({ ...deps, onZeroCostSkipped: (runId) => skips.push(runId) });
+		expect(result.zeroCostSkipped).toBe(1);
+		expect(result.rejudged).toBe(0);
+		expect(skips).toEqual(["run-1"]);
+		// Only the cheap verdict seeded above: no strong-judge row took the
+		// dedupe key, so the run is still a candidate.
+		expect(verdicts.rowsForRun("run-1")).toHaveLength(1);
+		expect(spend.spendForDay("2026-08-15")).toBeCloseTo(0);
+
+		const rerun = await calibrateOnce(deps);
+		expect(rerun.candidates).toBe(1);
+		verdicts.close();
+	});
+
 	test("persists the agreement report as a queryable per-rubric-version metric", async () => {
 		const { deps, verdicts, metrics } = makeDeps();
 		seedCheapVerdicts(verdicts, ["run-1", "run-2"]);

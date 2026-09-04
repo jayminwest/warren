@@ -21,7 +21,10 @@
  * The deferral stays visible in the cycle stats and the once-per-pass
  * deferral log line. Per-judgment failures (judge_error,
  * malformed_verdict, a mid-attempt cap breach) still record markers,
- * because the attempts were billed.
+ * because the attempts were billed. A failure that cost $0 was not
+ * billed, so it is skipped the same way a deferral is (warren-d8df): an
+ * expired key or a missing model would otherwise take the dedupe key and
+ * drop the run from every future sample without a model ever reading it.
  *
  * The agreement rate is computed from the store's calibration join and
  * persisted per rubric version in the `calibration_metrics` table, so the
@@ -264,6 +267,8 @@ export interface CalibrationDeps {
 	readonly onJudgment?: (runId: string, outcome: string) => void;
 	/** Once per pass, on the first budget deferral — loud by design (§12.5). */
 	readonly onBudgetDeferred?: (runId: string, detail: string) => void;
+	/** Once per pass, when a $0 failure is skipped instead of marked. */
+	readonly onZeroCostSkipped?: (runId: string, detail: string) => void;
 }
 
 export interface CalibrationCycleStats {
@@ -272,6 +277,8 @@ export interface CalibrationCycleStats {
 	readonly rejudged: number;
 	/** Sampled runs deferred by the exhausted daily budget — no row written. */
 	readonly budgetDeferred: number;
+	/** Runs skipped (not marked) because the attempt cost nothing. */
+	readonly zeroCostSkipped: number;
 	readonly report: AgreementReport;
 }
 
@@ -332,6 +339,8 @@ export async function calibrateOnce(deps: CalibrationDeps): Promise<CalibrationC
 
 	let rejudged = 0;
 	let budgetDeferred = 0;
+	let zeroCostSkipped = 0;
+	let zeroCostAnnounced = false;
 	let deferralAnnounced = false;
 	for (const runId of sample) {
 		try {
@@ -369,6 +378,21 @@ export async function calibrateOnce(deps: CalibrationDeps): Promise<CalibrationC
 						model: strongId,
 					},
 				});
+			} else if (outcome.stats.costUsd === 0) {
+				// SKIP, never mark: the marker rationale above is that the
+				// attempts were billed, and a $0 attempt was not. Writing one
+				// would occupy the dedupe key over a failure no model was paid
+				// for, so the run leaves the pool for good. No write means the
+				// next pass re-draws it.
+				zeroCostSkipped += 1;
+				if (!zeroCostAnnounced) {
+					zeroCostAnnounced = true;
+					deps.onZeroCostSkipped?.(
+						runId,
+						`${outcome.reason} at $0.0000, not marked: ${outcome.detail}`,
+					);
+				}
+				continue;
 			} else {
 				deps.verdicts.recordUnjudged({
 					runId,
@@ -403,6 +427,7 @@ export async function calibrateOnce(deps: CalibrationDeps): Promise<CalibrationC
 		sampled: sample.length,
 		rejudged,
 		budgetDeferred,
+		zeroCostSkipped,
 		report,
 	};
 }

@@ -73,6 +73,8 @@ export interface JudgeCollectorDeps {
 	 * (§12.5), but once, not once per deferred run (a big backlog would
 	 * repeat the line hundreds of times every cycle).
 	 */
+	/** Once per cycle, when a $0 failure is skipped instead of marked. */
+	readonly onZeroCostSkipped?: (runId: string, detail: string) => void;
 	readonly onBudgetDeferred?: (runId: string, detail: string) => void;
 }
 
@@ -83,6 +85,8 @@ export interface JudgeCycleStats {
 	readonly alreadyJudged: number;
 	/** Runs deferred (not judged, not marked) because the daily budget is spent. */
 	readonly budgetDeferred: number;
+	/** Runs skipped (not marked, not checkpointed) because the attempt cost $0. */
+	readonly zeroCostSkipped: number;
 }
 
 const DEFAULT_RUNS_PAGE_SIZE = 500;
@@ -115,9 +119,17 @@ async function judgeOneRun(
 	remainingBudgetUsd: number,
 	deps: JudgeCollectorDeps,
 	now: () => Date,
-): Promise<"judged"> {
+): Promise<"judged" | "zero_cost_skipped"> {
 	const maxCostUsd = Math.min(deps.maxCostUsdPerJudgment, remainingBudgetUsd);
 	const outcome = await deps.judge(runId, { maxCostUsd });
+
+	if (outcome.kind !== "verdict" && outcome.stats.costUsd === 0) {
+		// SKIP, never mark, and never checkpoint: a marker earns its place
+		// because the attempts were billed, and a $0 attempt was not. The
+		// cursor is per run, so leaving it alone re-lists this run next
+		// cycle instead of losing it behind a marker no model produced.
+		return "zero_cost_skipped";
+	}
 
 	if (outcome.kind === "verdict") {
 		deps.verdicts.recordVerdict(outcome.verdict);
@@ -130,8 +142,8 @@ async function judgeOneRun(
 			detail: outcome.detail,
 		});
 	}
-	// Spend is ledgered for every outcome — an unjudged marker is not a
-	// refund, the provider billed the attempts either way.
+	// Spend is ledgered for every outcome that produced one: an unjudged
+	// marker is not a refund, the provider billed the attempts either way.
 	deps.spend.record(outcome.stats.costUsd, now());
 	// Checkpoint ONLY after the store accepted (audit-log discipline).
 	deps.cursors.checkpoint(runId, {
@@ -158,6 +170,8 @@ export async function collectOnce(deps: JudgeCollectorDeps): Promise<JudgeCycleS
 	let alreadyJudged = 0;
 	let budgetDeferred = 0;
 	let deferralAnnounced = false;
+	let zeroCostSkipped = 0;
+	let zeroCostAnnounced = false;
 	for (const run of terminal) {
 		if (!deps.cursors.needsJudgment(run.id, deps.rubricVersion, deps.judgeModelId)) {
 			alreadyJudged += 1;
@@ -182,8 +196,19 @@ export async function collectOnce(deps: JudgeCollectorDeps): Promise<JudgeCycleS
 			continue;
 		}
 		try {
-			await judgeOneRun(run.id, remaining, deps, now);
-			judged += 1;
+			const result = await judgeOneRun(run.id, remaining, deps, now);
+			if (result === "zero_cost_skipped") {
+				zeroCostSkipped += 1;
+				if (!zeroCostAnnounced) {
+					zeroCostAnnounced = true;
+					deps.onZeroCostSkipped?.(
+						run.id,
+						"judgment failed at $0.0000, not marked; the run stays a candidate",
+					);
+				}
+			} else {
+				judged += 1;
+			}
 		} catch (err) {
 			// Per-run isolation: one failing judgment (warren unreachable,
 			// wire drift, store error) must not starve the others. The
@@ -197,6 +222,7 @@ export async function collectOnce(deps: JudgeCollectorDeps): Promise<JudgeCycleS
 		judged,
 		alreadyJudged,
 		budgetDeferred,
+		zeroCostSkipped,
 	};
 }
 

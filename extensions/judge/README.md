@@ -114,8 +114,10 @@ Step 6 (warren-33da) adds the collector daemon:
   candidate pool next pass instead of a `budget_exceeded` marker
   permanently excluding it. The deferral stays visible in the cycle
   stats and a once-per-pass log line. Per-judgment failures from billed
-  attempts still write markers. Disabled unless
-  `JUDGE_CALIBRATION_MODEL` is set.
+  attempts still write markers; a failure that cost $0 (an expired key, a
+  model the account cannot reach) is skipped the same way a deferral is,
+  because nothing was billed and a marker would exclude the run for good.
+  Disabled unless `JUDGE_CALIBRATION_MODEL` is set.
 
 Step 8 (warren-265d) adds the export surface and the end-to-end smoke:
 

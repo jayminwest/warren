@@ -197,6 +197,34 @@ describe("collectOnce", () => {
 		}
 	});
 
+	test("a $0 failure is skipped, not marked, and the run comes back next cycle", async () => {
+		const h = makeHarness({
+			script: {
+				"run-1": {
+					kind: "unjudged",
+					reason: "judge_error",
+					detail: "401 invalid x-api-key",
+					stats: stats(0),
+				},
+			},
+		});
+		h.fake.addRun({ id: "run-1", state: "failed", startedAt: "2026-08-15T10:00:00.000Z" });
+		const skips: string[] = [];
+		try {
+			const out = await collectOnce({ ...h.deps, onZeroCostSkipped: (id) => skips.push(id) });
+			expect(out.zeroCostSkipped).toBe(1);
+			expect(out.judged).toBe(0);
+			expect(skips).toEqual(["run-1"]);
+			// No marker: a row under the dedupe key would drop the run for good
+			// over a failure nothing was paid for.
+			expect(h.verdicts.rowsForRun("run-1")).toHaveLength(0);
+			// No checkpoint either, so the next cycle re-lists it.
+			expect(h.cursors.needsJudgment("run-1", RUBRIC_V1, MODEL)).toBe(true);
+		} finally {
+			teardown(h);
+		}
+	});
+
 	test("defers without a marker or checkpoint once the daily budget is exhausted", async () => {
 		// Each stubbed judgment spends 0.01, so the first run lands exactly
 		// on the budget and the rest see it exhausted.
