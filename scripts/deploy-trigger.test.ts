@@ -135,6 +135,9 @@ function runApplyOverlay(opts: {
 		// Stub kubectl: `kustomize -o DIR` writes three rendered files (a
 		// namespace and two namespaced objects); `apply -f FILE` consults the
 		// per-resource failure budget and appends to an apply log on success.
+		// The budget is decremented with `bun -e`, not `node -e`: the oven/bun
+		// image has no Node, and its `node` wrapper drops the first argument,
+		// which silently made every apply look like a failure.
 		const stub = join(bin, "kubectl");
 		writeFileSync(
 			stub,
@@ -148,7 +151,7 @@ function runApplyOverlay(opts: {
 				"    done ;;",
 				"  apply)",
 				'    name=$(basename "$3" .yaml)',
-				`    left=$(node -e 'const f=require(process.argv[1]);const n=f[process.argv[2]]??0;if(n!==0&&n!==-1)f[process.argv[2]]=n-1;require("fs").writeFileSync(process.argv[1],JSON.stringify(f));console.log(n)' "${state}/failures.json" "$name")`,
+				`    left=$(bun -e 'const f=require(process.argv[1]);const n=f[process.argv[2]]??0;if(n!==0&&n!==-1)f[process.argv[2]]=n-1;require("fs").writeFileSync(process.argv[1],JSON.stringify(f));console.log(n)' "${state}/failures.json" "$name")`,
 				'    if [ "$left" != "0" ]; then echo "Error from server (InternalError): $name" >&2; exit 1; fi',
 				`    echo "$name" >> "${state}/applied"`,
 				'    echo "$name configured" ;;',
