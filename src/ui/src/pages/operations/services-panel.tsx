@@ -10,7 +10,7 @@ import { cn, relativeTime } from "@/lib/utils.ts";
 
 function ServiceRow({ name, detail, ok }: { name: string; detail: string; ok: boolean | null }) {
 	return (
-		<div className="flex min-h-[43px] items-center gap-2 border-b border-(--color-border) px-3 py-1.5 last:border-b-0">
+		<div className="flex min-h-[43px] flex-1 items-center gap-2 border-b border-(--color-border) px-3 py-1.5 last:border-b-0">
 			<span
 				className={cn(
 					"h-1.5 w-1.5 shrink-0 rounded-full",

@@ -424,7 +424,7 @@ export function RunDetailPage() {
 						terminal={isTerminal}
 					/>
 				</div>
-				<aside className="flex w-full shrink-0 flex-col gap-3 max-xl:contents xl:w-[326px]">
+				<aside className="flex w-full shrink-0 flex-col gap-3 max-xl:contents xl:min-h-0 xl:w-[326px] xl:overflow-y-auto">
 					<div className="order-1 md:order-none">
 						<RuntimePanel run={r} />
 					</div>
