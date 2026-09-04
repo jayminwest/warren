@@ -130,6 +130,7 @@ class PiJudgeSession implements JudgeSession {
 				};
 				cost: number;
 			};
+			readonly state: { readonly errorMessage?: string };
 			dispose(): void;
 		},
 	) {}
@@ -147,6 +148,13 @@ class PiJudgeSession implements JudgeSession {
 	public getSessionStats(): SessionStatsSnapshot {
 		const stats = this.session.getSessionStats();
 		return { tokens: { ...stats.tokens }, costUsd: stats.cost };
+	}
+
+	public getLastError(): string | null {
+		// AgentState.errorMessage carries the text of the most recent failed or
+		// aborted assistant turn. The stream contract says a request, model or
+		// runtime failure must never throw: it lands here instead.
+		return this.session.state.errorMessage ?? null;
 	}
 
 	public dispose(): void {
