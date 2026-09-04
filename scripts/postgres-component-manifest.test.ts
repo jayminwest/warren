@@ -34,6 +34,8 @@ function hasKubectl(): boolean {
 	}
 }
 
+const HAS_KUBECTL = hasKubectl();
+
 interface K8sDoc {
 	kind?: string;
 	metadata?: { name?: string; namespace?: string };
@@ -64,13 +66,9 @@ function renderComponent(): K8sDoc[] {
 }
 
 describe("deploy/k8s/components/postgres", () => {
-	test(
+	test.skipIf(!HAS_KUBECTL)(
 		"kubectl kustomize of an including overlay renders all seven objects",
 		() => {
-			if (!hasKubectl()) {
-				console.warn("kubectl not found — skipping kustomize render check");
-				return;
-			}
 			const docs = renderComponent();
 			const byName = (kind: string, name: string) =>
 				docs.some((d) => d.kind === kind && d.metadata?.name === name);
@@ -95,13 +93,9 @@ describe("deploy/k8s/components/postgres", () => {
 		{ timeout: 2 * KUBECTL_TIMEOUT_MS + 5_000 },
 	);
 
-	test(
+	test.skipIf(!HAS_KUBECTL)(
 		"backup CronJob runs pg_dump nightly with Forbid concurrency and the restore template ships placeholders",
 		() => {
-			if (!hasKubectl()) {
-				console.warn("kubectl not found — skipping kustomize render check");
-				return;
-			}
 			const docs = renderComponent() as Array<Record<string, unknown>>;
 			const cron = docs.find(
 				(d) => d.kind === "CronJob" && (d.metadata as { name?: string }).name === "postgres-backup",
