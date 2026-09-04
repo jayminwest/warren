@@ -8,8 +8,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ValidationError } from "../../errors.ts";
-import { ENV_BOT_GRAMMAR_PATH, resolveConfig, type CliConfig } from "../config.ts";
-import { runTickCommand } from "./tick-command.ts";
+import { type CliConfig, ENV_BOT_GRAMMAR_PATH, resolveConfig } from "../config.ts";
+import { runTickCommand, type TickCommandDeps } from "./tick-command.ts";
 
 const NOW_POLICY = {
 	schemaVersion: 1,
@@ -48,12 +48,10 @@ const NOW_POLICY = {
 	},
 };
 
-const GRAMMAR = {
-	knownBotLogins: ["clawreview-bot"],
-	findingMarker: "### Findings",
-	findingLinePattern:
-		"^- \\[(?<priority>P[0-9])\\] (?<title>[^:]+)(?:: `(?<file>[^`]+)`(?: line (?<line>[0-9]+))?)?$",
-	reReviewCommands: ["@clawreview-bot recheck please"],
+/** Both startup-failure tests abort before the clock or id source is touched. */
+const TICK_DEPS: TickCommandDeps = {
+	clock: { nowMs: () => 0 },
+	ids: { newId: () => "id-0" },
 };
 
 function baseConfig(overrides: Partial<CliConfig> = {}): CliConfig {
@@ -74,9 +72,9 @@ function baseConfig(overrides: Partial<CliConfig> = {}): CliConfig {
 
 describe("resolveConfig bot grammar path", () => {
 	test("resolves from CAMPAIGN_BOT_GRAMMAR_PATH and the --grammar flag", () => {
-		expect(
-			resolveConfig({}, { [ENV_BOT_GRAMMAR_PATH]: "/tmp/g.json" }).botGrammarPath,
-		).toBe("/tmp/g.json");
+		expect(resolveConfig({}, { [ENV_BOT_GRAMMAR_PATH]: "/tmp/g.json" }).botGrammarPath).toBe(
+			"/tmp/g.json",
+		);
 		expect(resolveConfig({ grammar: "/tmp/flag.json" }, {}).botGrammarPath).toBe("/tmp/flag.json");
 		expect(resolveConfig({}, {}).botGrammarPath).toBeNull();
 	});
@@ -96,7 +94,7 @@ describe("runTickCommand bot grammar loading", () => {
 						warrenBaseUrl: "http://warren.test",
 						dbPath: ":memory:",
 					}),
-					{},
+					TICK_DEPS,
 					{ campaign: "camp-x" },
 				),
 			).rejects.toThrow("cannot read the bot grammar file");
@@ -120,7 +118,7 @@ describe("runTickCommand bot grammar loading", () => {
 						warrenBaseUrl: "http://warren.test",
 						dbPath: ":memory:",
 					}),
-					{},
+					TICK_DEPS,
 					{ campaign: "camp-x" },
 				),
 			).rejects.toThrow(ValidationError);

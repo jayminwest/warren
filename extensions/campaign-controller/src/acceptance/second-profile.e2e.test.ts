@@ -18,17 +18,9 @@ import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import {
 	FollowUpCoordinator,
-	FollowUpRefusal,
 	findingsFingerprint,
 	UNTRUSTED_FINDINGS_BANNER,
 } from "../follow-up/coordinator.ts";
-import {
-	BunFetchGithubBranchUpdater,
-	BunFetchGithubCommentPoster,
-	BunFetchGithubPrUpdater,
-	GitPushFollowUpPusher,
-	renderFollowUpPushIntent,
-} from "../github/pr-mutations.ts";
 import {
 	executeJournaledBodyRefresh,
 	renderAndJournalBodyRefresh,
@@ -309,7 +301,7 @@ async function runFollowUp(
 			project: warren.project,
 			agent: warren.agent,
 			headBranch: f.branch,
-			agentGuidance: null,
+			agentGuidance: undefined,
 			maxCostUsd: budget.perRunUsd,
 			budgetHeadroomUsdCents: h.store.budget.availableUsdCents(h.campaignId),
 		},

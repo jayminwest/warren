@@ -855,7 +855,10 @@ describe("runTick with a policy-gated PR creator", () => {
 /** The review-bot grammar the openclaw profile declares (data, not code). */
 function openclawBotGrammar(): unknown {
 	return JSON.parse(
-		readFileSync(join(import.meta.dir, "..", "..", "profiles", "openclaw.bot-grammar.json"), "utf8"),
+		readFileSync(
+			join(import.meta.dir, "..", "..", "profiles", "openclaw.bot-grammar.json"),
+			"utf8",
+		),
 	) as unknown;
 }
 

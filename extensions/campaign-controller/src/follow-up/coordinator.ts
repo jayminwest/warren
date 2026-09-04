@@ -32,6 +32,7 @@ import { canonicalJson, sha256Hex } from "../digest.ts";
 import { CampaignControllerError, type CampaignControllerErrorCode } from "../errors.ts";
 import { isValidRefName } from "../github-grammar.ts";
 import type {
+	ActionErrorClass,
 	ActionRow,
 	AttentionItemRow,
 	FollowUpProgressRow,
@@ -136,7 +137,7 @@ export interface FollowUpStoreDeps {
 		id: string,
 		input: {
 			state: "succeeded" | "uncertain" | "retryable_failure" | "permanent_failure";
-			errorClass?: string | null;
+			errorClass?: ActionErrorClass | null;
 			errorJson?: string | null;
 			resultBranch?: string | null;
 		},
@@ -149,6 +150,7 @@ export interface FollowUpStoreDeps {
 	}): AttentionItemRow;
 	followUps: {
 		getProgress(workItemId: string): FollowUpProgressRow | null;
+		requireProgress(workItemId: string): FollowUpProgressRow;
 		recordStarted(input: {
 			campaignId: string;
 			workItemId: string;

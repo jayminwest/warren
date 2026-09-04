@@ -274,7 +274,7 @@ describe("handleBranchFreshness", () => {
 		);
 		expect(action?.state).toBe("permanent_failure");
 		// A re-tick against the same base SHA suppresses, never auto-retries.
-		const calls: { existingBranch: string }[] = [];
+		const calls: { existingBranch: string; prompt: string }[] = [];
 		const again = await handleBranchFreshness(
 			{ store, branchUpdater: null, dispatch: fakeDispatch(calls), followUpPushEnabled: true },
 			baseInput("dirty"),
@@ -335,8 +335,10 @@ describe("handleBranchFreshness", () => {
 			},
 			baseInput("behind"),
 		);
-		expect(again.status).toBe("update_branch_already_settled");
-		expect(again.actionId).toBe(action?.id ?? null);
+		expect(again).toEqual({
+			status: "update_branch_already_settled",
+			actionId: action?.id ?? null,
+		});
 	});
 
 	test("conflicted with the followUpPush gate closed opens attention, no dispatch", async () => {

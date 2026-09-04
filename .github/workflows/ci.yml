@@ -17,6 +17,7 @@ jobs:
           bun-version-file: .bun-version
 
       - run: bun install
+      - run: bun run ext:install
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run check:agents
@@ -27,7 +28,6 @@ jobs:
       - run: bun run check:dups
       - run: bun run check:ci-parity
       - run: bun run ui:install
-      - run: bun run ext:install
       - run: bun run check:deps
       - run: bun run build:ui
       - run: bun run check:bundle-size

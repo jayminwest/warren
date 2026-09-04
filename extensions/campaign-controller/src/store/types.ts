@@ -77,6 +77,7 @@ export type ActionErrorClass =
 	| "github_rejected"
 	| "run_failed"
 	| "policy_violation"
+	| "dispatch_rejected"
 	| "unknown";
 
 /** Budget reservation lifecycle. */

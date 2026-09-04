@@ -50,8 +50,8 @@ import {
 	prIntentMachineJson,
 	renderAndJournalPrIntent,
 } from "../pr-intent/intender.ts";
-import { UpstreamPrReconciler } from "../reconcile/reconciler.ts";
 import type { ReviewBotGrammar } from "../reconcile/bot-grammar.ts";
+import { UpstreamPrReconciler } from "../reconcile/reconciler.ts";
 import type { RepositoryPolicy } from "../repository-policy.ts";
 import { composeDispatchPrompt, validateRepositoryPolicy } from "../repository-policy.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";

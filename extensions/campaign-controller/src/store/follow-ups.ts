@@ -8,6 +8,7 @@
  * (repeat-finding detection), and the currently active follow-up action
  * (one active follow-up per work item).
  */
+import type { SQLQueryBindings } from "bun:sqlite";
 import { StateError } from "../errors.ts";
 import { nowMs, type StoreContext } from "./context.ts";
 import type { FollowUpProgressRow } from "./types.ts";
@@ -147,10 +148,10 @@ export class FollowUpStore {
 		return progress;
 	}
 
-	#update(workItemId: string, patch: Record<string, unknown>): void {
-		const keys = Object.keys(patch);
-		const sets = keys.map((key) => `${key} = ?`).join(", ");
-		const values = keys.map((key) => patch[key]);
+	#update(workItemId: string, patch: Record<string, SQLQueryBindings>): void {
+		const entries = Object.entries(patch);
+		const sets = entries.map(([key]) => `${key} = ?`).join(", ");
+		const values = entries.map(([, value]) => value);
 		const result = this.#ctx.db
 			.query(`UPDATE follow_up_progress SET ${sets}, updated_at_ms = ? WHERE work_item_id = ?`)
 			.run(...values, nowMs(this.#ctx), workItemId);

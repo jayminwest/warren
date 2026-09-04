@@ -196,7 +196,8 @@ async function handleBehindBase(
 
 	// Disabled policy: no transport object exists, so the PUT is
 	// structurally impossible. Open attention once and stop.
-	if (deps.branchUpdater === null) {
+	const branchUpdater = deps.branchUpdater;
+	if (branchUpdater === null) {
 		deps.store.events.addAttentionOnce({
 			campaignId: input.campaignId,
 			workItemId: input.workItemId,
@@ -238,7 +239,12 @@ async function handleBehindBase(
 	const outcome = await executeJournaledMutation(
 		deps.store,
 		{ campaignId: input.campaignId, action },
-		() => deps.branchUpdater.updateBranch(intent),
+		async () => {
+			// The transport's `message` is GitHub's human-readable echo; the
+			// journal records only result facts, and updateBranch yields none.
+			await branchUpdater.updateBranch(intent);
+			return {};
+		},
 	);
 	switch (outcome.status) {
 		case "succeeded":
