@@ -34,6 +34,7 @@ import {
 	ValidationError,
 	WarrenError,
 } from "../core/errors.ts";
+import { IssueNotFoundError } from "../core/wire.ts";
 import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "../plan-runs/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError } from "../registry/errors.ts";
@@ -216,6 +217,10 @@ function buildEnvelope(code: string, message: string, hint?: string): ErrorEnvel
 
 function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof NotFoundError) return 404;
+	// #1234: an unknown seedId on POST /runs — the tracker's definitive
+	// missing-id case, same status `readDispatchableIssues` in
+	// src/plan-runs/create.ts relies on for its own getIssue calls.
+	if (err instanceof IssueNotFoundError) return 404;
 	if (err instanceof ValidationError) return 400;
 	if (err instanceof ProjectLacksTrackerError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
