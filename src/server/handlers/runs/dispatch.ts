@@ -4,6 +4,7 @@ import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { validateBaseCommit, validateDispatchRef } from "../../../runs/base-commit.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
 import { spawnRun } from "../../../runs/index.ts";
+import type { TrackerContext } from "../../../tracker/contract.ts";
 import type { GitSpawnCredential } from "../../../workspace/git/credential-env.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
 import { jsonResponse } from "../../response.ts";
@@ -46,6 +47,22 @@ async function mintSpawnGitCredential(
 	const project = await deps.repos.projects.require(projectId);
 	const secret = await mintGitCredential(deps.forge, project.gitUrl);
 	return secret !== undefined ? { gitCredential: secret } : {};
+}
+
+/**
+ * #1234: validate a dispatched `seedId` against the tracker before any
+ * side effects. `IssueTracker.getIssue` throws `IssueNotFoundError` for a
+ * missing id (same contract `readDispatchableIssues` in
+ * `src/plan-runs/create.ts` relies on); `renderError` maps that to 404.
+ * No tracker wired → skip, matching `resolveSeedTracker`'s existing
+ * "neither wired -> no write" precedent for the post-dispatch metadata
+ * write, so an untracked project's dispatch stays unaffected.
+ */
+async function validateSeedId(deps: ServerDeps, projectId: string, seedId: string): Promise<void> {
+	if (deps.issueTracker === undefined) return;
+	const project = await deps.repos.projects.require(projectId);
+	const ctx: TrackerContext = { projectId: project.id, localPath: project.localPath };
+	await deps.issueTracker.getIssue(ctx, seedId);
 }
 
 async function resolveCloneDefaults(
@@ -167,6 +184,8 @@ async function buildHttpSpawnOptions(
 		parentRunId,
 		cloneKind,
 	} = await resolveDispatchFields(deps, body);
+
+	if (seedId !== undefined) await validateSeedId(deps, projectId, seedId);
 
 	// warren-9ce3: trigger=cli → origin "cli"; every other POST /runs is "api".
 	const dispatchOrigin = trigger === "cli" ? "cli" : "api";
