@@ -50,4 +50,5 @@ jobs:
 
       - run: bun install
       - run: bun run ext:install
+      - run: bun run ui:install
       - run: bun test
