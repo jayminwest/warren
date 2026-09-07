@@ -54,7 +54,7 @@ import {
 	type RefreshProjectCloneResult,
 	refreshProjectClone,
 } from "./refresh.ts";
-import { assertNoUserinfo, parseProjectUrl } from "./url.ts";
+import { assertNoUserinfo, normalizeGitHubUrl, parseProjectUrl } from "./url.ts";
 
 export interface AddProjectInput {
 	readonly repo: ProjectsRepo;
@@ -106,7 +106,8 @@ export interface AddProjectInput {
 }
 
 export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
-	const { repo, config, gitUrl } = input;
+	const { repo, config } = input;
+	const gitUrl = normalizeGitHubUrl(input.gitUrl);
 	// warren-ce9b/0883: on a public instance only allowlisted repos may
 	// ever be registered — refused here, BEFORE anything is cloned, from
 	// the single enforcement site every surface shares.

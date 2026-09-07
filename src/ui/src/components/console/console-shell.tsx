@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { ConsoleBottomNav } from "@/components/console/console-bottom-nav.tsx";
 import { ConsoleSidebar, ConsoleSidebarBody } from "@/components/console/console-sidebar.tsx";
 import { ConsoleMobileStatusStrip, ConsoleTopbar } from "@/components/console/console-topbar.tsx";
@@ -73,10 +73,16 @@ export function ConsoleShell() {
 				{/* Mobile chrome — visible only < md (warren-3290): the mock's two
 				    stacked bands, a 48px brand bar then the 34px status strip. */}
 				<div className="flex h-12 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-sidebar) px-3.5 md:hidden">
-					<WarrenLogo className="h-5 w-5 shrink-0" />
-					<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
-						warren
-					</span>
+					<Link
+						to="/"
+						aria-label="Warren home"
+						className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
+					>
+						<WarrenLogo className="h-5 w-5 shrink-0" />
+						<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
+							warren
+						</span>
+					</Link>
 					<span className="flex-1" />
 					<MobileIdentityChip stats={stats} />
 				</div>

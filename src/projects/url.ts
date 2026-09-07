@@ -2,9 +2,10 @@
  * Parse a GitHub URL into the `{owner, name}` pair warren uses to lay
  * out `/data/projects/<owner>/<name>` (docs/design/runtime-and-supervisor.md).
  *
- * Three accepted shapes — the operator pastes whichever GitHub UI gave
+ * Four accepted shapes — the operator pastes whichever GitHub UI gave
  * them:
  *   - `https://github.com/<owner>/<name>[.git]`
+ *   - `github.com/<owner>/<name>[.git]` (defaults to HTTPS)
  *   - `git@github.com:<owner>/<name>[.git]`
  *   - `ssh://git@github.com/<owner>/<name>[.git]`
  *
@@ -29,8 +30,14 @@ export interface ParsedGitHubUrl {
 
 const SEGMENT = /^[A-Za-z0-9._-]+$/;
 
-export function parseGitHubUrl(input: string): ParsedGitHubUrl {
+/** Supply HTTPS only for a bare github.com host, leaving other transports intact. */
+export function normalizeGitHubUrl(input: string): string {
 	const trimmed = input.trim();
+	return /^github\.com\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
+}
+
+export function parseGitHubUrl(input: string): ParsedGitHubUrl {
+	const trimmed = normalizeGitHubUrl(input);
 	if (trimmed === "") {
 		throw new ValidationError("gitUrl is empty", {
 			recoveryHint: "pass a GitHub URL, e.g. https://github.com/owner/name",

@@ -41,6 +41,36 @@ describe("addProject", () => {
 		expect(await repo.listAll()).toHaveLength(1);
 	});
 
+	test("normalizes bare GitHub URLs before cloning, persistence, and duplicate lookup", async () => {
+		let clonedUrl: string | undefined;
+		const row = await addProject({
+			repo,
+			config: CFG,
+			gitUrl: "  github.com/jayminwest/warren\n",
+			spawn: NOOP_SPAWN,
+			clone: async (input) => {
+				clonedUrl = input.gitUrl;
+				return fakeClone()(input);
+			},
+		});
+		expect(clonedUrl).toBe("https://github.com/jayminwest/warren");
+		expect(row.gitUrl).toBe("https://github.com/jayminwest/warren");
+		expect((await repo.require(row.id)).gitUrl).toBe("https://github.com/jayminwest/warren");
+		for (const gitUrl of ["github.com/jayminwest/warren", "https://github.com/jayminwest/warren"]) {
+			await expect(
+				addProject({
+					repo,
+					config: CFG,
+					gitUrl,
+					spawn: NOOP_SPAWN,
+					clone: async () => {
+						throw new Error("duplicate must not clone");
+					},
+				}),
+			).rejects.toThrow("project already exists");
+		}
+	});
+
 	test("propagates an explicit defaultBranch into the cloner and the row", async () => {
 		let received: string | undefined;
 		const row = await addProject({

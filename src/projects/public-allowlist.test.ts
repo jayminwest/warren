@@ -196,6 +196,7 @@ describe("assertGitUrlAllowlisted", () => {
 	test("accepts every URL shape parseGitHubUrl accepts", () => {
 		for (const url of [
 			"https://github.com/os-eco/warren",
+			"github.com/os-eco/warren",
 			"https://github.com/os-eco/warren.git",
 			"git@github.com:os-eco/warren.git",
 			"ssh://git@github.com/OS-ECO/warren",

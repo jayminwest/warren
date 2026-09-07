@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogIn, LogOut } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken } from "@/api/client.ts";
 import {
 	ALL_NAV_SECTIONS,
@@ -127,7 +127,7 @@ function InstanceCard({ stats }: { stats: ConsoleStats }) {
 }
 
 /** Brand row: mark + name + version. */
-function BrandRow() {
+function BrandRow({ onNavigate }: { onNavigate?: () => void }) {
 	const version = useQuery({
 		queryKey: ["meta", "version"],
 		queryFn: ({ signal }) => metaApi.version(signal),
@@ -136,10 +136,17 @@ function BrandRow() {
 	});
 	return (
 		<div className="flex h-[58px] shrink-0 items-center gap-2.5 border-b border-(--color-border) px-4">
-			<WarrenLogo className="h-[22px] w-[22px] shrink-0" />
-			<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
-				warren
-			</span>
+			<Link
+				to="/"
+				aria-label="Warren home"
+				onClick={onNavigate}
+				className="flex items-center gap-2.5 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
+			>
+				<WarrenLogo className="h-[22px] w-[22px] shrink-0" />
+				<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
+					warren
+				</span>
+			</Link>
 			<span className="flex-1" />
 			{version.data ? (
 				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
@@ -244,7 +251,7 @@ export function ConsoleSidebarBody({
 	};
 	return (
 		<>
-			<BrandRow />
+			<BrandRow onNavigate={onNavigate} />
 			<InstanceCard stats={stats} />
 			<nav className="flex flex-col px-[9px] pt-1.5">
 				{ALL_NAV_SECTIONS.map((section) => (

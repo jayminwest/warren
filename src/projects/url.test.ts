@@ -4,9 +4,58 @@ import { AdoForge } from "../forge/ado/provider.ts";
 import type { Forge } from "../forge/contract.ts";
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { GitHubForge } from "../forge/github/provider.ts";
-import { assertNoUserinfo, parseForgeOwnedUrl, parseGitHubUrl, parseProjectUrl } from "./url.ts";
+import {
+	assertNoUserinfo,
+	normalizeGitHubUrl,
+	parseForgeOwnedUrl,
+	parseGitHubUrl,
+	parseProjectUrl,
+} from "./url.ts";
+
+describe("normalizeGitHubUrl", () => {
+	test("adds HTTPS to bare GitHub URLs and trims pasted whitespace", () => {
+		expect(normalizeGitHubUrl("  github.com/owner/repo.git/\n")).toBe(
+			"https://github.com/owner/repo.git/",
+		);
+		expect(normalizeGitHubUrl("GITHUB.COM/owner/repo")).toBe("https://GITHUB.COM/owner/repo");
+	});
+
+	test("leaves explicit transports and other hosts unchanged", () => {
+		for (const url of [
+			"https://github.com/o/r",
+			"http://github.com/o/r",
+			"git@github.com:o/r",
+			"ssh://git@github.com/o/r",
+			"fake://o/r",
+			"gitlab.com/o/r",
+			"github.com.evil/o/r",
+			"github.com@evil/o/r",
+		]) {
+			expect(normalizeGitHubUrl(url)).toBe(url);
+		}
+	});
+});
 
 describe("parseGitHubUrl", () => {
+	test("parses bare GitHub URLs using the same repository validation", () => {
+		for (const url of [
+			"github.com/owner/repo",
+			"github.com/owner/repo.git/",
+			"  GITHUB.COM/owner/repo\n",
+		]) {
+			expect(parseGitHubUrl(url)).toEqual({ owner: "owner", name: "repo" });
+		}
+		for (const url of [
+			"github.com/owner",
+			"github.com/owner/-repo",
+			"github.com/o/r/extra",
+			"github.com.evil/o/r",
+			"github.com@evil/o/r",
+		]) {
+			expect(() => parseGitHubUrl(url)).toThrow(ValidationError);
+		}
+	});
+
 	test("accepts https URLs with and without the .git suffix", () => {
 		expect(parseGitHubUrl("https://github.com/jayminwest/warren")).toEqual({
 			owner: "jayminwest",
