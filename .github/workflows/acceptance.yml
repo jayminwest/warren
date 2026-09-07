@@ -110,6 +110,36 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bubblewrap uidmap
 
+      - name: PROBE diagnose the bwrap sandbox on this runner
+        continue-on-error: true
+        run: |
+          echo "--- os"
+          cat /etc/os-release | head -3
+          uname -r
+          echo "--- bwrap binary"
+          ls -l /usr/bin/bwrap
+          bwrap --version
+          echo "--- userns sysctls"
+          sysctl kernel.apparmor_restrict_unprivileged_userns || true
+          sysctl kernel.unprivileged_userns_clone || true
+          sysctl user.max_user_namespaces || true
+          echo "--- apparmor profiles mentioning bwrap"
+          ls /etc/apparmor.d/ | grep -i -E "bwrap|unpriv" || echo "none"
+          sudo aa-status --profiled 2>/dev/null || true
+          echo "--- BASELINE unshare-all (what src/sandbox/bwrap.ts emits)"
+          bwrap --unshare-all -- /bin/true; echo "rc=$?"
+          echo "--- BASELINE unshare-all --share-net"
+          bwrap --unshare-all --share-net -- /bin/true; echo "rc=$?"
+          echo "--- CANDIDATE FIX: drop the apparmor userns restriction"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          echo "--- AFTER FIX unshare-all"
+          bwrap --unshare-all -- /bin/true; echo "rc=$?"
+          echo "--- AFTER FIX unshare-all running git"
+          bwrap --unshare-all --ro-bind / / -- /usr/bin/git --version; echo "rc=$?"
+
+      - name: PROBE apply the candidate fix for the suite
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
