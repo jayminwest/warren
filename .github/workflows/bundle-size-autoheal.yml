@@ -93,6 +93,8 @@ jobs:
       - if: steps.pr-gate.outputs.has-pr == 'true'
         run: bun run ui:install
       - if: steps.pr-gate.outputs.has-pr == 'true'
+        run: bun run ext:install
+      - if: steps.pr-gate.outputs.has-pr == 'true'
         run: bun run build:ui
 
       - name: Re-baseline bundle-size budgets if (and only if) that was the failure
