@@ -53,6 +53,7 @@ export class QueueController {
 			if (!projectId) continue; // An issue's presence in a cross-repo Project never grants a repository mapping.
 			if (this.store.list().some((row) => row.issueId === candidate.id)) continue;
 			await this.warren.verifyProject(projectId, candidate.repositoryUrl);
+			if (!(await this.warren.isIssueReady(projectId, candidate.id))) continue;
 			const fresh = await this.github.getIssue(candidate.id);
 			if (!fresh.ready) continue;
 			if (

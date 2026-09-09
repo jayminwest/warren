@@ -125,7 +125,9 @@ mapped Warren project's actual repository before submitting work.
 ### Dispatch safety and recovery
 
 - One durable automatic attempt per issue, not one per poll. The controller
-  reserves budget in SQLite **before** network I/O. A restart does not erase it.
+  first verifies the read-only Warren queue connection, then reserves budget in
+  SQLite **before** the dispatch mutation. Startup/ingress read failures can retry
+  without consuming a reservation. A restart does not erase a mutation reservation.
 - Manual queue dispatch and automatic pickup use the same Warren endpoint. The
   persisted run row prevents a second queue dispatch after response loss or a
   Warren restart. Concurrent requests are serialized by the existing project

@@ -43,7 +43,14 @@ function setup(overrides: Env = {}) {
 	return { config, store, fake, github };
 }
 function fakeWarren(
-	options: { ambiguous?: boolean; terminal?: boolean; wrongRepo?: boolean; status?: number } = {},
+	options: {
+		ambiguous?: boolean;
+		terminal?: boolean;
+		wrongRepo?: boolean;
+		status?: number;
+		queueStatus?: number;
+		queue?: unknown;
+	} = {},
 ) {
 	const calls: string[] = [];
 	const fetch: Fetch = async (input, init) => {
@@ -53,6 +60,11 @@ function fakeWarren(
 			return Response.json({
 				gitUrl: `https://github.com/acme/${options.wrongRepo ? "other" : "web"}.git`,
 			});
+		if (path.endsWith("/issues"))
+			return Response.json(
+				options.queue ?? { supported: true, issues: [{ id: "acme/web#1", ready: true }] },
+				{ status: options.queueStatus ?? 200 },
+			);
 		if (path.endsWith("/dispatch")) {
 			if (options.ambiguous) throw new Error("connection lost after acceptance");
 			if (options.status) return new Response("refused", { status: options.status });
@@ -107,6 +119,52 @@ describe("QueueController", () => {
 		await controller.tick();
 		expect(w.calls.filter((call) => call.startsWith("POST"))).toHaveLength(1);
 		expect(s.store.list()[0]?.state).toBe("uncertain");
+	});
+
+	test("retries a read-only startup failure without reserving or dispatching, then dispatches once", async () => {
+		const s = setup();
+		const options = { queueStatus: 503 };
+		const w = fakeWarren(options);
+		const c = new QueueController(s.config, s.github, new WarrenClient(s.config, w.fetch), s.store);
+		await expect(c.tick()).rejects.toMatchObject({ code: "warren_queue_unavailable" });
+		expect(s.store.list()).toHaveLength(0);
+		expect(w.calls.some((call) => call.startsWith("POST"))).toBe(false);
+		options.queueStatus = 200;
+		await c.tick();
+		await c.tick();
+		expect(w.calls.filter((call) => call.startsWith("POST"))).toHaveLength(1);
+		expect(s.store.list()[0]?.state).toBe("running");
+	});
+
+	test.each([
+		{ supported: false, issues: [] },
+		{ supported: true },
+		{ supported: true, issues: [{}] },
+	])("rejects unsupported or malformed Warren queues before reservation: %j", async (queue) => {
+		const s = setup();
+		const w = fakeWarren({ queue });
+		const c = new QueueController(s.config, s.github, new WarrenClient(s.config, w.fetch), s.store);
+		await expect(c.tick()).rejects.toMatchObject({ code: "warren_queue_unavailable" });
+		expect(s.store.list()).toHaveLength(0);
+		expect(w.calls.some((call) => call.startsWith("POST"))).toBe(false);
+	});
+
+	test.each([
+		{ issues: [] },
+		{ issues: [{ id: "acme/web#1", ready: false }] },
+	])("waits without a reservation when Warren does not expose an eligible issue: %j", async ({
+		issues,
+	}) => {
+		const s = setup();
+		const w = fakeWarren({ queue: { supported: true, issues } });
+		await new QueueController(
+			s.config,
+			s.github,
+			new WarrenClient(s.config, w.fetch),
+			s.store,
+		).tick();
+		expect(s.store.list()).toHaveLength(0);
+		expect(w.calls.some((call) => call.startsWith("POST"))).toBe(false);
 	});
 
 	test("enforces concurrency and daily reservations across separate store connections", () => {

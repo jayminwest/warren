@@ -81,6 +81,27 @@ export class WarrenClient {
 			);
 	}
 
+	/** Exercise Warren's tracker connection before reserving budget or attempting a mutation. */
+	async isIssueReady(projectId: string, issueId: string): Promise<boolean> {
+		try {
+			const response = await this.request(`/projects/${encodeURIComponent(projectId)}/issues`);
+			if (!response.ok) throw new Error("queue unavailable");
+			const queue = object(await response.json());
+			if (queue.supported !== true || !Array.isArray(queue.issues))
+				throw new Error("queue unsupported or invalid");
+			return queue.issues.some((value: unknown) => {
+				const issue = object(value);
+				return string(issue.id) === issueId && issue.ready === true;
+			});
+		} catch {
+			throw new TrackerFailure(
+				"warren_queue_unavailable",
+				"Cannot verify the issue through Warren's tracker connection",
+				503,
+			);
+		}
+	}
+
 	async dispatch(projectId: string, issueId: string): Promise<Run> {
 		const response = await this.request(
 			`/projects/${encodeURIComponent(projectId)}/issues/dispatch`,
