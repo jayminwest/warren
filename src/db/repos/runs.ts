@@ -25,6 +25,7 @@ import { setBranch, setPrState, setPrUrl } from "./runs-pr.ts";
 import { type AttachPreviewInput, attachPreview } from "./runs-preview.ts";
 import {
 	aggregate,
+	findByIssue,
 	findByRetryOf,
 	listAll,
 	listByAgent,
@@ -201,6 +202,10 @@ export class RunsRepo {
 	/** Hard-delete a never-started run row (warren-a0a2); body in runs-delete.ts. */
 	deleteNeverStarted(id: string): Promise<boolean> {
 		return deleteNeverStarted(this.adapter, id);
+	}
+
+	findByIssue(projectId: string, issueId: string): Promise<RunRow | null> {
+		return findByIssue(this.adapter, projectId, issueId);
 	}
 
 	/** Read/query methods (warren-ac7f); bodies live in runs-queries.ts. */

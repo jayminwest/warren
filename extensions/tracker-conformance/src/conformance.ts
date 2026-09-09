@@ -449,6 +449,21 @@ async function checkScheduledIssues(ctx: Ctx): Promise<void> {
 	}
 }
 
+/** Filtered queue listing is additive; older v1 trackers need not implement it. */
+async function checkIssueListing(ctx: Ctx): Promise<void> {
+	ctx.casesRun++;
+	const name = "issues/listing";
+	const response = await request(ctx, "GET", TRACKER_ENDPOINTS.issues);
+	if (!check(ctx, name, response.ok, `GET /issues → ${response.status}`)) return;
+	const body = await readJson(ctx, name, response);
+	if (!isRecord(body) || !Array.isArray(body.issues)) { fail(ctx, name, "payload lacks an issues array"); return; }
+	for (const issue of body.issues) {
+		if (!isRecord(issue)) { fail(ctx, name, "issue must be an object"); continue; }
+		check(ctx, name, typeof issue.id === "string" && isIssueStatus(issue.status), "issue needs a string id and normalized status");
+		check(ctx, name, issue.ready === undefined || typeof issue.ready === "boolean", "ready must be boolean when present");
+	}
+}
+
 /**
  * Run the full suite against a target. Never throws for a conformance
  * failure — failures are data; throws only for a transport-level
@@ -466,6 +481,7 @@ export async function runConformanceSuite(target: ConformanceTarget): Promise<Co
 		};
 	}
 
+	if (capabilities.capabilities.supportsIssueListing) await checkIssueListing(ctx);
 	const probeId = await checkIssueReads(ctx);
 	await checkNotFoundTaxonomy(ctx);
 	if (probeId !== undefined) {

@@ -98,6 +98,8 @@ export class TrackerHttpClient {
 		try {
 			response = await this.fetchImpl(url, {
 				method,
+				redirect: "error",
+				signal: AbortSignal.timeout(120000),
 				headers: {
 					accept: "application/json",
 					...(options.body !== undefined ? { "content-type": "application/json" } : {}),

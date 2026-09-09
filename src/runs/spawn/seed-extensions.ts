@@ -28,6 +28,7 @@ import type {
 	MetadataCapableTracker,
 	TrackerContext,
 } from "../../tracker/contract.ts";
+import { resolveIssueTracker } from "../../tracker/resolve.ts";
 import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { SpawnLogger } from "./types.ts";
 
@@ -79,7 +80,11 @@ export interface WriteSeedExtensionsInput {
  * provenance shows up instead of vanishing.
  */
 export async function writeSeedExtensions(input: WriteSeedExtensionsInput): Promise<void> {
-	if (!input.issueTracker.capabilities.supportsMetadata) {
+	const issueTracker = await resolveIssueTracker(input.issueTracker, {
+		projectId: input.projectId,
+		localPath: input.projectPath,
+	});
+	if (!issueTracker.capabilities.supportsMetadata) {
 		// warren-6234: no metadata capability — skip with a debug log rather
 		// than failing a dispatch that already succeeded.
 		input.logger?.debug?.(
@@ -108,7 +113,7 @@ export async function writeSeedExtensions(input: WriteSeedExtensionsInput): Prom
 	};
 	const ctx: TrackerContext = { projectId: input.projectId, localPath: input.projectPath };
 	try {
-		await input.issueTracker.mergeIssueMetadata?.(ctx, input.seedId, payload);
+		await issueTracker.mergeIssueMetadata?.(ctx, input.seedId, payload);
 	} catch (err) {
 		await recordEvent(input.repos, input.runId, "seeds_extension_write_failed", input.now, {
 			seedId: input.seedId,

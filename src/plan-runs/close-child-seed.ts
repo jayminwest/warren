@@ -36,6 +36,7 @@ import {
 } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import type { IssueTracker } from "../tracker/contract.ts";
+import { resolveIssueTracker } from "../tracker/resolve.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import { gitCredentialGitEnv } from "../workspace/git/credential-env.ts";
 
@@ -123,8 +124,12 @@ export async function closeMergedChildSeed(
 	// warren-6234: non-git-native trackers close through the host API — no
 	// worktree, no commit, no push. `branch` reports the tracked default
 	// branch for logging symmetry with the git-native path.
-	if (!input.issueTracker.capabilities.isGitNative) {
-		await input.issueTracker.closeIssue(
+	const issueTracker = await resolveIssueTracker(input.issueTracker, {
+		projectId: input.projectId,
+		localPath: input.projectPath,
+	});
+	if (!issueTracker.capabilities.isGitNative) {
+		await issueTracker.closeIssue(
 			{ projectId: input.projectId, localPath: input.projectPath },
 			input.seedId,
 		);
@@ -149,7 +154,7 @@ export async function closeMergedChildSeed(
 
 		// The close is idempotent; it rewrites .seeds/issues.jsonl only when the
 		// seed was open on this branch (seeds: `sd close` inside the worktree).
-		await input.issueTracker.closeIssue(
+		await issueTracker.closeIssue(
 			{ projectId: input.projectId, localPath: worktreePath },
 			input.seedId,
 		);

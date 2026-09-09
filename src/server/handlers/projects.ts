@@ -22,6 +22,7 @@ import { spawnRun } from "../../runs/index.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { sandboxGitPreflightCached } from "../../sandbox/git-preflight.ts";
 import type { IssueTracker, PlanCapableTracker } from "../../tracker/contract.ts";
+import { resolveIssueTracker } from "../../tracker/resolve.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
 import type { CronTrigger } from "../../warren-config/index.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
@@ -165,13 +166,19 @@ async function requireTrackerProject(
 	feature: string,
 ): Promise<{ project: ProjectRow; tracker: IssueTracker; ctx: TrackerContext }> {
 	const project = await deps.repos.projects.require(id);
-	if (!project.hasSeeds) {
+	const tracker = deps.issueTracker
+		? await resolveIssueTracker(deps.issueTracker, {
+				projectId: project.id,
+				localPath: project.localPath,
+			})
+		: undefined;
+	if ((tracker?.capabilities.isGitNative ?? true) && !project.hasSeeds) {
 		throw new ProjectLacksTrackerError(
 			`project ${project.id} has no .seeds/ directory; ${feature} is not available`,
 			{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
 		);
 	}
-	if (deps.issueTracker === undefined) {
+	if (tracker === undefined) {
 		throw new ValidationError(
 			`no issue tracker is configured on this warren; ${feature} requires one`,
 			{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
@@ -179,7 +186,7 @@ async function requireTrackerProject(
 	}
 	return {
 		project,
-		tracker: deps.issueTracker,
+		tracker,
 		ctx: { projectId: project.id, localPath: project.localPath },
 	};
 }

@@ -2,6 +2,7 @@ import { IssueNotFoundError } from "../../core/wire.ts";
 import type { CreatePlanRunInput } from "../../db/repos/plan-runs.ts";
 import { readAutoPlanRunAgent } from "../../registry/schema.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
+import { resolveIssueTracker } from "../../tracker/resolve.ts";
 import { splitLines } from "./util.ts";
 
 /* ----------------------------------------------------------------------- */
@@ -209,8 +210,17 @@ async function dispatchOnePlan(
  * `reap_failed` step=`auto_plan_run` and continue.
  */
 export async function dispatchAutoPlanRuns(
-	input: DispatchAutoPlanRunsInput,
+	original: DispatchAutoPlanRunsInput,
 ): Promise<DispatchAutoPlanRunsResult> {
+	const input = original.issueTracker
+		? {
+				...original,
+				issueTracker: await resolveIssueTracker(original.issueTracker, {
+					projectId: original.project.id,
+					localPath: original.project.localPath,
+				}),
+			}
+		: original;
 	const { workspacePlanIds, baselinePlanIds, workspacePlansBody } = input;
 	if (workspacePlanIds === null || baselinePlanIds === null || workspacePlansBody === null) {
 		return { created: false, id: null, planId: null };

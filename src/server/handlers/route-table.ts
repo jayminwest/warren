@@ -36,6 +36,7 @@ import {
 	resumePlanRunHandler,
 	streamPlanRunEventsHandler,
 } from "./plan-runs.ts";
+import { dispatchProjectIssueHandler, listProjectIssuesHandler } from "./projects.issues.ts";
 import {
 	createProjectHandler,
 	deleteProjectHandler,
@@ -87,44 +88,15 @@ interface RouteEntry {
 }
 
 /**
- * Every route and the capability it requires (warren-b875).
- *
- * The classification, in one place so the whole surface can be read at once:
- *
- * - `anonymous` — no auth gate at all. `/healthz` (liveness probes carry no
- *   token) and `/version` (the login screen reads it before the user has
- *   one). `isAuthExempt` is DERIVED from these two entries, so the exemption
- *   list can't drift from the policy table.
- * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
- *   run / project / agent / plan-run listings and details, the run event stream,
- *   `/whoami`, `/instance` (a reduced static facts projection, warren-2eec),
- *   `/analytics/runs`, the reduced `GET /ops/overview` snapshot (USD sums
- *   stripped, warren-d850 + warren-7194), and the cross-run `GET /events` query (per-row
- *   `projectEvent` reduction, warren-5eec). Each is served through a public
- *   projection (pl-b82d steps 14-16) before an instance is actually exposed;
- *   the policy is what makes the projection reachable, not what makes it safe.
- * - `readOperator` — reads that are NOT for spectators. `/readyz` and
- *   `/metrics` are operator diagnostics (the latter deliberately not
- *   auth-exempt, warren-682a). `/analytics/cost` is the instance-wide USD
- *   rollup (per-run cost on a run detail is a deliberate exception).
- *   `/analytics/behavior`, `/analytics/dispatch` (dispatch-context log),
- *   the per-project seeds read, `/projects/:id/triggers` (trigger prompt
- *   text), `/preview/config` (discloses `WARREN_PREVIEW_HOST`), and the
- *   judge export proxy (warren-1b40) all surface operator internals.
- *   The ready-plans read (warren-b754) and the narrowed
- *   `/projects/:id/warren-config` envelope (redacted defaults, no
- *   triggers — warren-b754) are `readPublic` instead. `GET /runs/:id/inbox` is here for a stronger
- *   reason than disclosure: it MUTATES on read (`src/runs/inbox.ts` claims
- *   unread rows and flips them to delivered), so an anonymous poll would
- *   silently drain the operator's steering queue.
- * - `dispatch` — starts or steers agent work: the run and plan-run
- *   lifecycle, the trigger fire, the pod's finalize callback, and the
- *   `/alerts/heal` intake (a webhook that dispatches a healer run).
- * - `admin` — instance-level mutation: registering / deleting / refreshing
- *   projects and the agent registry.
- *
- * Default-deny is the rule: a route absent from the public list above is
- * `readOperator` or narrower, and there is nowhere to declare "open".
+ * Canonical route capabilities; enforcement is in handleRequest.
+ * - anonymous: liveness, version and explicit setup handoffs only.
+ * - readPublic: spectator-safe projections, never raw operator data.
+ * - readOperator: private issues, prompts, diagnostics and operator state.
+ *   Inbox reads also require this because they claim unread messages.
+ * - dispatch: paid work and run/plan lifecycle mutations.
+ * - admin: project and registry administration.
+ * Every entry must declare its policy. Being readable does not make an
+ * unredacted projection safe: handlers retain their audience-specific gates.
  */
 const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/healthz", policy: "anonymous", build: () => healthzHandler() },
@@ -186,6 +158,18 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	// bearer gate (not auth-exempt); webhook senders carry the bearer.
 	{ method: "POST", pattern: "/alerts/heal", policy: "dispatch", build: healAlertHandler },
 
+	{
+		method: "GET",
+		pattern: "/projects/:id/issues",
+		policy: "readOperator",
+		build: listProjectIssuesHandler,
+	},
+	{
+		method: "POST",
+		pattern: "/projects/:id/issues/dispatch",
+		policy: "dispatch",
+		build: dispatchProjectIssueHandler,
+	},
 	{ method: "GET", pattern: "/projects", policy: "readPublic", build: listProjectsHandler },
 	{ method: "POST", pattern: "/projects", policy: "admin", build: createProjectHandler },
 	{ method: "GET", pattern: "/projects/:id", policy: "readPublic", build: getProjectHandler },

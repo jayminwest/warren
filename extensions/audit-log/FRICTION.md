@@ -316,3 +316,12 @@ Logged by the judge extension (plan pl-17ca step 6, warren-33da).
 `?state=terminal&since=<ts>` filter on `GET /runs`, so a bounded
 observer can enforce a fleet budget against server truth and
 incremental-sync terminal transitions instead of re-listing history.
+
+
+## GitHub issue queue integration
+
+The GitHub tracker needed an operator issue list, not only the existing id/status
+map. `supportsIssueListing` and `/issues` add that surface without changing older
+v1 adapters. Per-project remote configuration also needed production resolution;
+that wiring now requires operator endpoint and credential-name allowlists. See
+`extensions/tracker-github/README.md` for the consumer proof and limitations.

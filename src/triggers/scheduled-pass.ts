@@ -19,6 +19,7 @@ import { formatError } from "../core/errors.ts";
 import type { ProjectRow } from "../db/schema.ts";
 import type { WarrenExtensions } from "../seeds-cli/index.ts";
 import type { TrackerContext } from "../tracker/contract.ts";
+import { resolveIssueTracker } from "../tracker/resolve.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
 import { type DispatchScheduledResult, dispatchScheduledSeed } from "./dispatch.ts";
 import type { TickDeps, TickLogger } from "./tick.ts";
@@ -37,7 +38,8 @@ export async function runScheduledSeedsPass(input: RunScheduledSeedsPassInput): 
 
 	// warren-6234: capability gate — a tracker without scheduled-issue
 	// support has nothing for this pass to walk.
-	const tracker = deps.issueTracker;
+	const ctx: TrackerContext = { projectId: project.id, localPath: project.localPath };
+	const tracker = deps.issueTracker ? await resolveIssueTracker(deps.issueTracker, ctx) : undefined;
 	if (tracker === undefined || !tracker.capabilities.supportsScheduledIssues) {
 		deps.logger?.debug?.(
 			{ projectId: project.id },
@@ -45,8 +47,6 @@ export async function runScheduledSeedsPass(input: RunScheduledSeedsPassInput): 
 		);
 		return;
 	}
-	const ctx: TrackerContext = { projectId: project.id, localPath: project.localPath };
-
 	const listScheduled = tracker.listScheduledIssues?.bind(tracker);
 	if (listScheduled === undefined) return;
 	let issues: Awaited<ReturnType<typeof listScheduled>>;
@@ -98,7 +98,8 @@ async function clearFiredSeedExtension(
 ): Promise<void> {
 	// warren-6234: metadata capability gate — skip with a debug log; the
 	// dispatched run row remains the authoritative fire record.
-	if (deps.issueTracker === undefined || !deps.issueTracker.capabilities.supportsMetadata) {
+	const tracker = deps.issueTracker ? await resolveIssueTracker(deps.issueTracker, ctx) : undefined;
+	if (tracker === undefined || !tracker.capabilities.supportsMetadata) {
 		deps.logger?.debug?.(
 			{ runId: result.runId, seedId: result.seedId },
 			"scheduler.clear_scheduled_for_skipped_no_capability",
@@ -114,7 +115,7 @@ async function clearFiredSeedExtension(
 		lastScheduledRun: result.runId,
 	};
 	try {
-		await deps.issueTracker.mergeIssueMetadata?.(ctx, result.seedId, extensions);
+		await tracker.mergeIssueMetadata?.(ctx, result.seedId, extensions);
 	} catch (err) {
 		await recordClearFailure(deps, result.runId, result.seedId, formatError(err));
 	}

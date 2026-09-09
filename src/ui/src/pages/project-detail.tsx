@@ -24,6 +24,7 @@ import {
 } from "@/pages/project-detail.panels.tsx";
 import { ProjectFactsPanel, RecentRunsPanel } from "@/pages/project-detail.side-rail.tsx";
 import { mainColumnClasses, sideRailClasses } from "@/pages/project-detail-layout.ts";
+import { ProjectIssuesPanel } from "./project-issues.tsx";
 
 /**
  * Project detail — the Direction C project inspector (warren-8375 /
@@ -88,7 +89,10 @@ export function ProjectDetailPage() {
 						<OperatorOnly capability="readOperator">
 							<TriggersPanel projectId={id} />
 						</OperatorOnly>
-						<ReadyPlansPanel projectId={id} />
+						<OperatorOnly capability="readOperator">
+							<ProjectIssuesPanel projectId={id} />
+						</OperatorOnly>
+						{project.data.hasSeeds && <ReadyPlansPanel projectId={id} />}
 					</div>
 					<div className={sideRailClasses()}>
 						<ProjectFactsPanel project={project.data} />

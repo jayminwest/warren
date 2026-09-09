@@ -1,0 +1,22 @@
+{
+	"name": "@warren-ext/tracker-github",
+	"version": "0.0.0",
+	"description": "Warren tracker and opt-in queue dispatcher for GitHub Issues and Projects v2",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"lint": "biome check --error-on-warnings ."
+	},
+	"license": "MIT",
+	"engines": {
+		"bun": ">=1.2.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.0",
+		"typescript": "^5.6.0",
+		"@biomejs/biome": "2.4.10"
+	}
+}

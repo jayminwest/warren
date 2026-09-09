@@ -38,6 +38,7 @@ import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { refreshProject } from "../projects/index.ts";
 import type { IssueTracker, PlanCapableTracker, TrackerContext } from "../tracker/contract.ts";
+import { resolveIssueTracker } from "../tracker/resolve.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
@@ -266,7 +267,12 @@ async function requireTrackedProject(
 	input: CreatePlanRunOrchestrationInput,
 ): Promise<{ project: ProjectRow; tracker: IssueTracker }> {
 	const project = await input.repos.projects.require(input.projectId);
-	const tracker = input.issueTracker;
+	const tracker = input.issueTracker
+		? await resolveIssueTracker(input.issueTracker, {
+				projectId: project.id,
+				localPath: project.localPath,
+			})
+		: undefined;
 	if (tracker === undefined) {
 		throw new ValidationError(
 			"no issue tracker is configured on this warren; plan-runs require one",
