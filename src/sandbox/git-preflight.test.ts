@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -129,6 +129,23 @@ describe("probeSandboxGit", () => {
 		expect(seen[0]).toBe("/usr/bin");
 	});
 
+	test("spawns the resolved binary by absolute path, never a bare name", async () => {
+		const seen: string[][] = [];
+		const spawnSandbox: typeof runSandboxed = async (_profile, command) => {
+			seen.push([...command.argv]);
+			return fakeResult(0, "git version 2.39.5");
+		};
+		await probeSandboxGit({
+			which: whichWith(BAD_GIT),
+			env: {},
+			platform: "linux",
+			spawnSandbox,
+		});
+		// A bare `git` lets execvp skip the named binary and answer from a
+		// later PATH entry, so the result would name a binary that never ran.
+		expect(seen[0]).toEqual([BAD_GIT, "--version"]);
+	});
+
 	test("substitutes /usr/bin/git on darwin when the resolved git fails but the system git passes", async () => {
 		const result = await probeSandboxGit({
 			which: whichWith(BAD_GIT),
@@ -225,13 +242,16 @@ describe("probeSandboxGit (real sandbox, linux + bwrap)", () => {
 		async () => {
 			const dir = mkdtempSync(join(tmpdir(), "warren-git-preflight-real-"));
 			const binDir = join(dir, "bin");
+			mkdirSync(binDir, { recursive: true });
 			writeFileSync(join(binDir, "git"), "#!/nonexistent-interpreter-warren-1219\n", {
 				mode: 0o755,
 			});
 			try {
 				const badGit = join(binDir, "git");
 				const result = await probeSandboxGit({
-					which: (name) => (name === "git" ? badGit : null),
+					// whichWith answers for bwrap as well; a null there takes the
+					// "no sandbox wrapper" early return and the probe never runs.
+					which: whichWith(badGit),
 					env: {},
 					spawnSandbox: runSandboxed,
 				});

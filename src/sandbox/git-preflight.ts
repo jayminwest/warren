@@ -2,9 +2,9 @@
  * Sandbox git preflight (warren-1219, plan pl-26f3 step 6).
  *
  * Verifies that the git binary a run would use actually EXECUTES inside the
- * composed sandbox profile — the same toolchain mounts and hardened PATH a
- * real LocalProvider run gets — by running `git --version` through
- * `runSandboxed` and checking the exit code.
+ * composed sandbox profile — the same toolchain mounts a real LocalProvider
+ * run gets — by running `<gitBin> --version` through `runSandboxed` and
+ * checking the exit code.
  *
  * Why: on macOS a nix-provided git resolved first on the server PATH but
  * its dylibs sat outside the sandbox profile's readable paths, so every
@@ -22,6 +22,14 @@
  *
  * Only the LocalProvider topology sandboxes on the host: docker/k8s callers
  * simply never invoke this probe.
+ *
+ * The probe invokes the resolved binary by ABSOLUTE path, because a bare
+ * name cannot answer for a specific binary. `execvp` resumes its PATH walk
+ * on ENOENT, EACCES and ENOTDIR, so a later git answers for the one the
+ * result names: measured on bwrap 0.9.0, a missing interpreter, a file
+ * without the execute bit, and a directory named `git` each let
+ * /usr/bin/git reply with exit 0. ENOEXEC is the exception, where execvp
+ * retries the entry under /bin/sh rather than moving on.
  */
 
 import { existsSync, mkdirSync as fsMkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -102,13 +110,6 @@ interface GitProbeOutcome {
 	readonly output: string;
 }
 
-/**
- * Probe that one git binary executes inside the composed sandbox profile.
- * Composes a minimal `SandboxProfile` with the same toolchain-mount shape
- * `buildLocalSandboxProfile` produces for git (bin dir + realpath dir +
- * the bun install root), then runs bare-name `git --version` so the
- * hardened PATH resolution a real run uses is exercised too.
- */
 /** Resolve the git binary to probe: env pin first, then PATH. */
 function resolveProbedGit(
 	env: Record<string, string | undefined>,
@@ -234,6 +235,12 @@ export function resetSandboxGitPreflightCache(): void {
 	cachedPreflight = undefined;
 }
 
+/**
+ * Probe that one git binary executes inside the composed sandbox profile.
+ * Composes a minimal `SandboxProfile` with the same toolchain-mount shape
+ * `buildLocalSandboxProfile` produces for git (bin dir + realpath dir + the
+ * bun install root), then runs `<gitBin> --version` by absolute path.
+ */
 async function runGitProbe(
 	gitBin: string,
 	deps: SandboxGitPreflightDeps,
@@ -258,7 +265,7 @@ async function runGitProbe(
 			setEnv: {},
 			toolchainPaths: gitToolchainPaths(gitBin, deps.exists ?? existsSync),
 		};
-		const command: SpawnCommand = { argv: ["git", "--version"], timeoutMs };
+		const command: SpawnCommand = { argv: [gitBin, "--version"], timeoutMs };
 		const child = await spawnSandbox(profile, command, deps.sandboxOptions ?? {});
 		const output = await drainWithTimeout(child, timeoutMs);
 		return { ok: output.exitCode === 0, output: output.text };
