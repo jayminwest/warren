@@ -50,6 +50,8 @@ export type {
  * no-op-ing.
  */
 export interface TrackerCapabilities {
+	/** Optional, additive v1 capability for the filtered executable issue queue. */
+	readonly supportsIssueListing?: boolean;
 	/** listPlans / getPlan are implemented. */
 	readonly supportsPlans: boolean;
 	/** mergeIssueMetadata is implemented. */
@@ -65,6 +67,8 @@ export interface TrackerCapabilities {
  */
 export interface IssueTracker {
 	readonly capabilities: TrackerCapabilities;
+	/** Resolve a per-project tracker before inspecting capabilities. */
+	resolveForProject?(ctx: TrackerContext): Promise<IssueTracker>;
 
 	/** Read a single issue. Throws {@link IssueNotFoundError} for a missing id. */
 	getIssue(ctx: TrackerContext, issueId: string): Promise<Issue>;
@@ -125,4 +129,9 @@ export interface ScheduledIssueCapableTracker {
 	 * past/future — the caller decides which entries are due.
 	 */
 	listScheduledIssues(ctx: TrackerContext): Promise<readonly ScheduledIssue[]>;
+}
+
+/** A filtered issue queue; listing never dispatches work. */
+export interface IssueListingTracker {
+	listIssues(ctx: TrackerContext): Promise<readonly Issue[]>;
 }

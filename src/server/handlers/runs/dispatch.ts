@@ -152,7 +152,7 @@ async function resolveDispatchFields(
  * optional field forwarding). Extracted so `createRunHandler`'s request
  * body stays under the cognitive-complexity ceiling.
  */
-async function buildHttpSpawnOptions(
+export async function buildHttpSpawnOptions(
 	deps: ServerDeps,
 	body: Record<string, unknown>,
 	logger: Parameters<typeof spawnRun>[0]["logger"],

@@ -259,3 +259,22 @@ export async function listWithUnresolvedPr(adapter: DrizzleAdapter): Promise<Run
 			.orderBy(asc(runs.id)),
 	);
 }
+
+/** Persisted receipt for queue dispatch, including failed/uncertain runs. */
+export async function findByIssue(
+	adapter: DrizzleAdapter,
+	projectId: string,
+	issueId: string,
+): Promise<RunRow | null> {
+	const db = adapter.drizzle as SqliteDrizzleDb;
+	const runs = adapter.schema.runs;
+	const rows = await adapter.pickAll(
+		db
+			.select()
+			.from(runs)
+			.where(and(eq(runs.projectId, projectId), eq(runs.seedId, issueId)))
+			.orderBy(desc(runs.startedAt), desc(runs.id))
+			.limit(1),
+	);
+	return rows[0] ?? null;
+}

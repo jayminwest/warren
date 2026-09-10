@@ -37,6 +37,7 @@ import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
 import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
+import { ProjectTracker } from "../../tracker/project-tracker.ts";
 import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
@@ -181,10 +182,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// Seeds-CLI seam shared by the bridge reap path (warren-41d5) and the plan-run coordinator.
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
-	// warren-5819 (pl-a37b Track B step 7): ONE SeedsTracker threaded through
-	// every seedsCli fan-out site below and onto ServerDeps. Contract port:
-	// warren-2d98/47b0/6234; override seam: warren-53ea (BootServerOptions).
-	const issueTracker = opts.issueTracker ?? new SeedsTracker(seedsCli);
+	// Resolve hosted trackers per project; Seeds remains the fallback.
+	const issueTracker =
+		opts.issueTracker ?? new ProjectTracker(warrenConfigs, env, new SeedsTracker(seedsCli));
 
 	// Tier-1 observation bus (warren-bb60) + first-party consumers (warren-4e74 healer,
 	// warren-df3e seed-close). Installed BEFORE bridges resume in-flight runs so no emit

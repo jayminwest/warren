@@ -52,9 +52,9 @@ import type {
 	TrackerCapabilities,
 } from "../contract.ts";
 import { TrackerHttpClient } from "./http-client.ts";
+import { parseRemoteIssue } from "./parse-issue.ts";
 import {
 	type CapabilitiesResponse,
-	type RemoteIssueResponse,
 	type RemoteIssueStatusesResponse,
 	type RemoteMetadataRequest,
 	type RemotePlanResponse,
@@ -153,6 +153,7 @@ export class RemoteTracker
 			supportsMetadata: raw.supportsMetadata === true,
 			supportsScheduledIssues: raw.supportsScheduledIssues === true,
 			isGitNative: raw.isGitNative === true,
+			...(raw.supportsIssueListing === true ? { supportsIssueListing: true } : {}),
 		};
 		this.remoteCapabilities = caps;
 		return caps;
@@ -185,21 +186,18 @@ export class RemoteTracker
 			const response = await this.request("GET", TRACKER_ENDPOINTS.issue(issueId), {
 				notFoundIsError: true,
 			});
-			const body = (await this.parseJson(response)) as Partial<RemoteIssueResponse>;
-			if (typeof body?.id !== "string" || typeof body.status !== "string") {
-				throw new TrackerError(
-					`remote tracker returned a malformed issue payload for ${issueId} (project ${ctx.projectId})`,
-				);
-			}
-			const issue: Issue = {
-				id: body.id,
-				status: this.requireIssueStatus(body.status, issueId, ctx.projectId),
-				...(body.title !== undefined ? { title: body.title } : {}),
-				...(body.description !== undefined ? { description: body.description } : {}),
-				...(body.blockedBy !== undefined ? { blockedBy: body.blockedBy } : {}),
-				...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
-			};
-			return issue;
+			return parseRemoteIssue(await this.parseJson(response));
+		});
+	}
+
+	async listIssues(ctx: TrackerContext): Promise<readonly Issue[]> {
+		this.requireCapability("supportsIssueListing", "issue listing");
+		return this.cachedRead(ctx, ["issues"], async () => {
+			const response = await this.request("GET", TRACKER_ENDPOINTS.issues);
+			const body = (await this.parseJson(response)) as { issues?: unknown };
+			if (!Array.isArray(body?.issues))
+				throw new TrackerError("remote tracker returned an invalid issue list");
+			return body.issues.map(parseRemoteIssue);
 		});
 	}
 

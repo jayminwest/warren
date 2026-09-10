@@ -17,6 +17,7 @@ import {
 	withProviderOverrides,
 } from "../../registry/schema.ts";
 import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
+import { resolveIssueTracker } from "../../tracker/resolve.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
@@ -29,6 +30,7 @@ import { injectWarrenCallbackEnv } from "./callback-env.ts";
 import { resolveContinuationRef, resolveExistingBranch } from "./continuation.ts";
 import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
+import { dispatchIssueOnce, readExecutableIssue } from "./issue-dispatch.ts";
 import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
 import { gateAgentPrompts } from "./prompt-capabilities.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
@@ -55,13 +57,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	if (input.prompt.trim() === "") {
 		throw new ValidationError("prompt cannot be empty");
 	}
-	// warren-232d: serialize the per-project dispatch critical section — the
-	// clone refresh (`checkout --force` / `reset --hard`), the working-tree
-	// defaults read, and the provider's worktree materialization all mutate or
-	// read the SAME shared host clone, so two concurrent dispatches on one
-	// project with different base refs must not interleave. Different projects
-	// dispatch in parallel; see src/projects/clone-lock.ts.
+	// Serialize clone refresh, defaults reads, and workspace materialization per project.
 	return withProjectCloneLock(input.projectId, () => dispatchRun(input));
+}
+
+export function spawnIssueRun(input: SpawnRunInput) {
+	return dispatchIssueOnce(input, dispatchRun);
 }
 
 async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
@@ -122,6 +123,16 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				})
 			: null;
 	const projectAfterRefresh = refreshed?.project ?? project;
+	const issueTracker = input.issueTracker
+		? await resolveIssueTracker(input.issueTracker, {
+				projectId: projectAfterRefresh.id,
+				localPath: projectAfterRefresh.localPath,
+			})
+		: undefined;
+
+	if (input.seedId && issueTracker?.capabilities.supportsIssueListing) {
+		await readExecutableIssue(issueTracker, projectAfterRefresh, input.seedId);
+	}
 
 	// warren-618b: fold per-project provider/model defaults onto the agent
 	// frontmatter, operator per-run override winning. Order: operator
@@ -159,7 +170,7 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			capOverride,
 		),
 		projectAfterRefresh,
-		input.issueTracker,
+		issueTracker,
 	);
 	// warren-bad5: validate only after the override > project default >
 	// agent frontmatter chain has been fully resolved.

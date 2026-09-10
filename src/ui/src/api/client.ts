@@ -4,6 +4,7 @@
 // router can redirect back to login on the next render pass.
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
+import type { IssueQueueResponse } from "../../../core/wire.ts";
 import type { InstanceFactsResponse } from "./instance-types.ts";
 import type { OpsOverviewResponse } from "./ops-types.ts";
 import type {
@@ -169,6 +170,16 @@ export const agentsApi = {
 /* ----------------------------------------------------------------------- */
 
 export const projectsApi = {
+	issues: (id: string, signal?: AbortSignal) =>
+		request<IssueQueueResponse>(`/projects/${encodeURIComponent(id)}/issues`, {
+			...(signal ? { signal } : {}),
+		}),
+	dispatchIssue: (id: string, issueId: string, input: { agent: string; maxCostUsd: number }) =>
+		request<{ run: RunRow; reused: boolean }>(
+			`/projects/${encodeURIComponent(id)}/issues/dispatch`,
+			{ method: "POST", body: { ...input, issueId } },
+		),
+
 	list: (signal?: AbortSignal) =>
 		request<{ projects: ProjectRow[] }>("/projects", { ...(signal ? { signal } : {}) }),
 	/** Bare-row envelope, matching the SDK's `getProject()` (warren-435b). */

@@ -62,6 +62,7 @@ export const TRACKER_ISSUE_NOT_FOUND_CODE = "issue_not_found";
 
 /** The capability flag set a server declares on `GET /capabilities`. */
 export interface RemoteTrackerCapabilities {
+	readonly supportsIssueListing?: boolean;
 	readonly supportsPlans: boolean;
 	readonly supportsMetadata: boolean;
 	readonly supportsScheduledIssues: boolean;
@@ -76,6 +77,9 @@ export interface CapabilitiesResponse {
 
 /** `GET /issues/{id}` response. `status` is one of {@link ISSUE_STATUSES}. */
 export interface RemoteIssueResponse {
+	readonly ready?: boolean;
+	readonly url?: string;
+	readonly repositoryUrl?: string;
 	readonly id: string;
 	readonly status: IssueStatus;
 	readonly title?: string;
@@ -154,6 +158,7 @@ export const TRACKER_ENDPOINTS = {
 	issue: (id: string) => `/issues/${encodeURIComponent(id)}`,
 	closeIssue: (id: string) => `/issues/${encodeURIComponent(id)}/close`,
 	issueStatuses: "/issue-statuses",
+	issues: "/issues",
 	plans: "/plans",
 	plan: (id: string) => `/plans/${encodeURIComponent(id)}`,
 	metadata: (id: string) => `/issues/${encodeURIComponent(id)}/metadata`,

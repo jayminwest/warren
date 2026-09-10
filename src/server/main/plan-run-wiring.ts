@@ -33,6 +33,7 @@ import { buildPrContent } from "../../runs/pr.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
+import { resolveIssueTracker } from "../../tracker/resolve.ts";
 import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
@@ -149,7 +150,11 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 			// needs no clone state at all. Gating it on hasSeeds would suppress
 			// the close entirely for tracker-served projects (caught by
 			// acceptance scenario 43).
-			if (issueTracker.capabilities.isGitNative && !project.hasSeeds) return;
+			const resolvedTracker = await resolveIssueTracker(issueTracker, {
+				projectId: project.id,
+				localPath: project.localPath,
+			});
+			if (resolvedTracker.capabilities.isGitNative && !project.hasSeeds) return;
 			// warren-63e7: mint the fetch/push credential from the forge
 			// immediately before the git spawns (forge-contract.md §4 — minted,
 			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.
@@ -160,7 +165,7 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				defaultBranch: project.defaultBranch,
 				seedId: child.seedId,
 				projectId: planRun.projectId,
-				issueTracker,
+				issueTracker: resolvedTracker,
 				spawn: projectSpawn,
 				gitBinary: projectsConfig.gitBinary,
 				// Minted per close so the fetch/push work against private repos

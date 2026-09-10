@@ -254,3 +254,26 @@ without a core commit. The bridge is the last tracker core adds. The
 bring-your-own-tracker story minus Linear, and no warren-side sidecar
 table for issue metadata while capability flags suffice — is recorded
 in ROADMAP's Decisions and in plan pl-a37b's alternatives.
+
+
+## GitHub queues and per-project resolution
+
+`extensions/tracker-github/README.md` documents the GitHub Issues / Projects v2
+extension, including manual dispatch and explicitly enabled automatic pickup.
+`src/tracker/project-tracker.ts` resolves the configured tracker per project;
+capability consumers resolve before testing flags. Seeds remains the fallback.
+Production connections require `WARREN_TRACKER_ALLOWED_URLS`, and credential
+names must be in `WARREN_TRACKER_ALLOWED_TOKEN_ENVS`. Repository configuration
+alone cannot authorize host network access or arbitrary environment secrets.
+
+The additive optional `supportsIssueListing` capability serves `GET /issues`
+with `{ issues: Issue[] }`. Existing v1 servers omit the flag and need no new
+endpoint. `ready?: boolean` is eligibility, separate from lifecycle `status`;
+an open issue may be ineligible. `url?` and `repositoryUrl?` provide source links
+and allow a wrong-repository execution guard without coupling core to GitHub.
+The queue is operator-only (`GET /projects/:id/issues`). Explicit queue dispatch
+uses `POST /projects/:id/issues/dispatch` with `issueId` in the body, preserving
+the router's prohibition on decoded path separators. It rechecks eligibility,
+embeds issue context, and deduplicates against persisted run rows under the
+existing single-control-plane project clone lock. Automatic pickup consumes this
+same endpoint; it is not enabled by configuring a tracker or listing issues.

@@ -658,6 +658,48 @@ paths:
           required: true
           schema:
             type: string
+  /projects/{id}/issues:
+    get:
+      operationId: listProjectIssuesHandler
+      tags:
+        - projects
+      summary: GET /projects/:id/issues
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /projects/{id}/issues/dispatch:
+    post:
+      operationId: dispatchProjectIssueHandler
+      tags:
+        - projects
+      summary: POST /projects/:id/issues/dispatch
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /projects/{id}/ready-plans:
     get:
       operationId: listReadyPlansHandler

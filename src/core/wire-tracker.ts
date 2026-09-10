@@ -73,6 +73,11 @@ export function isPlanStatus(value: unknown): value is PlanStatus {
  * untyped.
  */
 export interface Issue {
+	/** Explicit eligibility, distinct from the issue lifecycle; rechecked at dispatch. */
+	readonly ready?: boolean;
+	readonly url?: string;
+	/** Canonical repository URL used to refuse execution against the wrong checkout. */
+	readonly repositoryUrl?: string;
 	readonly id: string;
 	readonly status: IssueStatus;
 	readonly title?: string;
@@ -158,4 +163,14 @@ export class TrackerError extends WarrenError {
  */
 export class IssueNotFoundError extends TrackerError {
 	override readonly code = "issue_not_found";
+}
+
+/** Operator-only queue projection; absence of listing support is not a configuration error. */
+export interface IssueQueueEntry extends Issue {
+	readonly runId: string | null;
+	readonly runState: import("./wire.ts").RunState | null;
+}
+export interface IssueQueueResponse {
+	readonly supported: boolean;
+	readonly issues: readonly IssueQueueEntry[];
 }
