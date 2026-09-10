@@ -33,12 +33,14 @@ import { defaultFs } from "../../runs/reap/util.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
 import { branchExists, discoverHostClone } from "../../workspace/git/worktree.ts";
+import { writeWorkspaceExcludes } from "../../workspace/git-exclude.ts";
 import {
 	type MaterializedWorkspace,
 	materializeProjectWorkspace,
 	removeMaterializedWorkspace,
 } from "../../workspace/materialize.ts";
 import { writeWorkspaceSeedFiles } from "../../workspace/seed-files.ts";
+import { harnessStatePrefixes } from "../adapters/index.ts";
 import type {
 	FinalizeIntent,
 	FinalizeResult,
@@ -156,6 +158,14 @@ export class LocalEngine {
 				originUrl: spec.originUrl,
 			});
 			await writeWorkspaceSeedFiles(workspacePath, spec.seedFiles);
+			// warren-194a: a target repo whose .gitignore does not cover warren's
+			// harness scratch and seed drops lets the agent commit them into the
+			// run branch, and they ride into the PR. Excludes are checkout-local
+			// and never reach the remote.
+			await writeWorkspaceExcludes(workspacePath, [
+				...harnessStatePrefixes(),
+				...spec.seedFiles.map((file) => file.path),
+			]);
 		} catch (err) {
 			// Partial-failure cleanup (the rollback posture burrow's provider owned):
 			// reclaim the dirs we made and rethrow the ORIGINAL error.

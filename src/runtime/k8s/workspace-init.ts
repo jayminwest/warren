@@ -69,6 +69,8 @@ import { dirname, isAbsolute, join, normalize } from "node:path";
 import { WorkspaceMaterializationError } from "../../workspace/errors.ts";
 import { authenticatedCloneUrl, bareTokenCredential } from "../../workspace/git/clone-url.ts";
 import { runGit } from "../../workspace/git/exec.ts";
+import { writeWorkspaceExcludes } from "../../workspace/git-exclude.ts";
+import { harnessStatePrefixes } from "../adapters/index.ts";
 import { parseSeedManifest } from "./seed-configmap.ts";
 
 /** Parsed, validated view of the init container's env. */
@@ -342,8 +344,13 @@ function resolveSeedTarget(workspacePath: string, seedPath: string): string {
 	return join(workspacePath, normalize(seedPath));
 }
 
-async function writeSeedFiles(cfg: InitEnv, fs: InitFs, log: (m: string) => void): Promise<void> {
-	if (cfg.seedManifestPath === undefined) return;
+/** Drop the seed files and report their workspace-relative paths to the caller. */
+async function writeSeedFiles(
+	cfg: InitEnv,
+	fs: InitFs,
+	log: (m: string) => void,
+): Promise<readonly string[]> {
+	if (cfg.seedManifestPath === undefined) return [];
 	const raw = await fs.readFile(cfg.seedManifestPath);
 	const entries = parseSeedManifest(raw);
 	for (const entry of entries) {
@@ -356,6 +363,7 @@ async function writeSeedFiles(cfg: InitEnv, fs: InitFs, log: (m: string) => void
 		await fs.writeFile(target, data);
 	}
 	log(`workspace-init: wrote ${entries.length} seed file(s) into ${cfg.workspacePath}`);
+	return entries.map((entry) => entry.path);
 }
 
 /**
@@ -384,7 +392,14 @@ export async function runWorkspaceInit(
 
 	const usedCache = await materializeViaCache(git, fs, cfg, log);
 	if (!usedCache) await directClone(git, cfg, log);
-	await writeSeedFiles(cfg, fs, log);
+	const seedPaths = await writeSeedFiles(cfg, fs, log);
+	// warren-194a: keep warren's harness scratch and seed drops out of the
+	// agent's commits when the target repo's .gitignore does not cover them.
+	// The pod's clone is its own, so the exclude never outlives the run.
+	await writeWorkspaceExcludes(cfg.workspacePath, [...harnessStatePrefixes(), ...seedPaths], {
+		git,
+		fs,
+	});
 	log(`workspace-init: checked out ${cfg.branch} off ${cfg.baseBranch}`);
 	return cfg;
 }

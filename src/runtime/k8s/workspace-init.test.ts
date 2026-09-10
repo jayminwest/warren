@@ -11,6 +11,17 @@ import {
 const ok = { exitCode: 0, stdout: "", stderr: "" };
 
 /**
+ * Real git answers `rev-parse --git-path <p>` with a path, and the exclude
+ * seeding (warren-194a) reads it. A fake that returned the blanket `ok` would
+ * hand back an empty path, which is a failure real git never produces.
+ */
+function gitPathReply(args: string[]): { exitCode: number; stdout: string; stderr: string } | null {
+	const i = args.indexOf("--git-path");
+	if (args[0] !== "rev-parse" || i === -1) return null;
+	return { exitCode: 0, stdout: `.git/${args[i + 1] ?? ""}\n`, stderr: "" };
+}
+
+/**
  * Recording git that lets a test steer the mirror probe + fail specific argv.
  * `bareRepoProbe` decides what `git rev-parse --is-bare-repository` reports
  * (default `false` ⇒ mirror treated as absent ⇒ create path).
@@ -25,16 +36,24 @@ function cacheGit(overrides: {
 		if (overrides.fail?.(args, opts?.cwd)) {
 			return Promise.resolve({ exitCode: 1, stdout: "", stderr: "boom" });
 		}
-		if (args.includes("--is-bare-repository")) {
-			return Promise.resolve({
-				exitCode: overrides.bareRepoProbe ? 0 : 128,
-				stdout: overrides.bareRepoProbe ? "true\n" : "",
-				stderr: overrides.bareRepoProbe ? "" : "fatal: not a git repository",
-			});
-		}
-		return Promise.resolve(ok);
+		return Promise.resolve(
+			gitPathReply(args) ?? bareRepoReply(args, overrides.bareRepoProbe === true) ?? ok,
+		);
 	};
 	return { git, calls };
+}
+
+/** What `git rev-parse --is-bare-repository` reports for the steered mirror. */
+function bareRepoReply(
+	args: string[],
+	isBare: boolean,
+): { exitCode: number; stdout: string; stderr: string } | null {
+	if (!args.includes("--is-bare-repository")) return null;
+	return {
+		exitCode: isBare ? 0 : 128,
+		stdout: isBare ? "true\n" : "",
+		stderr: isBare ? "" : "fatal: not a git repository",
+	};
 }
 
 const CACHE_ENV = {
@@ -116,6 +135,8 @@ function recordingGit(overrides: { fail?: (args: string[]) => boolean } = {}): {
 	const git: InitGitRunner = (args, opts) => {
 		calls.push({ args, ...(opts?.cwd !== undefined ? { cwd: opts.cwd } : {}) });
 		if (overrides.fail?.(args)) return Promise.resolve({ exitCode: 1, stdout: "", stderr: "boom" });
+		const gitPath = gitPathReply(args);
+		if (gitPath !== null) return Promise.resolve(gitPath);
 		return Promise.resolve(ok);
 	};
 	return { git, calls };
@@ -132,7 +153,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_WORKSPACE_PATH: "/ws",
 				WARREN_GIT_TOKEN: "tok",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		expect(calls[0]?.args).toEqual([
 			"clone",
@@ -158,9 +179,10 @@ describe("runWorkspaceInit", () => {
 				WARREN_BRANCH: "b",
 				WARREN_BASE_BRANCH: "main",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
-		expect(calls.map((c) => c.args[0])).toEqual(["clone", "switch"]);
+		// The trailing rev-parse is the exclude seeding resolving info/exclude.
+		expect(calls.map((c) => c.args[0])).toEqual(["clone", "switch", "rev-parse"]);
 	});
 
 	test("branch === baseBranch (ref-dispatch, warren-dac8) skips the colliding switch -c", async () => {
@@ -172,7 +194,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_BASE_BRANCH: "fix/pr-head",
 				WARREN_WORKSPACE_PATH: "/ws",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		expect(calls[0]?.args).toEqual([
 			"clone",
@@ -196,7 +218,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_BASE_BRANCH: sha,
 				WARREN_WORKSPACE_PATH: "/ws",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		const argv = calls.map((c) => c.args);
 		expect(argv[1]).toEqual(["clone", "--filter=blob:none", "https://github.com/o/r.git", "/ws"]);
@@ -213,7 +235,7 @@ describe("runWorkspaceInit", () => {
 					WARREN_BRANCH: "b",
 					WARREN_BASE_BRANCH: "main",
 				},
-				{ git, log: () => {} },
+				{ git, fs: noopFs, log: () => {} },
 			),
 		).rejects.toThrow(/git clone .* failed/);
 	});
@@ -235,7 +257,10 @@ describe("runWorkspaceInit", () => {
 				writes.push({ path: p, data: new TextDecoder().decode(d) });
 				return Promise.resolve();
 			},
-			readFile: () => Promise.resolve(manifest),
+			// Path-aware: only the manifest path holds the manifest. The exclude
+			// seeding reads .git/info/exclude, which does not exist yet.
+			readFile: (p) =>
+				p === "/seeds/seeds.json" ? Promise.resolve(manifest) : Promise.reject(new Error("ENOENT")),
 		};
 		await runWorkspaceInit(
 			{
@@ -247,11 +272,43 @@ describe("runWorkspaceInit", () => {
 			},
 			{ git, fs, log: () => {} },
 		);
-		expect(writes).toEqual([
+		expect(writes.slice(0, 2)).toEqual([
 			{ path: "/ws/.warren/agent.json", data: "{}" },
 			{ path: "/ws/.mulch/x", data: "hello" },
 		]);
-		expect(mkdirs).toEqual(["/ws/.warren", "/ws/.mulch"]);
+		expect(mkdirs.slice(0, 2)).toEqual(["/ws/.warren", "/ws/.mulch"]);
+	});
+
+	test("excludes the harness state and every seeded path from the pod's clone", async () => {
+		const writes: Array<{ path: string; data: string }> = [];
+		const { git } = recordingGit();
+		const manifest = JSON.stringify([{ path: ".warren/agent.json", contents: "{}" }]);
+		const fs: InitFs = {
+			mkdir: () => Promise.resolve(),
+			writeFile: (p, d) => {
+				writes.push({ path: p, data: new TextDecoder().decode(d) });
+				return Promise.resolve();
+			},
+			readFile: (p) =>
+				p === "/seeds/seeds.json" ? Promise.resolve(manifest) : Promise.reject(new Error("ENOENT")),
+		};
+		await runWorkspaceInit(
+			{
+				WARREN_REPO_URL: "https://github.com/o/r.git",
+				WARREN_BRANCH: "b",
+				WARREN_BASE_BRANCH: "main",
+				WARREN_WORKSPACE_PATH: "/ws",
+				WARREN_SEED_MANIFEST: "/seeds/seeds.json",
+			},
+			{ git, fs, log: () => {} },
+		);
+		const exclude = writes.find((w) => w.path === "/ws/.git/info/exclude");
+		expect(exclude).toBeDefined();
+		// Both halves land: the harness's own scratch and the seed drop that
+		// warren wrote into the workspace (warren-194a).
+		expect(exclude?.data).toContain(".pi/sessions/");
+		expect(exclude?.data).toContain(".claude/");
+		expect(exclude?.data).toContain(".warren/agent.json");
 	});
 
 	test("refuses a seed path that escapes the workspace", async () => {
@@ -369,7 +426,7 @@ describe("runWorkspaceInit repo-cache path (warren-e908, §4.3/R2)", () => {
 				WARREN_WORKSPACE_PATH: "/ws",
 				WARREN_GIT_TOKEN: "tok",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		const argv = calls.map((c) => c.args);
 		expect(argv).toContainEqual([

@@ -192,6 +192,10 @@ describe("LocalEngine.create", () => {
 			// the profile binds the real HOME + the worktree's git common dir
 			expect(h.profiles[0]?.home).toBe(homePath);
 			expect(h.profiles[0]?.workspaceGitdir).toBeDefined();
+			// warren-194a: harness scratch and the seed drop are excluded, so a
+			// target repo that does not gitignore them keeps them out of the PR
+			const dirty = await fixtureGitOrThrow(workspacePath, ["status", "--porcelain"]);
+			expect(dirty.stdout).not.toContain(".warren/agent.json");
 		} finally {
 			await h.cleanup();
 		}
