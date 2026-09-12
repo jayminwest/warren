@@ -68,6 +68,7 @@ import {
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { WorkspaceMaterializationError } from "../../workspace/errors.ts";
 import { authenticatedCloneUrl, bareTokenCredential } from "../../workspace/git/clone-url.ts";
+import { mergeExcludeBlock, workspaceCommitExcludes } from "../../workspace/git/exclude.ts";
 import { runGit } from "../../workspace/git/exec.ts";
 import { parseSeedManifest } from "./seed-configmap.ts";
 
@@ -342,6 +343,27 @@ function resolveSeedTarget(workspacePath: string, seedPath: string): string {
 	return join(workspacePath, normalize(seedPath));
 }
 
+/**
+ * The init container's clone owns its `.git`, so the run excludes go straight
+ * into `.git/info/exclude` as a managed block (warren-194a). Read through the
+ * fs seam because the file already exists in a fresh clone (git's template
+ * comment), and the block must be appended rather than clobber it.
+ */
+async function writeRunExcludes(cfg: InitEnv, fs: InitFs, log: (m: string) => void): Promise<void> {
+	const target = join(cfg.workspacePath, ".git", "info", "exclude");
+	let existing: string | undefined;
+	try {
+		existing = await fs.readFile(target);
+	} catch {
+		existing = undefined;
+	}
+	const merged = mergeExcludeBlock(existing, workspaceCommitExcludes());
+	if (merged === existing) return;
+	await fs.mkdir(dirname(target), { recursive: true });
+	await fs.writeFile(target, new TextEncoder().encode(merged));
+	log(`workspace-init: installed run excludes in ${target}`);
+}
+
 async function writeSeedFiles(cfg: InitEnv, fs: InitFs, log: (m: string) => void): Promise<void> {
 	if (cfg.seedManifestPath === undefined) return;
 	const raw = await fs.readFile(cfg.seedManifestPath);
@@ -384,6 +406,7 @@ export async function runWorkspaceInit(
 
 	const usedCache = await materializeViaCache(git, fs, cfg, log);
 	if (!usedCache) await directClone(git, cfg, log);
+	await writeRunExcludes(cfg, fs, log);
 	await writeSeedFiles(cfg, fs, log);
 	log(`workspace-init: checked out ${cfg.branch} off ${cfg.baseBranch}`);
 	return cfg;

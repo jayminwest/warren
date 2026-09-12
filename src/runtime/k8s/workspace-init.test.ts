@@ -235,7 +235,8 @@ describe("runWorkspaceInit", () => {
 				writes.push({ path: p, data: new TextDecoder().decode(d) });
 				return Promise.resolve();
 			},
-			readFile: () => Promise.resolve(manifest),
+			readFile: (p) =>
+				p === "/seeds/seeds.json" ? Promise.resolve(manifest) : Promise.reject(new Error("ENOENT")),
 		};
 		await runWorkspaceInit(
 			{
@@ -247,11 +248,52 @@ describe("runWorkspaceInit", () => {
 			},
 			{ git, fs, log: () => {} },
 		);
-		expect(writes).toEqual([
+		// The run excludes land before the seeds so the seed drops are never
+		// visible to a broad `git add` (warren-194a).
+		expect(writes.map((w) => w.path)).toEqual([
+			"/ws/.git/info/exclude",
+			"/ws/.warren/agent.json",
+			"/ws/.mulch/x",
+		]);
+		expect(writes.slice(1)).toEqual([
 			{ path: "/ws/.warren/agent.json", data: "{}" },
 			{ path: "/ws/.mulch/x", data: "hello" },
 		]);
-		expect(mkdirs).toEqual(["/ws/.warren", "/ws/.mulch"]);
+		expect(mkdirs).toEqual(["/ws/.git/info", "/ws/.warren", "/ws/.mulch"]);
+	});
+
+	test("appends the run excludes to the clone's existing .git/info/exclude (warren-194a)", async () => {
+		const { git } = recordingGit();
+		const template = "# git ls-files --others --exclude-from=.git/info/exclude\n";
+		const writes: Array<{ path: string; data: string }> = [];
+		const fs: InitFs = {
+			mkdir: () => Promise.resolve(),
+			writeFile: (p, d) => {
+				writes.push({ path: p, data: new TextDecoder().decode(d) });
+				return Promise.resolve();
+			},
+			readFile: (p) =>
+				p === "/ws/.git/info/exclude"
+					? Promise.resolve(template)
+					: Promise.reject(new Error("ENOENT")),
+		};
+		await runWorkspaceInit(
+			{
+				WARREN_REPO_URL: "https://github.com/o/r.git",
+				WARREN_BRANCH: "b",
+				WARREN_BASE_BRANCH: "main",
+				WARREN_WORKSPACE_PATH: "/ws",
+			},
+			{ git, fs, log: () => {} },
+		);
+		expect(writes).toHaveLength(1);
+		expect(writes[0]?.path).toBe("/ws/.git/info/exclude");
+		const body = writes[0]?.data ?? "";
+		expect(body.startsWith(template)).toBe(true);
+		for (const pattern of [".pi/sessions/", ".warren/agent.json", ".gitconfig.burrow"]) {
+			expect(body).toContain(`\n${pattern}\n`);
+		}
+		expect(body).not.toContain(".claude/");
 	});
 
 	test("refuses a seed path that escapes the workspace", async () => {

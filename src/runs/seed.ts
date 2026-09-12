@@ -49,6 +49,7 @@
 import { formatError } from "../core/errors.ts";
 import type { AgentDefinition } from "../registry/schema.ts";
 import type { RunSpec } from "../runtime/contract.ts";
+import { AGENT_ENVELOPE_PATH } from "../workspace/git/exclude.ts";
 import { RunSpawnError } from "./errors.ts";
 
 /**
@@ -73,7 +74,7 @@ export interface BuildSeedFilesResult {
 export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
 	const files: SeedFile[] = [];
 
-	const agentEnvelopePath = ".warren/agent.json";
+	const agentEnvelopePath = AGENT_ENVELOPE_PATH;
 	files.push({
 		path: agentEnvelopePath,
 		contents: `${JSON.stringify(

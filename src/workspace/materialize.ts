@@ -34,6 +34,7 @@ import { realpathSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { WorkspaceMaterializationError } from "./errors.ts";
+import { installWorkspaceExcludes } from "./git/exclude.ts";
 import { runGit } from "./git/exec.ts";
 import {
 	type GitIdentity,
@@ -152,6 +153,9 @@ export async function materializeProjectWorkspace(
 		? await materializeViaWorktree(hostClone, options)
 		: await materializeViaClone(options);
 
+	// Before the identity file lands: `.gitconfig.burrow` is itself one of the
+	// excluded paths (warren-194a).
+	await installWorkspaceExcludes({ workspacePath: options.workspacePath, kind: source.kind });
 	const identity = await applyIdentity(options.workspacePath, options.identity, options.hostEnv);
 
 	return { workspacePath: options.workspacePath, source, identity };
@@ -189,6 +193,7 @@ export async function materializeTaskWorkspace(
 		);
 	}
 
+	await installWorkspaceExcludes({ workspacePath: options.workspacePath, kind: "worktree" });
 	const identity = await applyIdentity(options.workspacePath, options.identity, options.hostEnv);
 	const gitCommonDir = await discoverGitCommonDir(options.parentClonePath);
 

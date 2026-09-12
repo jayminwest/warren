@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "./errors.ts";
 import {
 	assertFixtureHermetic,
+	fixtureGit,
 	fixtureGitOrThrow,
 	mkdtempOutsideRepo,
 } from "./git/test-fixture.ts";
@@ -76,6 +77,29 @@ function isolatedEnv(home: string): Record<string, string | undefined> {
 	};
 }
 
+/**
+ * What a broad agent commit would carry. `git status --porcelain` collapses an
+ * untracked directory to `?? .pi/`, so a status-based assertion passes with the
+ * exclude removed; staging is the operation that matters (warren-194a).
+ */
+async function stagedByAddAll(ws: string): Promise<string[]> {
+	await fixtureGitOrThrow(ws, ["add", "-A"]);
+	const res = await fixtureGitOrThrow(ws, ["diff", "--cached", "--name-only"]);
+	await fixtureGitOrThrow(ws, ["reset", "-q"]);
+	return res.stdout
+		.split("\n")
+		.filter((l) => l.length > 0)
+		.sort();
+}
+
+function dropRunFiles(ws: string): void {
+	mkdirSync(join(ws, ".pi", "sessions"), { recursive: true });
+	mkdirSync(join(ws, ".warren"), { recursive: true });
+	writeFileSync(join(ws, ".pi", "sessions", "s.jsonl"), "{}\n");
+	writeFileSync(join(ws, ".warren", "agent.json"), "{}\n");
+	writeFileSync(join(ws, "work.txt"), "real work\n");
+}
+
 describe("materializeProjectWorkspace", () => {
 	let root: string;
 	let repo: string;
@@ -123,6 +147,51 @@ describe("materializeProjectWorkspace", () => {
 		const list = await listWorktrees(repo);
 		const entry = list.find((e) => e.worktree.endsWith("/ws"));
 		expect(entry?.branch).toBe("refs/heads/run/test");
+	});
+
+	test("keeps harness state and seed drops out of a worktree run branch (warren-194a)", async () => {
+		const ws = join(root, "ws");
+		const result = await materializeProjectWorkspace({
+			workspacePath: ws,
+			branch: "run/excl",
+			baseBranch: "main",
+			projectRoot: repo,
+			hostEnv: isolatedEnv(home),
+		});
+		expect(result.source.kind).toBe("worktree");
+		dropRunFiles(ws);
+		// `.gitconfig.burrow` is already there from applyIdentity.
+		expect(await stagedByAddAll(ws)).toEqual(["work.txt"]);
+
+		// The host clone's own checkout is untouched: no excludesFile on the
+		// main worktree, and nothing under .git/info/exclude either.
+		const hostCfg = await fixtureGit(repo, ["config", "--get", "core.excludesFile"]);
+		expect(hostCfg.exitCode).not.toBe(0);
+		expect(await Bun.file(join(repo, ".git", "info", "exclude")).text()).not.toContain(
+			".pi/sessions/",
+		);
+	});
+
+	test("a sibling worktree keeps its own excludes after the first one is removed", async () => {
+		const wsA = join(root, "ws-a");
+		const wsB = join(root, "ws-b");
+		const a = await materializeProjectWorkspace({
+			workspacePath: wsA,
+			branch: "run/a",
+			baseBranch: "main",
+			projectRoot: repo,
+			hostEnv: isolatedEnv(home),
+		});
+		await materializeProjectWorkspace({
+			workspacePath: wsB,
+			branch: "run/b",
+			baseBranch: "main",
+			projectRoot: repo,
+			hostEnv: isolatedEnv(home),
+		});
+		await removeMaterializedWorkspace({ workspacePath: wsA, source: a.source });
+		dropRunFiles(wsB);
+		expect(await stagedByAddAll(wsB)).toEqual(["work.txt"]);
 	});
 
 	test("checks out an existing branch when createBranch=false", async () => {
@@ -177,6 +246,13 @@ describe("materializeProjectWorkspace", () => {
 			expect(result.source.kind).toBe("clone");
 			expect(result.source.originUrl).toBe(repo);
 			expect(await Bun.file(join(ws, "README.md")).exists()).toBe(true);
+			// A clone owns its .git, so the excludes live in .git/info/exclude
+			// and git's own template comment above them survives (warren-194a).
+			dropRunFiles(ws);
+			expect(await stagedByAddAll(ws)).toEqual(["work.txt"]);
+			const exclude = await Bun.file(join(ws, ".git", "info", "exclude")).text();
+			expect(exclude).toContain(".warren/agent.json");
+			expect(exclude.indexOf("warren run excludes")).toBeGreaterThan(0);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
@@ -256,6 +332,10 @@ describe("materializeTaskWorkspace", () => {
 		const list = await listWorktrees(repo);
 		const entry = list.find((e) => e.worktree.endsWith("/task-ws"));
 		expect(entry?.branch).toBe("refs/heads/task/abc");
+
+		// Task forks get the same run excludes as project workspaces (warren-194a).
+		dropRunFiles(ws);
+		expect(await stagedByAddAll(ws)).toEqual(["work.txt"]);
 	});
 
 	test("multiple sibling task workspaces fork independently from the same parent", async () => {
