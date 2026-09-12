@@ -21,6 +21,8 @@ describe("classifyProviderError", () => {
 		expect(classifyProviderError("request timed out after 30s")).toBe("transient");
 		expect(classifyProviderError("connect ETIMEDOUT 10.0.0.1:443")).toBe("transient");
 		expect(classifyProviderError("Stream ended without finish_reason")).toBe("transient");
+		expect(classifyProviderError("Provider finish_reason: error")).toBe("transient");
+		expect(classifyProviderError("finish_reason error")).toBe("transient");
 		expect(classifyProviderError("The operation was aborted")).toBe("transient");
 		expect(classifyProviderError("Premature close")).toBe("transient");
 	});
