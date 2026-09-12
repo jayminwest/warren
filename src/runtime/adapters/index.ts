@@ -78,6 +78,16 @@ export function harnessStatePrefixes(): readonly string[] {
 }
 
 /**
+ * Every git exclude pattern the harnesses declare, across all runtimes. The
+ * workspace materializer installs the union (warren-194a): a workspace is
+ * materialized before the run's runtime id is consulted, and an exclude for a
+ * harness that will not run there is inert.
+ */
+export function commitExcludes(): readonly string[] {
+	return union((adapter) => adapter.commitExcludes ?? []);
+}
+
+/**
  * Every envelope type that can carry a terminal provider error, across all
  * runtimes. The reap-time classifier reads a persisted event log without
  * the run's runtime id in hand, so it reads the union (warren-edc3).

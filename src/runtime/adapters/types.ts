@@ -54,6 +54,20 @@ export interface AgentRuntimeAdapter {
 	 */
 	readonly harnessStatePrefixes: readonly string[];
 	/**
+	 * Workspace-relative git exclude patterns for files this harness writes
+	 * into the worktree that must never ride into a run branch (warren-194a).
+	 * Installed as a per-checkout git exclude when the workspace is
+	 * materialized, so an agent's `git add -A` cannot sweep them.
+	 *
+	 * Narrower than {@link harnessStatePrefixes} on purpose: that list feeds
+	 * a classifier, where a broad prefix is harmless. As a git exclude, a
+	 * prefix such as `.claude/` would silently drop real files the agent
+	 * created under a tracked directory. Name exact files or leaf
+	 * directories only. Optional so a test double need not declare it;
+	 * absent means nothing is excluded for that harness.
+	 */
+	readonly commitExcludes?: readonly string[];
+	/**
 	 * Lifecycle envelope `type` values whose `stopReason` is authoritative
 	 * for a terminal provider error (warren-edc3). An envelope of one of
 	 * these types carrying `stopReason: "error"` plus a non-empty

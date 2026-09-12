@@ -69,6 +69,14 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
 	 */
 	harnessStatePrefixes: [".claude/", ".claude.json"],
 	/**
+	 * Empty on purpose. `.claude/` is tracked in plenty of target repos
+	 * (this one keeps five files there), so excluding the prefix would eat
+	 * real work; `.claude/settings.local.json` and `.claude.json` have not
+	 * been observed in a pull request yet. Add the exact file the day one
+	 * does (warren-194a).
+	 */
+	commitExcludes: [],
+	/**
 	 * Empty by evidence, not by omission. The provider-error net (warren-edc3)
 	 * was written against pi's turn lifecycle, and warren has never observed
 	 * a claude-code envelope carrying `stopReason`. The generic classifier

@@ -65,6 +65,13 @@ export const piAdapter: AgentRuntimeAdapter = {
 	 */
 	harnessStatePrefixes: [".pi/sessions/"],
 	/**
+	 * The transcript is the one harness write that has reached a pull
+	 * request (warren-194a, #1239): a target repo whose `.gitignore` does not
+	 * cover `.pi/` lets `git add -A` sweep it in. Same leaf as above, and
+	 * deliberately not `.pi/`, which holds warren's own skill/prompt drops.
+	 */
+	commitExcludes: [".pi/sessions/"],
+	/**
 	 * pi attaches the terminal error signal to either the per-turn
 	 * (`turn_end`) or the run-terminal (`agent_end`) envelope depending on
 	 * which provider error path fired, so both are read (warren-edc3,
