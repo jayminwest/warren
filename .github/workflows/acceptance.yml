@@ -9,11 +9,14 @@ name: Acceptance (nightly)
 #
 # ## Runner shape
 #
-# - `ubuntu-latest`. The runner already ships kernel user-namespaces
-#   enabled with a positive `user.max_user_namespaces`, so bwrap can nest
-#   without a sysctl step (contrast the docker-compose deploy path,
-#   which needs the four bwrap-friendly flags baked into
-#   `docker-compose.yml`; in the raw runner env bwrap just works).
+# - `ubuntu-latest`. User namespaces are enabled (`user.max_user_namespaces`
+#   is positive), but Ubuntu 24.04 also ships
+#   `kernel.apparmor_restrict_unprivileged_userns=1`, which confines the
+#   non-setuid bwrap and refuses the loopback setup inside the network
+#   namespace that `--unshare-all` creates. The sysctl step below turns
+#   that restriction off for the job (contrast the docker-compose deploy
+#   path, which needs the four bwrap-friendly flags baked into
+#   `docker-compose.yml`).
 # - `bubblewrap` + `uidmap` installed via apt so `burrow serve` can run
 #   its bwrap-based sandbox (same substrate `Dockerfile:68-79` bakes into
 #   the release image).
@@ -109,6 +112,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bubblewrap uidmap
+
+      - name: Allow bwrap to configure loopback in its network namespace
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - uses: oven-sh/setup-bun@v2
         with:
