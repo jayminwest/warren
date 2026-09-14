@@ -144,6 +144,10 @@ const TRANSIENT_PATTERNS: readonly RegExp[] = [
 	// Stream breaks can arrive after headers with no status/body left to parse.
 	/stream ended/,
 	/without finish_reason/,
+	// The provider can also end the stream with an explicit error finish
+	// (`Provider finish_reason: error`, run_03wb2b8crbz6 on 2026-09-03, #1238):
+	// same upstream break, just spelled from the other side.
+	/finish_reason:?\s*error/,
 	/premature close/,
 	/\baborted\b/,
 	/fetch failed/,
