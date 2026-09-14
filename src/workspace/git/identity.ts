@@ -4,9 +4,9 @@
  * Warren writes a workspace-local `.gitconfig.burrow` that the agent runtime
  * later consumes via `GIT_CONFIG_GLOBAL=<workspace>/.gitconfig.burrow`. Doing
  * it via a file (instead of `git config --worktree`) keeps the user's host
- * clone untouched — we never enable `extensions.worktreeConfig` or mutate the
- * shared `.git/config`, both of which would surprise the user across all of
- * their other worktrees.
+ * identity untouched. Workspace materialization separately enables
+ * `extensions.worktreeConfig` to isolate run excludes; identity settings
+ * remain in this workspace-local file.
  *
  * Extracted from burrow's `src/git/identity.ts` (k8s-migration §5.A) so the
  * module now lives in warren and serves both the Local and K8s providers.

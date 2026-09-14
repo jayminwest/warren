@@ -155,7 +155,11 @@ export async function materializeProjectWorkspace(
 
 	// Before the identity file lands: `.gitconfig.burrow` is itself one of the
 	// excluded paths (warren-194a).
-	await installWorkspaceExcludes({ workspacePath: options.workspacePath, kind: source.kind });
+	await installWorkspaceExcludes({
+		workspacePath: options.workspacePath,
+		kind: source.kind,
+		hostEnv: options.hostEnv,
+	});
 	const identity = await applyIdentity(options.workspacePath, options.identity, options.hostEnv);
 
 	return { workspacePath: options.workspacePath, source, identity };
@@ -193,7 +197,11 @@ export async function materializeTaskWorkspace(
 		);
 	}
 
-	await installWorkspaceExcludes({ workspacePath: options.workspacePath, kind: "worktree" });
+	await installWorkspaceExcludes({
+		workspacePath: options.workspacePath,
+		kind: "worktree",
+		hostEnv: options.hostEnv,
+	});
 	const identity = await applyIdentity(options.workspacePath, options.identity, options.hostEnv);
 	const gitCommonDir = await discoverGitCommonDir(options.parentClonePath);
 

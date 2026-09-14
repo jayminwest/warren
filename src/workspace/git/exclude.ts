@@ -34,9 +34,10 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { commitExcludes } from "../../runtime/adapters/index.ts";
-import { runGitOrThrow } from "./exec.ts";
+import { runGit, runGitOrThrow } from "./exec.ts";
 import { WORKSPACE_GITCONFIG_FILENAME } from "./identity.ts";
 
 /**
@@ -70,6 +71,7 @@ export interface InstallWorkspaceExcludesOptions {
 	/** How the workspace was materialized; decides where the excludes live. */
 	kind: "worktree" | "clone";
 	patterns?: readonly string[];
+	hostEnv?: Record<string, string | undefined>;
 }
 
 /**
@@ -81,7 +83,7 @@ export async function installWorkspaceExcludes(
 ): Promise<void> {
 	const patterns = opts.patterns ?? workspaceCommitExcludes();
 	if (opts.kind === "worktree") {
-		await installWorktreeExcludes(opts.workspacePath, patterns);
+		await installWorktreeExcludes(opts.workspacePath, patterns, opts.hostEnv);
 		return;
 	}
 	const target = await gitPath(opts.workspacePath, "info/exclude");
@@ -109,7 +111,9 @@ export function mergeExcludeBlock(
 async function installWorktreeExcludes(
 	workspacePath: string,
 	patterns: readonly string[],
+	hostEnv?: Record<string, string | undefined>,
 ): Promise<void> {
+	const inherited = await inheritedExcludes(workspacePath, hostEnv);
 	// Per-worktree config is refused until the shared repo opts in. Setting it
 	// from inside the worktree writes the COMMON config, which is the one git
 	// consults for extensions.
@@ -117,10 +121,37 @@ async function installWorktreeExcludes(
 	// An unknown name under --git-path resolves to the per-worktree admin dir
 	// (`.git/worktrees/<id>/`), unlike `info/exclude`, which is a common path.
 	const target = await gitPath(workspacePath, WORKTREE_EXCLUDE_FILENAME);
-	await writeFile(target, renderExcludeBlock(patterns));
+	await writeFile(target, mergeExcludeBlock(inherited, patterns));
 	await runGitOrThrow(["config", "--worktree", "core.excludesFile", target], {
 		cwd: workspacePath,
 	});
+}
+
+/** Snapshot inherited patterns before overriding Git's single excludesFile setting. */
+async function inheritedExcludes(
+	workspacePath: string,
+	hostEnv: Record<string, string | undefined> = process.env,
+): Promise<string | undefined> {
+	const configured = await runGit(["config", "--path", "--get", "core.excludesFile"], {
+		cwd: workspacePath,
+		env: hostEnv,
+	});
+	if (configured.exitCode !== 0 && configured.exitCode !== 1) {
+		throw new Error(`Cannot resolve inherited Git excludes: ${configured.stderr}`);
+	}
+	const fallback = join(
+		hostEnv.XDG_CONFIG_HOME || join(hostEnv.HOME || homedir(), ".config"),
+		"git",
+		"ignore",
+	);
+	const path = configured.exitCode === 0 ? configured.stdout.trim() : fallback;
+	if (!path) return undefined;
+	try {
+		return await readFile(resolve(workspacePath, path), "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+		throw error;
+	}
 }
 
 async function appendManagedBlock(target: string, patterns: readonly string[]): Promise<void> {

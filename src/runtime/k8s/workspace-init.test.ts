@@ -132,7 +132,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_WORKSPACE_PATH: "/ws",
 				WARREN_GIT_TOKEN: "tok",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		expect(calls[0]?.args).toEqual([
 			"clone",
@@ -158,7 +158,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_BRANCH: "b",
 				WARREN_BASE_BRANCH: "main",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		expect(calls.map((c) => c.args[0])).toEqual(["clone", "switch"]);
 	});
@@ -172,7 +172,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_BASE_BRANCH: "fix/pr-head",
 				WARREN_WORKSPACE_PATH: "/ws",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		expect(calls[0]?.args).toEqual([
 			"clone",
@@ -196,7 +196,7 @@ describe("runWorkspaceInit", () => {
 				WARREN_BASE_BRANCH: sha,
 				WARREN_WORKSPACE_PATH: "/ws",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		const argv = calls.map((c) => c.args);
 		expect(argv[1]).toEqual(["clone", "--filter=blob:none", "https://github.com/o/r.git", "/ws"]);
@@ -213,7 +213,7 @@ describe("runWorkspaceInit", () => {
 					WARREN_BRANCH: "b",
 					WARREN_BASE_BRANCH: "main",
 				},
-				{ git, log: () => {} },
+				{ git, fs: noopFs, log: () => {} },
 			),
 		).rejects.toThrow(/git clone .* failed/);
 	});
@@ -411,7 +411,7 @@ describe("runWorkspaceInit repo-cache path (warren-e908, §4.3/R2)", () => {
 				WARREN_WORKSPACE_PATH: "/ws",
 				WARREN_GIT_TOKEN: "tok",
 			},
-			{ git, log: () => {} },
+			{ git, fs: noopFs, log: () => {} },
 		);
 		const argv = calls.map((c) => c.args);
 		expect(argv).toContainEqual([
