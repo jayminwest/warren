@@ -1,20 +1,13 @@
 /**
  * `bridgeRunStream` — the main event-bridge pump (docs/design/agent-composition.md step 5;
- * event durability per docs/design/runtime-and-supervisor.md). Splits out of the legacy
- * monolithic `src/runs/stream.ts` (warren-041e / pl-9088 step 5):
- * terminal-detection lives in `./terminal-detect.ts`, the run-state
- * fallback in `./run-state-poller.ts`, cost-stats persistence in
- * `./stats.ts`, and active-stream recovery in `./recover.ts`.
+ * event durability per docs/design/runtime-and-supervisor.md). Split out of the legacy
+ * `src/runs/stream.ts` (warren-041e / pl-9088 step 5): terminal-detection lives in
+ * `./terminal-detect.ts`, the run-state fallback in `./run-state-poller.ts`, cost-stats
+ * persistence in `./stats.ts`, and active-stream recovery in `./recover.ts`.
  *
- * The bridge is the only writer to `events` (rows always land via
- * `bridgeRunStream` → `EventsRepo.append`); the broker is published
- * to immediately after each row commits so live tailers see fresh
- * events without waiting on a polling interval.
- *
- * See the module-level commentary in `./index.ts` for the full
- * resume / claim / terminal-detection / recovery semantics — keeping
- * docs there so the doctored stream of consciousness stays in one
- * place rather than fanning out across the split.
+ * The bridge is the only writer to `events` (`bridgeRunStream` → `EventsRepo.append`); the
+ * broker is published right after each row commits so live tailers never wait on a poll.
+ * `./index.ts` carries the full resume / claim / terminal-detection / recovery semantics.
  */
 
 import type { EventStream, RunTerminalState } from "../../db/schema.ts";
@@ -29,6 +22,7 @@ import {
 	newSessionStatsAccumulator,
 	type SessionStatsAccumulator,
 } from "../usage-aggregate.ts";
+import { appendOrDrop, newAppendGuard } from "./append-guard.ts";
 import { type CancelBurrowRunFn, enforceBudgetCap } from "./budget.ts";
 import { providerStreamSource } from "./provider-source.ts";
 import { defaultRunStateProbe, runStatePoller } from "./run-state-poller.ts";
@@ -152,6 +146,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// Shape-sniffed in `extractClaudeUsage`; persisted on terminal only when
 	// no pi usage was observed (pi path wins for parity).
 	const claudeUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
+	const appendGuard = newAppendGuard();
 
 	try {
 		for await (const event of source(ctrl.signal)) {
@@ -201,12 +196,12 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				dropped += 1;
 				continue;
 			}
-			// warren-fb5e: a single failed append must not flip `errored` — that
-			// reclassifies a per-event failure as sandbox_unreachable and the
-			// reconnect loop replays the poison event until bridge_lost kills a healthy run.
-			let row: Awaited<ReturnType<typeof repos.events.append>>;
-			try {
-				row = await repos.events.append({
+			// warren-fb5e: a dropped append never flips `errored` by itself (a poison event
+			// would replay until bridge_lost); the guard rethrows after a bounded streak.
+			const row = await appendOrDrop(
+				appendGuard,
+				repos.events,
+				{
 					runId,
 					sandboxEventSeq: event.seq,
 					ts: toIsoString(event.ts),
@@ -214,13 +209,17 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					stream: normalizeStream(event.stream),
 					origin: event.origin ?? null, // warren-5a07: parse-boundary provenance
 					payload: event.payload,
-				});
-			} catch (err) {
+				},
+				input.logger,
+			);
+			if (row === null) {
 				dropped += 1;
-				input.logger?.error?.(
-					{ runId, kind: event.kind, sandboxEventSeq: event.seq, err },
-					"bridge dropped event after append failure",
-				);
+				// A dropped terminal event must still finalize the run (see warren-2206).
+				const droppedOutcome = detectRuntimeTerminal(event);
+				if (droppedOutcome !== null) {
+					terminalDetected = { outcome: droppedOutcome };
+					break;
+				}
 				continue;
 			}
 			written += 1;
