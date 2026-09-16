@@ -139,21 +139,18 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	let claimed = false;
 	let terminalDetected: { outcome: RunTerminalState } | undefined;
 	let sandboxRunMissing = false;
-	// pi cost tracking (warren-a7dc, warren-17a4). Two paths:
-	//   1. In-stream extraction (default): accumulate `turn_end` usage as
-	//      events flow through the bridge. Persisted on terminal.
-	//   2. Out-of-band PiStatsClient (override): fetched at baseline +
-	//      terminal, delta persisted. Used when the wire format doesn't
-	//      carry usage (declarative stubs, custom dispatchers).
-	// Both paths are best-effort; failures leave the columns null.
+	// pi cost tracking (warren-a7dc, warren-17a4). Two paths, both best-effort
+	// (failures leave the columns null): (1) in-stream extraction (default) —
+	// accumulate `turn_end` usage as events flow, persisted on terminal;
+	// (2) out-of-band PiStatsClient (override) — fetched at baseline + terminal,
+	// delta persisted, for wire formats that don't carry usage.
 	let statsBaseline: Promise<SessionStats | null> | undefined;
 	let statsPersisted = false;
 	const piUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
-	// claude-code cost tracking (warren-87f9). Single-shot: claude-code
-	// emits one `result` envelope at run end carrying `total_cost_usd` +
-	// `usage.{input,output,cache_read_input,cache_creation_input}_tokens`.
-	// Shape-sniffed in `extractClaudeUsage`; persisted on terminal only
-	// when no pi usage was observed (pi path wins for parity).
+	// claude-code cost tracking (warren-87f9). Single-shot: one `result`
+	// envelope at run end carries `total_cost_usd` + `usage.*_tokens`.
+	// Shape-sniffed in `extractClaudeUsage`; persisted on terminal only when
+	// no pi usage was observed (pi path wins for parity).
 	const claudeUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
 
 	try {
@@ -184,14 +181,11 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			if (event.seq <= resumeSeq) {
 				skipped += 1;
 				// warren-2206: terminal detection must run even for an already-persisted
-				// (deduped) event. A prior bridge pass can append a terminal event and
-				// then be torn down (reconnect / abort / process restart) BEFORE its
-				// inline reap fires; on the resumed pass that event replays with
-				// `seq <= resumeSeq`. If we `continue` before detecting, the terminal is
-				// never observed and the run hangs `running` forever. Detect on the
-				// persisted event and break so reap still finalizes — without
-				// re-appending the row or re-accumulating stats (dedup semantics intact;
-				// the prior pass already persisted both).
+				// (deduped) event. A prior pass can append a terminal event and be torn
+				// down BEFORE its inline reap fires; on resume the event replays with
+				// `seq <= resumeSeq`, and a blind `continue` would hang the run `running`
+				// forever. Detect and break so reap finalizes — without re-appending or
+				// re-accumulating stats (the prior pass already persisted both).
 				const resumedOutcome = detectRuntimeTerminal(event);
 				if (resumedOutcome !== null) {
 					terminalDetected = { outcome: resumedOutcome };
@@ -207,26 +201,36 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				dropped += 1;
 				continue;
 			}
-			const row = await repos.events.append({
-				runId,
-				sandboxEventSeq: event.seq,
-				ts: toIsoString(event.ts),
-				kind: event.kind,
-				stream: normalizeStream(event.stream),
-				// warren-5a07: persist the parse-boundary provenance the
-				// in-memory view already carries instead of dropping it.
-				origin: event.origin ?? null,
-				payload: event.payload,
-			});
+			// warren-fb5e: a single failed append must not flip `errored` — that
+			// reclassifies a per-event failure as sandbox_unreachable and the
+			// reconnect loop replays the poison event until bridge_lost kills a healthy run.
+			let row: Awaited<ReturnType<typeof repos.events.append>>;
+			try {
+				row = await repos.events.append({
+					runId,
+					sandboxEventSeq: event.seq,
+					ts: toIsoString(event.ts),
+					kind: event.kind,
+					stream: normalizeStream(event.stream),
+					origin: event.origin ?? null, // warren-5a07: parse-boundary provenance
+					payload: event.payload,
+				});
+			} catch (err) {
+				dropped += 1;
+				input.logger?.error?.(
+					{ runId, kind: event.kind, sandboxEventSeq: event.seq, err },
+					"bridge dropped event after append failure",
+				);
+				continue;
+			}
 			written += 1;
 			// warren-7746: fold tool events into the `tool_calls` rollup at
 			// append time (best-effort; the boot backfill re-extracts later).
 			await recordToolCallRollup(repos, runId, row, toolRuntime, input.logger);
 			broker.publish(runId, row);
-			// warren-28ca: `event_emitted` is the lifecycle mirror of the
-			// broker publish — one persisted run-event row, fanned to
-			// boot-wired consumers as a provider-neutral projection. The
-			// bridge is the sole writer to `events`, so this is the single
+			// warren-28ca: `event_emitted` is the lifecycle mirror of the broker
+			// publish — one persisted run-event row fanned to boot-wired consumers.
+			// The bridge is the sole writer to `events`, so this is the single
 			// production call-site (design doc §5).
 			lifecycleBus()?.emitEventEmitted({
 				runId,
@@ -238,10 +242,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			accumulatePiUsage(piUsage, event);
 			extractClaudeUsage(claudeUsage, event);
 
-			// warren-a63d: enforce the spend cap as cumulative cost crosses it.
-			// On exceed, the helper persists usage + emits `budget.exceeded` +
-			// cancels the burrow run; we break with a `cancelled` outcome so
-			// reap finalizes the warren row.
+			// warren-a63d: enforce the spend cap as cumulative cost crosses it. On
+			// exceed the helper persists usage + emits `budget.exceeded` + cancels
+			// the burrow run; we break `cancelled` so reap finalizes the warren row.
 			if (costCapUsd !== null) {
 				const exceeded = await enforceBudgetCap({
 					runId,
@@ -331,24 +334,20 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 		}
 	} catch (err) {
 		if (err instanceof RuntimeRunNotFoundError) {
-			// warren-b1a9: the backend no longer has this run (machine restart wiped
-			// burrow's in-memory store, deliberate cleanup, etc.) — surfaced across
-			// the seam as the neutralized `RuntimeRunNotFoundError` (warren-1f56), no
-			// longer burrow's raw 404. Surface as a distinct terminal signal so the
-			// registry stops reconnecting and reconciles the warren row to `failed`
-			// instead of spinning on backoff. Don't set `errored` — errored=true
-			// triggers the reconnect loop; the missing-run signal is exactly the case
-			// where reconnect is hopeless.
+			// warren-b1a9: the backend no longer has this run (restart wiped the
+			// store, deliberate cleanup, etc.) — surfaced across the seam as the
+			// neutralized `RuntimeRunNotFoundError` (warren-1f56). Signal it
+			// distinctly so the registry stops reconnecting and reconciles the row
+			// to `failed`. Don't set `errored` — reconnect is hopeless here.
 			sandboxRunMissing = true;
 			input.logger?.warn?.(
 				{ runId, sandboxRunId, written, skipped, err: err.message },
 				"run stream bridge: backend reports run not found (ghost run)",
 			);
 		} else if (probedTerminal.value !== null) {
-			// warren-6596: the run-state poller observed burrow terminal and
-			// aborted the source. An AbortError surfacing here is intentional —
-			// don't flag `errored` (which would trip the registry's reconnect
-			// loop). The synthesized `terminalDetected` is set below.
+			// warren-6596: the run-state poller observed burrow terminal and aborted
+			// the source — an AbortError here is intentional; don't flag `errored`
+			// (which would trip the reconnect loop). `terminalDetected` is set below.
 			input.logger?.info?.(
 				{
 					runId,
@@ -409,11 +408,11 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 		"run stream bridge ended",
 	);
 	if (sandboxRunMissing) {
-		return { written, skipped, errored, sandboxRunMissing: true };
+		return { written, skipped, dropped, errored, sandboxRunMissing: true };
 	}
 	return terminalDetected !== undefined
-		? { written, skipped, errored, terminalDetected }
-		: { written, skipped, errored };
+		? { written, skipped, dropped, errored, terminalDetected }
+		: { written, skipped, dropped, errored };
 }
 
 /**

@@ -27,6 +27,25 @@ export interface AppendEventInput {
 	payload: unknown;
 }
 
+/**
+ * Recursively replace U+0000 with U+FFFD in every string of an event
+ * payload (warren-fb5e). Postgres jsonb cannot store U+0000 and rejects
+ * the whole insert with 'unsupported Unicode escape sequence'; walking
+ * the value (not JSON.stringify/replace) leaves a literal six-character
+ * `\u0000` escape-sequence text untouched. Applied on both dialects so
+ * sqlite and postgres behave identically.
+ */
+function sanitizeNulBytes(value: unknown): unknown {
+	if (typeof value === "string") return value.split("\u0000").join("\uFFFD");
+	if (Array.isArray(value)) return value.map(sanitizeNulBytes);
+	if (value !== null && typeof value === "object") {
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(value)) out[k] = sanitizeNulBytes(v);
+		return out;
+	}
+	return value;
+}
+
 export class EventsRepo {
 	constructor(private readonly adapter: DrizzleAdapter) {}
 
@@ -49,7 +68,7 @@ export class EventsRepo {
 					kind: input.kind,
 					stream: input.stream ?? null,
 					origin: input.origin ?? null,
-					payloadJson: input.payload,
+					payloadJson: sanitizeNulBytes(input.payload),
 				})
 				.returning(),
 		);

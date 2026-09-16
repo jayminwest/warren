@@ -79,6 +79,32 @@ describe("bridgeRunStream — event flow", () => {
 		});
 	});
 
+	test("a single failed events.append is dropped and streaming continues (warren-fb5e)", async () => {
+		const origAppend = repos.events.append.bind(repos.events);
+		let armed = true;
+		repos.events.append = async (input) => {
+			if (armed && input.sandboxEventSeq === 2) {
+				armed = false;
+				throw new Error("unsupported Unicode escape sequence");
+			}
+			return origAppend(input);
+		};
+		const result = await bridgeRunStream({
+			runId,
+			sandboxRunId,
+			repos,
+			broker,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([evt(sandboxRunId, 1), evt(sandboxRunId, 2), evt(sandboxRunId, 3)]),
+		});
+		expect(result.errored).toBe(false);
+		expect(result.written).toBe(2);
+		expect(result.dropped).toBe(1);
+		const rows = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
+		expect(rows).toEqual([1, 3]);
+	});
+
 	test("publishes each event to the broker after persisting", async () => {
 		const sub = broker.subscribe(runId);
 		const consumed: number[] = [];

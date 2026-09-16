@@ -61,6 +61,49 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("append replaces U+0000 with U+FFFD in nested payload strings (warren-fb5e)", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				const row = await events.append({
+					runId,
+					sandboxEventSeq: 1,
+					ts: new Date(2026, 4, 8, 12, 0, 1).toISOString(),
+					kind: "tool_result",
+					stream: "stdout",
+					payload: {
+						result: "before\u0000after",
+						nested: { list: ["x\u0000y", { deep: "\u0000" }] },
+						untouched: 42,
+					},
+				});
+				expect(row.payloadJson).toEqual({
+					result: "before\uFFFDafter",
+					nested: { list: ["x\uFFFDy", { deep: "\uFFFD" }] },
+					untouched: 42,
+				});
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("append leaves a literal six-character \\u0000 escape-sequence text unchanged", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				const literal = "text with \\u0000 escape";
+				const row = await events.append({
+					runId,
+					sandboxEventSeq: 1,
+					ts: new Date(2026, 4, 8, 12, 0, 1).toISOString(),
+					kind: "text",
+					stream: "stdout",
+					payload: { note: literal },
+				});
+				expect(row.payloadJson).toEqual({ note: literal });
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("listByRun returns events ordered by sandbox_event_seq", async () => {
 			const { handle, events, runId } = await open();
 			try {

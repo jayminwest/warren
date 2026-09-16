@@ -213,6 +213,13 @@ export interface BridgeRunStreamResult {
 	readonly written: number;
 	/** Number of events skipped because their seq was at-or-below MAX(seq). */
 	readonly skipped: number;
+	/**
+	 * Number of events dropped without persistence: per-delta noise plus
+	 * single-event append failures (warren-fb5e), which are logged and
+	 * skipped rather than treated as stream errors. Optional so the many
+	 * test stubs of this result stay valid; the bridge always sets it.
+	 */
+	readonly dropped?: number;
 	/** True when the bridge ended because of an error (logged but not thrown). */
 	readonly errored: boolean;
 	/**
