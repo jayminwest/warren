@@ -105,6 +105,50 @@ describe("bridgeRunStream — event flow", () => {
 		expect(rows).toEqual([1, 3]);
 	});
 
+	test("rethrows into errored once append fails three times in a row (warren-fb5e)", async () => {
+		repos.events.append = async () => {
+			throw new Error("connection refused");
+		};
+		const result = await bridgeRunStream({
+			runId,
+			sandboxRunId,
+			repos,
+			broker,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([evt(sandboxRunId, 1), evt(sandboxRunId, 2), evt(sandboxRunId, 3)]),
+		});
+		expect(result.errored).toBe(true);
+		expect(result.written).toBe(0);
+		expect(result.dropped).toBe(2);
+	});
+
+	test("a dropped terminal event still sets terminalDetected (warren-fb5e)", async () => {
+		const origAppend = repos.events.append.bind(repos.events);
+		repos.events.append = async (input) => {
+			if (input.sandboxEventSeq === 2) throw new Error("unsupported Unicode escape sequence");
+			return origAppend(input);
+		};
+		const terminal = evt(sandboxRunId, 2, {
+			kind: "state_change",
+			stream: "system",
+			payload: { type: "result", subtype: "result", is_error: false, terminal_reason: "completed" },
+		});
+		const result = await bridgeRunStream({
+			runId,
+			sandboxRunId,
+			repos,
+			broker,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([evt(sandboxRunId, 1), terminal, evt(sandboxRunId, 3)]),
+		});
+		expect(result.errored).toBe(false);
+		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
+		expect(result.written).toBe(1);
+		expect(result.dropped).toBe(1);
+	});
+
 	test("publishes each event to the broker after persisting", async () => {
 		const sub = broker.subscribe(runId);
 		const consumed: number[] = [];
