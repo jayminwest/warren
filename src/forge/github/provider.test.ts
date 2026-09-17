@@ -43,6 +43,7 @@ describe("GitHubForge capabilities", () => {
 			branchDelete: true,
 			botIdentity: false,
 			installationRepos: false,
+			autoMergeArm: false,
 			credentialLifetime: "static",
 		});
 	});
@@ -185,7 +186,13 @@ describe("GitHubForge.getPullRequest", () => {
 		const result = await forge.getPullRequest(REF, pr);
 		expect(result).toEqual({
 			ok: true,
-			value: { lifecycle: "open", mergedAt: null, headCommit: "deadbeef", baseBranch: "main" },
+			value: {
+				lifecycle: "open",
+				mergedAt: null,
+				headCommit: "deadbeef",
+				baseBranch: "main",
+				autoMerge: "unknown",
+			},
 		});
 	});
 

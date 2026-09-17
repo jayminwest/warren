@@ -422,6 +422,7 @@ export function stubForge(overrides: Partial<Forge> = {}): Forge {
 		openPullRequest: (ref, req) => inner.openPullRequest(ref, req),
 		findPullRequest: (ref, q) => inner.findPullRequest(ref, q),
 		getPullRequest: (ref, pr) => inner.getPullRequest(ref, pr),
+		armAutoMerge: (ref, pr, options) => inner.armAutoMerge(ref, pr, options),
 		setPullRequestBody: (ref, pr, body) => inner.setPullRequestBody(ref, pr, body),
 		listChecks: (ref, commit) => inner.listChecks(ref, commit),
 		fetchJobLogTail: (ref, jobId, maxBytes) => inner.fetchJobLogTail(ref, jobId, maxBytes),

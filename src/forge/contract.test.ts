@@ -19,7 +19,12 @@ import {
 } from "../core/wire.ts";
 import { AdoForge } from "./ado/provider.ts";
 import { stubAdoServer } from "./ado/stub-server.ts";
-import type { Forge, PullRequestState } from "./contract.ts";
+import {
+	AUTO_MERGE_REFUSAL_REASONS,
+	type AutoMergeRefusalReason,
+	type Forge,
+	type PullRequestState,
+} from "./contract.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { GitHubForge } from "./github/provider.ts";
 import { stubGitHubServer } from "./github/stub-server.ts";
@@ -43,6 +48,23 @@ describe("forge contract vocabulary", () => {
 	test("derives the seam ForgeErrorKind from the canonical one", () => {
 		assertExact<Exact<ForgeErrorKind, (typeof FORGE_ERROR_KINDS)[number]>>(true);
 		expect([...FORGE_ERROR_KINDS]).toHaveLength(10);
+	});
+
+	test("pins the autoMerge PR-state vocabulary (pl-92a3)", () => {
+		assertExact<Exact<PullRequestState["autoMerge"], "armed" | "unarmed" | "unknown">>(true);
+	});
+
+	test("closes the armAutoMerge refusal vocabulary (pl-92a3)", () => {
+		assertExact<Exact<AutoMergeRefusalReason, (typeof AUTO_MERGE_REFUSAL_REASONS)[number]>>(true);
+		expect([...AUTO_MERGE_REFUSAL_REASONS]).toEqual([
+			"repo_auto_merge_disabled",
+			"clean_status",
+			"insufficient_permission",
+			"mergeability_unsettled",
+			"not_open",
+			"unsupported_forge",
+			"unknown",
+		]);
 	});
 });
 
@@ -80,6 +102,7 @@ export function forgeConformanceSuite(makeForge: () => Forge, opts: ForgeConform
 	test("declares capabilities as the first member", () => {
 		const { forge } = setup();
 		expect(typeof forge.capabilities.checkRuns).toBe("boolean");
+		expect(typeof forge.capabilities.autoMergeArm).toBe("boolean");
 		expect(["static", "short-lived"]).toContain(forge.capabilities.credentialLifetime);
 	});
 
@@ -151,10 +174,42 @@ export function forgeConformanceSuite(makeForge: () => Forge, opts: ForgeConform
 			expect(state.value.mergedAt).toBeNull();
 			expect(state.value.baseBranch).toBe("main");
 			expect(state.value.headCommit.length).toBeGreaterThan(0);
+			// pl-92a3: the autoMerge field is required — every provider carries it.
+			expect(["armed", "unarmed", "unknown"]).toContain(state.value.autoMerge);
 		}
 		const gone = await forge.getPullRequest(ref, { ...opened.value, number: 9999 });
 		expect(gone.ok).toBe(false);
 		if (!gone.ok) expect(gone.error.kind).toBe("not_found");
+	});
+
+	test("armAutoMerge answers the capability flag inside the closed vocabulary", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, draft);
+		expect(opened.ok).toBe(true);
+		if (!opened.ok) return;
+		const result = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		if (forge.capabilities.autoMergeArm) {
+			// A capable forge still answers inside the vocabulary — never throws.
+			if (result.ok) {
+				expect(["armed", "already_armed"]).toContain(result.value.outcome);
+			} else {
+				expect(AUTO_MERGE_REFUSAL_REASONS).toContain(result.error.reason);
+			}
+			return;
+		}
+		// Capability false: the unsupported_forge refusal, and no side effects —
+		// the PR the forge reports is untouched by the refused call.
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.reason).toBe("unsupported_forge");
+			expect(result.error.message.length).toBeGreaterThan(0);
+		}
+		const state = await forge.getPullRequest(ref, opened.value);
+		expect(state.ok).toBe(true);
+		if (state.ok) {
+			expect(state.value.lifecycle).toBe("open");
+			expect(state.value.autoMerge).not.toBe("armed");
+		}
 	});
 
 	test("setPullRequestBody transports the domain-composed body", async () => {

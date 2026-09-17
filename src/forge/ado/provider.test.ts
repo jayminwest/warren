@@ -22,6 +22,7 @@ describe("AdoForge capabilities and credential", () => {
 			branchDelete: true,
 			botIdentity: false,
 			installationRepos: false,
+			autoMergeArm: false,
 			credentialLifetime: "static",
 		});
 	});
@@ -137,6 +138,7 @@ describe("AdoForge pull requests", () => {
 			mergedAt: null,
 			headCommit: "stub-sha-2",
 			baseBranch: "main",
+			autoMerge: "unknown",
 		});
 
 		pr.status = "completed";

@@ -1,34 +1,29 @@
 /**
- * GitHubForge — implementation #1 of the `Forge` contract (plan pl-d1c9
- * step 8, forge-contract.md §1), the PAT/static-credential mode over the
+ * GitHubForge — implementation #1 of the `Forge` contract (pl-d1c9 step
+ * 8, forge-contract.md §1): the PAT/static-credential mode over the
  * phase-1 transport core (`./http.ts`).
  *
  * What this provider is:
- *   - `parseRepoRef` absorbs the five audited URL grammars (§6.3): https and
- *     ssh clone URLs, scp-style `git@github.com:`, PR web URLs (query and
- *     fragment tolerated), and REST API URLs. It NEVER throws and returns
- *     `null` for foreign hosts. The `[A-Za-z0-9._-]+` per-segment validation
- *     from `src/projects/url.ts` survives into the packed key verbatim —
- *     that rule guards `/data/projects` path safety (mx-e741b0), so a `.`,
- *     `..`, or leading-dash segment rejects the URL outright.
+ *   - `parseRepoRef` absorbs the five audited URL grammars (§6.3): https
+ *     and ssh clone URLs, scp-style `git@github.com:`, PR web URLs (query
+ *     and fragment tolerated), and REST API URLs. It NEVER throws; foreign
+ *     hosts return `null`. The `[A-Za-z0-9._-]+` per-segment rule from
+ *     `src/projects/url.ts` guards `/data/projects` path safety (mx-e741b0).
  *   - `openPullRequest` is idempotent by contract: GitHub's 422-then-search
- *     dance stays inside. The duplicate search preserves the two-pass form
- *     landed in phase-1 PR #824 (`src/runs/pr.ts` `findExistingPr`) — a
- *     direct `head=<owner>:<branch>` filter, then an on-base scan matching
- *     `head.ref` — so a duplicate whose head lives on a fork is found
- *     rather than degrading to an opaque conflict (§6.13).
- *   - `gitCredential` returns the minted credential — under the default
- *     static source that is the configured PAT with `expiresAt: null` (§4 —
- *     static lifetime skips the re-mint path); the App provider injects its
- *     installation-token cache as the `tokenSource` and rides every method
- *     below unchanged.
+ *     dance stays inside. The duplicate search keeps the two-pass form from
+ *     phase-1 PR #824 — `head=<owner>:<branch>`, then an on-base scan
+ *     matching `head.ref` — so a fork-headed duplicate is found, not an
+ *     opaque conflict (§6.13).
+ *   - `gitCredential` returns the minted credential — the PAT with
+ *     `expiresAt: null` under the static source (§4: static lifetime skips
+ *     the re-mint); App mode injects its token cache as the `tokenSource`.
  *
  * Capabilities (§5): `checkRuns` defaults true — a CLASSIC PAT reaches the
- * Checks API. A FINE-GRAINED PAT cannot (GitHub's fine-grained permission
- * reference has no Checks section, §6.7); an operator running one passes
- * `checkRuns: false` and the domain degrades per §5. `botIdentity` is
- * false: the token authorizes but does not name the author (§6.8), so
- * warren keeps naming commits via `WARREN_GIT_AUTHOR_*`.
+ * Checks API. A FINE-GRAINED PAT cannot (no Checks section in GitHub's
+ * fine-grained permission reference, §6.7); an operator running one passes
+ * `checkRuns: false` and the domain degrades per §5. `botIdentity` is false:
+ * the token authorizes but does not name the author (§6.8), so warren
+ * keeps naming commits via `WARREN_GIT_AUTHOR_*`.
  *
  * Seam discipline (§2.2): every method returns `ForgeResult<T>` and never
  * throws. Boot-time failures (the registry's unknown-kind throw) live in
@@ -36,6 +31,8 @@
  */
 
 import type {
+	ArmAutoMergeOptions,
+	ArmAutoMergeResult,
 	CheckRun,
 	CheckSummary,
 	Forge,
@@ -51,6 +48,7 @@ import type {
 	PullRequestState,
 	RepoRef,
 } from "../contract.ts";
+import { UNSUPPORTED_AUTO_MERGE_ARM } from "./auto-merge.ts";
 import type { GitHubHttpError } from "./errors.ts";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { requestGitHub } from "./http.ts";
@@ -68,14 +66,13 @@ const USER_AGENT = "warren-forge-github";
 
 export interface GitHubForgeOptions {
 	/**
-	 * The static secret (a PAT). Empty string → methods return `no_credential`.
-	 * Ignored when `tokenSource` is set.
+	 * The static secret (a PAT); empty → `no_credential`. Ignored when
+	 * `tokenSource` is set.
 	 */
 	readonly token?: string;
 	/**
-	 * Dynamic per-call credential source (forge-contract.md §4) — the App
-	 * provider's installation-token cache implements it. When set, every API
-	 * method mints immediately before its request instead of reading `token`.
+	 * Dynamic per-call credential source (§4) — the App provider's
+	 * installation-token cache. When set, every method mints before its request.
 	 */
 	readonly tokenSource?: GitHubForgeTokenSource;
 	/** Injected fetch seam; defaults to `globalThis.fetch`. */
@@ -106,8 +103,7 @@ function err<T>(error: ForgeError): ForgeResult<T> {
 
 /**
  * Transport-kind vocabulary aligns with the seam kinds — the map is a
- * rename. Exported for the App provider's installation-token mint, which
- * rides the same transport and maps its failures identically.
+ * rename. Exported for the App provider's installation-token mint.
  */
 export function toForgeError(error: GitHubHttpError): ForgeError {
 	const forgeError: ForgeError = { kind: error.kind, status: error.status, detail: error.message };
@@ -148,11 +144,12 @@ export class GitHubForge implements Forge {
 			jobLogs: true,
 			pullRequestBodyEdit: true,
 			branchDelete: true,
-			// The token authorizes; it does not name the author (§6.8). Warren
-			// names commits via WARREN_GIT_AUTHOR_* until App mode ships.
+			// Authorizes but does not name the author (§6.8); env fills the name until App mode.
 			botIdentity: false,
 			// A PAT has no installation scope (§5): no repo listing.
 			installationRepos: false,
+			// Arming lands with the GraphQL transport (pl-92a3 step 3): off for now.
+			autoMergeArm: false,
 			credentialLifetime: "static",
 		};
 	}
@@ -165,8 +162,7 @@ export class GitHubForge implements Forge {
 		const minted = await this.mint(ref);
 		if (!minted.ok) return err(minted.error);
 		// The provider owns the username; no domain code ever names it.
-		// `expiresAt` is null under the static source (§4: the domain skips
-		// the re-mint) and real under the App source.
+		// `expiresAt`: null under the static source (§4), real under App mode.
 		return ok({
 			username: "x-access-token",
 			secret: minted.value.secret,
@@ -218,8 +214,7 @@ export class GitHubForge implements Forge {
 		const minted = await this.mint(ref);
 		if (!minted.ok) return err(minted.error);
 		const state = q.state ?? "open";
-		// Pass 1: the owner-qualified head filter. Only matches same-repo
-		// branches — GitHub scopes `head=<owner>:<branch>` to that owner.
+		// Pass 1: the owner-qualified head filter — GitHub scopes `head=<owner>:<branch>` to that owner.
 		const direct = await this.searchPullRequests(ref, minted.value.secret, {
 			base: q.baseBranch,
 			state,
@@ -229,8 +224,7 @@ export class GitHubForge implements Forge {
 		if (!direct.ok) return err(direct.error);
 		const directHit = direct.value[0];
 		if (directHit !== undefined) return ok(directHit.ref);
-		// Pass 2 (§6.13): an on-base scan matching `head.ref` finds a duplicate
-		// whose head lives on a fork, which pass 1 cannot see.
+		// Pass 2 (§6.13): an on-base scan matching `head.ref` finds a fork-headed duplicate.
 		const onBase = await this.searchPullRequests(ref, minted.value.secret, {
 			base: q.baseBranch,
 			state,
@@ -270,7 +264,18 @@ export class GitHubForge implements Forge {
 			mergedAt,
 			headCommit: typeof head?.sha === "string" ? head.sha : "",
 			baseBranch: typeof base?.ref === "string" ? base.ref : "",
+			// REST carries no auto-merge field; the GraphQL arm (pl-92a3 step 3) will.
+			autoMerge: "unknown",
 		});
+	}
+
+	/** pl-92a3 step 3 arms this over the GraphQL transport; unsupported until then. */
+	armAutoMerge(
+		_ref: RepoRef,
+		_pr: PullRequestRef,
+		_options: ArmAutoMergeOptions,
+	): Promise<ArmAutoMergeResult> {
+		return Promise.resolve(UNSUPPORTED_AUTO_MERGE_ARM);
 	}
 
 	async setPullRequestBody(
@@ -382,9 +387,8 @@ export class GitHubForge implements Forge {
 
 	/**
 	 * Mint the credential for ONE API call (§4) — a free static read under
-	 * PAT mode, a cache hit or installation-token re-mint under App mode.
-	 * A `no_credential` miss is re-detailed with the repo ref so the error
-	 * names the operation it failed, matching the pre-source behavior.
+	 * PAT mode, a cache hit or re-mint under App mode. A `no_credential`
+	 * miss is re-detailed with the ref so the error names the operation.
 	 */
 	private async mint(ref: RepoRef): Promise<ForgeResult<GitHubCredentialSecret>> {
 		const minted = await this.tokens.mint();
@@ -420,11 +424,7 @@ export class GitHubForge implements Forge {
 		return { forge: GITHUB_FORGE_KIND, key: `${ref.key}#${number}`, number, webUrl };
 	}
 
-	/**
-	 * The two-pass open-PR search behind `findPullRequest` and the 422
-	 * recovery in `openPullRequest`. Returns refs paired with each PR's
-	 * `head.ref` so the cross-fork pass can match on it.
-	 */
+	/** The two-pass open-PR search behind `findPullRequest` and the 422 recovery; pairs `head.ref`. */
 	private async searchPullRequests(
 		ref: RepoRef,
 		token: string,

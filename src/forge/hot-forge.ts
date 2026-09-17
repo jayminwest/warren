@@ -111,6 +111,15 @@ export class HotForge implements Forge {
 		return this.delegate.getPullRequest(ref, pr);
 	}
 
+	/** pl-92a3: the arming seam rides the swap like every other method. */
+	armAutoMerge(
+		ref: Parameters<Forge["armAutoMerge"]>[0],
+		pr: Parameters<Forge["armAutoMerge"]>[1],
+		options: Parameters<Forge["armAutoMerge"]>[2],
+	) {
+		return this.delegate.armAutoMerge(ref, pr, options);
+	}
+
 	setPullRequestBody(
 		ref: Parameters<Forge["setPullRequestBody"]>[0],
 		pr: Parameters<Forge["setPullRequestBody"]>[1],

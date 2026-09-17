@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CheckRun } from "../contract.ts";
+import { AUTO_MERGE_REFUSAL_REASONS, type CheckRun } from "../contract.ts";
 import { FAKE_CLONE_URL_SCHEME, FakeForge } from "./fake-forge.ts";
 import { type FakeForgeStateFile, FakeForgeStore, rollUpChecks } from "./store.ts";
 
@@ -47,7 +47,7 @@ describe("FakeForge.parseRepoRef", () => {
 });
 
 describe("FakeForge capabilities", () => {
-	test("reports every capability true with a static credential lifetime", () => {
+	test("reports the full-featured set with arming and installation listing off", () => {
 		expect(new FakeForge().capabilities).toEqual({
 			checkRuns: true,
 			jobLogs: true,
@@ -55,6 +55,7 @@ describe("FakeForge capabilities", () => {
 			branchDelete: true,
 			botIdentity: true,
 			installationRepos: false,
+			autoMergeArm: false,
 			credentialLifetime: "static",
 		});
 	});
@@ -241,6 +242,125 @@ describe("FakeForgeStore state-file seam (warren-2600)", () => {
 			const polled = await forge.getPullRequest(ref, opened.value);
 			expect(polled.ok).toBe(true);
 			if (polled.ok) expect(polled.value.lifecycle).toBe("open");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("FakeForge.armAutoMerge (pl-92a3)", () => {
+	test("refuses unsupported_forge with no side effects while the capability is off", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, DRAFT);
+		if (!opened.ok) throw new Error("unreachable");
+		const refused = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(refused).toEqual({
+			ok: false,
+			error: { reason: "unsupported_forge", message: "FakeForge auto-merge arming is not enabled" },
+		});
+		const state = await forge.getPullRequest(ref, opened.value);
+		expect(state.ok && state.value.autoMerge).toBe("unarmed");
+	});
+
+	test("arms an open unarmed PR once enabled, then reports already_armed", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, DRAFT);
+		if (!opened.ok) throw new Error("unreachable");
+		forge.setAutoMergeArmCapability(true);
+		const armed = await forge.armAutoMerge(ref, opened.value, { method: "merge" });
+		expect(armed).toEqual({ ok: true, value: { outcome: "armed" } });
+		const state = await forge.getPullRequest(ref, opened.value);
+		expect(state.ok && state.value.autoMerge).toBe("armed");
+		const again = await forge.armAutoMerge(ref, opened.value, { method: "merge" });
+		expect(again).toEqual({ ok: true, value: { outcome: "already_armed" } });
+	});
+
+	test("drains scripted outcomes and refusal reasons in order before live behavior", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, DRAFT);
+		if (!opened.ok) throw new Error("unreachable");
+		forge.setAutoMergeArmCapability(true);
+		forge.scriptAutoMergeArm({ outcome: "armed" });
+		forge.scriptAutoMergeArm({ outcome: "already_armed" });
+		forge.scriptAutoMergeArm({
+			refusal: "clean_status",
+			message: "Pull request is in clean status",
+		});
+		const first = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(first).toEqual({ ok: true, value: { outcome: "armed" } });
+		const second = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(second).toEqual({ ok: true, value: { outcome: "already_armed" } });
+		const third = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(third).toEqual({
+			ok: false,
+			error: { reason: "clean_status", message: "Pull request is in clean status" },
+		});
+		// Scripted answers leave no state behind: the PR is still unarmed, so a
+		// later live call arms it for real.
+		const live = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(live).toEqual({ ok: true, value: { outcome: "armed" } });
+	});
+
+	test("scripts every refusal reason of the closed vocabulary", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, DRAFT);
+		if (!opened.ok) throw new Error("unreachable");
+		forge.setAutoMergeArmCapability(true);
+		for (const reason of AUTO_MERGE_REFUSAL_REASONS) {
+			forge.scriptAutoMergeArm({ refusal: reason });
+			const result = await forge.armAutoMerge(ref, opened.value, { method: "rebase" });
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error.reason).toBe(reason);
+				expect(result.error.message.length).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	test("setAutoMergeState surfaces through getPullRequest", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, DRAFT);
+		if (!opened.ok) throw new Error("unreachable");
+		expect(forge.setAutoMergeState(ref, opened.value, "unknown")).toBe(true);
+		const unknown = await forge.getPullRequest(ref, opened.value);
+		expect(unknown.ok && unknown.value.autoMerge).toBe("unknown");
+		expect(forge.setAutoMergeState(ref, { ...opened.value, number: 9999 }, "armed")).toBe(false);
+	});
+
+	test("refuses not_open for a missing or non-open PR", async () => {
+		const { forge, ref } = setup();
+		const opened = await forge.openPullRequest(ref, DRAFT);
+		if (!opened.ok) throw new Error("unreachable");
+		forge.setAutoMergeArmCapability(true);
+		const missing = await forge.armAutoMerge(
+			ref,
+			{ ...opened.value, number: 9999 },
+			{
+				method: "squash",
+			},
+		);
+		expect(missing.ok).toBe(false);
+		if (!missing.ok) expect(missing.error.reason).toBe("not_open");
+		forge.markClosed(ref, opened.value);
+		const closed = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(closed.ok).toBe(false);
+		if (!closed.ok) expect(closed.error.reason).toBe("not_open");
+	});
+
+	test("persists the armed state through the state-file seam", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-fake-store-"));
+		const stateFile = join(dir, "state.json");
+		try {
+			const forge = new FakeForge({ store: new FakeForgeStore({ stateFile }) });
+			const ref = forge.parseRepoRef("fake://projects/widget");
+			if (ref === null) throw new Error("unreachable");
+			const opened = await forge.openPullRequest(ref, DRAFT);
+			if (!opened.ok) throw new Error("unreachable");
+			forge.setAutoMergeArmCapability(true);
+			const armed = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+			expect(armed.ok).toBe(true);
+			const state = JSON.parse(readFileSync(stateFile, "utf8")) as FakeForgeStateFile;
+			expect(state.prs["projects/widget"]?.[0]?.autoMerge).toBe("armed");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

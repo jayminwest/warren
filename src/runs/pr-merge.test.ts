@@ -57,7 +57,13 @@ function err(error: ForgeError): ForgeResult<PullRequestState> {
 function state(lifecycle: PullRequestState["lifecycle"], mergedAt: number | null = null) {
 	return {
 		ok: true as const,
-		value: { lifecycle, mergedAt, headCommit: "abc", baseBranch: "main" },
+		value: {
+			lifecycle,
+			mergedAt,
+			headCommit: "abc",
+			baseBranch: "main",
+			autoMerge: "unknown",
+		} satisfies PullRequestState,
 	};
 }
 
