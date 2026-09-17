@@ -34,7 +34,7 @@
 		"docs/PHILOSOPHY.md": 23,
 		"docs/RUNBOOK-K8S.md": 84,
 		"docs/labels.md": 10,
-		"docs/project-setup.md": 10,
+		"docs/project-setup.md": 0,
 		"docs/design/k8s-migration.md": 170,
 		"docs/design/runtime-provider-contract.md": 51,
 		"deploy/k8s/README.md": 55,

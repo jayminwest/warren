@@ -2,10 +2,12 @@
 
 **Kind:** contract
 **Design state:** approved
-**Delivery:** now
+**Delivery:** shipped
 **Arrived:** 2026-09-17
+**Shipped:** plan `pl-92a3` closed 2026-09-17; the release version lands in the [`Unreleased`] section of [`CHANGELOG.md`](../../CHANGELOG.md)
+**Current truth:** `src/forge/contract.ts` (the seam), `src/forge/github/auto-merge.ts` + `src/forge/github/graphql.ts` (the GitHub arm), `src/runs/reap/auto-merge-arm.ts` + `src/runs/reap/auto-merge-policy.ts` + `src/runs/reap/auto-merge-git.ts` (the reap step and policy), `src/warren-config/pr-config.ts` (the config block), `src/plan-runs/merge-stall.ts` (the stall warning), and `docs/project-setup.md` (the operator guide)
 **Companion:** [`forge-contract.md`](./forge-contract.md), the seam this record extends.
-**Plan:** seeds plan `pl-92a3`, eight children under seed `warren-081c`, implements it.
+**Plan:** seeds plan `pl-92a3`, eight children under seed `warren-081c`, closed in shipped state.
 
 Warren arms GitHub auto-merge itself, through the Forge seam, right after
 reap opens a pull request. GitHub still merges it once the required
@@ -173,7 +175,7 @@ would fire the warning falsely.
 | GitHubApp | `true` |
 | GitHubPat | `true`. Works when the token carries the scope, otherwise the call refuses with `insufficient_permission`. |
 | AdoForge | `false`. Never called. |
-| FakeForge | `false` in the default mode. An explicit non-default mode may arm for acceptance scenarios, and the default stays `false`. |
+| FakeForge | `false` in the default mode. `WARREN_FAKE_FORGE_AUTO_MERGE_ARM=1` boots the fake in its arm-capable mode (registry.ts), the explicit non-default mode acceptance scenario 45 selects; the default stays `false`. |
 
 `HotForge` delegates the whole contract by construction, so an activated
 App answers without a special case.

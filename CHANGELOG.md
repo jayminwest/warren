@@ -10,6 +10,36 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+### Added
+
+- **Warren-armed auto-merge (plan `pl-92a3`, warren-081c).** A project
+  opts into warren arming GitHub auto-merge itself with one `pr.autoMerge`
+  block in `.warren/config.yaml` (`method`, `protectedPaths`). The Forge
+  contract gains `armAutoMerge` behind an `autoMergeArm` capability flag,
+  implemented for GitHub over a new GraphQL transport
+  (`enablePullRequestAutoMerge`) with a bounded mergeability retry
+  (about 15 s, then refusal `mergeability_unsettled`), and
+  `PullRequestState` gains an `autoMerge` reading. A fail-closed policy
+  decides arm or skip before any forge call: `protectedPaths` match by
+  prefix or glob, `.warren/config.yaml` is always protected, the policy
+  resolves from the PR's base branch never the run branch, and an empty
+  or unreadable diff never arms. Reap arms right after `pr_open` (and
+  the plan-run reopen seam routes through the same step), best-effort:
+  no outcome fails or delays a run. Every opted-in run emits exactly one
+  of `reap.auto_merge_armed`, `reap.auto_merge_skipped` (with a stable
+  reason), or `reap.auto_merge_not_armed` (reason plus the forge's
+  message). Plan-runs warn once per child with `plan_run.merge_stalled`
+  when checks pass and no auto-merge holds (`WARREN_PLAN_RUN_MERGE_STALLED_WARNING_MS`,
+  default 300000, 0 disables), and `child_pr_merge_timeout` now
+  diagnoses whether checks passed and what `autoMerge` read. The fake
+  forge gained an arm-capable boot mode
+  (`WARREN_FAKE_FORGE_AUTO_MERGE_ARM`) and acceptance scenario 45 pins
+  the armed event, the recorded arm call, and a protected-path skip.
+  Operators migrate off the per-repo `auto-merge.yml` workflow, its
+  variables, and its secrets per `docs/project-setup.md`; warren's own
+  repo keeps its workflow until a human ports the Article IX paths into
+  `protectedPaths`. Design record: `docs/design/forge-auto-merge.md`.
+
 ## [0.19.1] — 2026-09-03
 
 The upstream-loop release. The campaign controller closes its response

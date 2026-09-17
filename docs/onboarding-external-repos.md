@@ -69,6 +69,12 @@ host clone for you.
    - **`maxCostUsd`** sets a project-wide per-run spend cap.
    - **`runBranchPrefix`** namespaces the branches warren pushes, so
      `warren/<run-id>` does not collide with the upstream naming.
+   - **`pr.autoMerge`** (plan `pl-92a3`) opts the project into warren-armed
+     PR auto-merge, with `protectedPaths` scoping what warren arms. On a
+     mirror you own as a fork, this replaces the per-repo auto-merge
+     workflow, variable, and secret. See
+     [`docs/project-setup.md`](../project-setup.md) for the opt-in, the
+     repo prerequisites, and the migration off the workflow.
 
    A per-project agent image override (`agentImage`) is landing under
    plan `pl-a37b` (warren-fabb) for repos whose gate needs a non-Bun
@@ -98,7 +104,10 @@ host clone for you.
 
 - **No upstream PRs from warren's identity.** If you cannot push to the
   origin repo, dispatch with a `targetBranch` on a fork, or accept that
-  runs commit to the workspace branch only.
+  runs commit to the workspace branch only. When you do own a fork that
+  can open PRs, `pr.autoMerge` in the host clone's config lets warren arm
+  auto-merge itself — no per-repo workflow or secret on the fork. See
+  [`docs/project-setup.md`](../project-setup.md).
 - **No in-repo `AGENTS.md`.** The upstream repo will not carry agent
   instructions; put everything an agent needs in `repoContext`. That is
   what the field is for.

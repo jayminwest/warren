@@ -133,9 +133,10 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
   `frontmatter.maxCostUsd` > this default — applied only when the agent
   declares no cap (malformed agent values still fail open).
 - `pr.autoMerge` (warren-6c5a, plan pl-92a3) opts a project into warren-armed
-  PR auto-merge. Absent means off. Nothing consumes the block yet. See
-  [docs/design/warren-config.md](docs/design/warren-config.md) for the shape
-  and defaults.
+  PR auto-merge, armed by the reap PR-open step behind the fail-closed policy.
+  Absent means off and silent. Full contract and operator guide:
+  [docs/design/forge-auto-merge.md](docs/design/forge-auto-merge.md),
+  [docs/project-setup.md](docs/project-setup.md).
 - `admission.maxConcurrentRuns` — per-project cap on simultaneous
   non-terminal runs, enforced by the K8s admission gate. Over the cap
   the gate rejects the dispatch with HTTP 429 and reason

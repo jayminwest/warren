@@ -45,7 +45,7 @@ advance only when pilot evidence supplies their payer.
 | Storage | dialect-aware db layer (`src/db/client.ts`) | **Live** — sqlite + postgres. |
 | Auth | `AuthProvider` (`src/server/auth.ts`) | **Live** — `NoAuth`, `BearerToken`, `PublicRead` behind `WARREN_AUTH` (pl-b82d). The multi-user widening moved to Deferred until paid (2026-08-03). |
 | Extensions (Tier 1) | lifecycle bus (`src/runs/lifecycle-bus.ts`, `warren-ext/v1`) | **Live, observe-only** — all 6 hooks emit in production (`run_started` + `event_emitted` wired in v0.13.1, warren-28ca). |
-| Forge | `Forge` — repo refs, git auth, PR open/find, checks, error taxonomy | **Live** (v0.15.0, pl-d1c9) — GitHubForge (PAT) + GitHubApp (installation tokens) + AdoForge (Azure DevOps Repos, PAT) + FakeForge, boot-resolved via `WARREN_FORGE`, boundary held by `check:layers` rules. Design record: `docs/design/forge-contract.md`. Further forges (GitLab, then Forgejo/Gitea) land in-core as registry arms, not as extensions (Decisions, 2026-08-20). |
+| Forge | `Forge` — repo refs, git auth, PR open/find, checks, auto-merge arming, error taxonomy | **Live** (v0.15.0, pl-d1c9) — GitHubForge (PAT) + GitHubApp (installation tokens) + AdoForge (Azure DevOps Repos, PAT) + FakeForge, boot-resolved via `WARREN_FORGE`, boundary held by `check:layers` rules. `armAutoMerge` over GraphQL shipped with pl-92a3 behind the per-project `pr.autoMerge` opt-in. Design record: `docs/design/forge-contract.md`. Further forges (GitLab, then Forgejo/Gitea) land in-core as registry arms, not as extensions (Decisions, 2026-08-20). |
 | Issue tracker | `IssueTracker` — capability-flagged (`supportsPlans`, `isGitNative`). Seeds in-core. External trackers arrive through the `RemoteTracker` bridge speaking `warren-tracker/v1` (wire protocol experimental until a foreign implementation survives the conformance suite). | **Live** (v0.18.0, pl-a37b) — `SeedsTracker` + `RemoteTracker`, per-project `tracker` block in `.warren/config.yaml`. `extensions/tracker-jira/` (v0.19.0) and `extensions/tracker-ado/` (v0.19.1) are the first two external implementations of the wire protocol; both pass the conformance suite unchanged. The protocol's status vocabulary was fixed to `open`/`closed`/`other` in v0.19.1. Design record: `docs/design/issue-tracker.md`. |
 | Agent runtime | `AgentRuntimeAdapter` phase 1 — terminal detect, usage, error classes, seed layout | **Live** — phase 2 (harness repatriation) shipped with pl-3007 in v0.17.0. The adapters are warren-owned (`src/runtime/adapters/`). Phase 1 completed with `runtimeId` typed off the union + the `check:runtime-ids` guard (GH#846 items 4–5, PR #964). |
 
@@ -62,12 +62,6 @@ advance only when pilot evidence supplies their payer.
 
    Warren keeps only this commitment and any generalized changes that observed friction
    pays for. Design record: `docs/design/external-repository-mirror-pilot.md`.
-
-2. **Warren-armed auto-merge.** Plan `pl-92a3` moves arming from a per-repo
-   GitHub Actions workflow with its own credential into the Forge seam.
-   Warren arms GitHub auto-merge right after reap opens the pull request,
-   and a project opts in with one `pr.autoMerge` block in
-   `.warren/config.yaml`. Design record: `docs/design/forge-auto-merge.md`.
 
 ## Next — planned, in order
 
@@ -152,6 +146,7 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 | Azure DevOps on both seams — `AdoForge` in-core forge arm plus `extensions/tracker-ado/` over Boards | v0.19.1 | GH#1172, `docs/design/forge-contract.md`, `docs/design/issue-tracker.md` |
 | In-cluster Postgres — kustomize component, nightly `pg_dump` to GCS, `pg-migrate` cutover tooling, Supabase decommissioned; Spot run pods with preemption classified as retryable | v0.19.1 | pl-6076 (30-day cost review still open), `docs/RUNBOOK-K8S.md` |
 | Console operator-review patches — burn and runtime in the topbar, windowed ops overview, run-detail spend and phase rail, delivery/autonomy/economics analytics rendered in telemetry | v0.19.1 | pl-9fa9, `docs/design/agent-analytics.md` |
+| Warren-armed auto-merge — `pr.autoMerge` opt-in, `armAutoMerge` over a GraphQL transport, fail-closed arming policy, the three `reap.auto_merge_*` events, the plan-run stall warning; migration off the per-repo workflow | unreleased | pl-92a3, `docs/design/forge-auto-merge.md` |
 
 ## Deliberately not in core
 

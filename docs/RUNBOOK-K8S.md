@@ -569,6 +569,8 @@ The static `GITHUB_TOKEN` is no longer the forge credential.
 
 **Update the auto-merge bot login (migrating from PAT mode).** On every repo warren dispatches against, set the `AUTO_MERGE_BOT_LOGIN` repository variable to the App's `<slug>[bot]` login (for example `warren-forge-abc123[bot]`), replacing the old PAT account's login. Under App mode the App's bot identity authors agent PRs, and the auto-merge workflow's enable-auto-merge job matches the PR author login against this variable. Leave it on the PAT login and the job silently skips every agent PR with no error surfaced.
 
+**Or arm through warren itself.** A project can opt into warren-armed auto-merge with `pr.autoMerge` in `.warren/config.yaml`. Warren then arms each PR through the forge credential right after reap opens it. The run stream carries `reap.auto_merge_armed`, and a plan-run child that waits on a green PR with no armed auto-merge warns early with `plan_run.merge_stalled`. The per-repo workflow and its `AUTO_MERGE_BOT_LOGIN` variable stay the legacy path until a project migrates. See [`docs/project-setup.md`](../project-setup.md) for the opt-in, the repo prerequisites, and the migration.
+
 ---
 
 ## 3. Control-plane configuration (env)

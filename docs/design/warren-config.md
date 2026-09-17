@@ -123,8 +123,11 @@ not by the schema: `.warren/config.yaml` itself is always implicitly
 protected, and the policy resolves from the base branch, never the run
 branch — an agent must not be able to edit its own merge policy. A bare
 `pr: { autoMerge: true }` shorthand is rejected with a hint showing the
-object form. Nothing consumes the block yet; the reap PR-open step wires
-it in a later pl-92a3 step.
+object form. The consumer is live: the reap PR-open step arms the
+forge's own auto-merge behind the fail-closed policy
+([`forge-auto-merge.md`](./forge-auto-merge.md) §4), and
+[`project-setup.md`](../project-setup.md) carries the operator guide
+and the migration off the per-repo workflow.
 
 **Loader contract** (`src/warren-config/load.ts`):
 
