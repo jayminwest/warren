@@ -37,6 +37,7 @@ import {
 	type CoordinatorSpawnFn,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
+import type { MergeStallProbe } from "./merge-stall.ts";
 
 export interface PlanRunTickLogger {
 	info(obj: Record<string, unknown>, msg?: string): void;
@@ -59,6 +60,18 @@ export interface PlanRunTickDeps {
 	 * default ({@link DEFAULT_MERGE_TIMEOUT_MS}); 0 disables the timeout.
 	 */
 	readonly mergeTimeoutMs?: number;
+	/**
+	 * Stall-warning grace period (ms) forwarded to {@link advancePlanRun}
+	 * (pl-92a3 step 7). Omit to use the default
+	 * ({@link DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS}); 0 disables the warning.
+	 */
+	readonly mergeStallWarningMs?: number;
+	/**
+	 * Best-effort merge-stall probe (pl-92a3 step 7): reads the PR's
+	 * auto-merge state and check rollup once the grace period has elapsed.
+	 * Omit to leave the stall warning unwired (tests).
+	 */
+	readonly probeMergeStall?: MergeStallProbe;
 	/**
 	 * Optional PR-(re)open seam (warren-22de). When provided, the
 	 * coordinator attempts to reopen a missing PR before failing terminally
@@ -124,6 +137,10 @@ function buildAdvanceInput(
 		spawn: deps.spawn,
 		emit,
 		...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
+		...(deps.mergeStallWarningMs !== undefined
+			? { mergeStallWarningMs: deps.mergeStallWarningMs }
+			: {}),
+		...(deps.probeMergeStall !== undefined ? { probeMergeStall: deps.probeMergeStall } : {}),
 		...(deps.reopenPr !== undefined ? { reopenPr: deps.reopenPr } : {}),
 		...(deps.closeChildSeed !== undefined ? { closeChildSeed: deps.closeChildSeed } : {}),
 		...(deps.now !== undefined ? { now: deps.now } : {}),

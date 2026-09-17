@@ -32,6 +32,11 @@ import {
 	mergeWaitBaseline,
 	resolveChildPrReopen,
 } from "./merge-gate.ts";
+import {
+	type MergeStallProbe,
+	maybeWarnMergeStalled,
+	mergeTimeoutDiagnosis,
+} from "./merge-stall.ts";
 import { shouldRetryChild } from "./retry.ts";
 
 export interface HandleInFlightInput {
@@ -42,6 +47,10 @@ export interface HandleInFlightInput {
 	readonly emit: CoordinatorEmitFn;
 	readonly getIssue: CoordinatorGetIssueFn;
 	readonly mergeTimeoutMs: number;
+	/** pl-92a3 step 7: stall-warning grace period (ms); 0 disables the warning. */
+	readonly mergeStallWarningMs: number;
+	/** pl-92a3 step 7: best-effort stall probe; undefined ⇒ no warning/diagnosis. */
+	readonly probeMergeStall?: MergeStallProbe;
 	readonly now: () => Date;
 	readonly reopenPr?: CoordinatorReopenPrFn; // warren-22de: (re)open PR before failing
 	readonly closeChildSeed?: CoordinatorCloseChildSeedFn; // warren-3806: host-side seed close on merge
@@ -264,8 +273,28 @@ async function handleOpenPr(
 	// instead of instantly re-timing out on the stale run.endedAt.
 	const baseline = mergeWaitBaseline(run.endedAt, planRun.resumedAt);
 	if (mergeDeadlineExceeded(baseline, now, mergeTimeoutMs)) {
-		return await failChild(input, run, "child_pr_merge_timeout", { prUrl: effectivePrUrl });
+		// pl-92a3 step 7: the terminal failure carries what the checks and
+		// the auto-merge state read at the deadline, so the timeout says why.
+		const diagnosis = await mergeTimeoutDiagnosis(input.probeMergeStall, effectivePrUrl);
+		return await failChild(input, run, "child_pr_merge_timeout", {
+			prUrl: effectivePrUrl,
+			...diagnosis,
+		});
 	}
+	// pl-92a3 step 7: one-shot early warning on a green PR with no armed
+	// auto-merge — best-effort, never changes the child's state.
+	await maybeWarnMergeStalled({
+		planRun,
+		child,
+		runId: run.id,
+		prUrl: effectivePrUrl,
+		baseline,
+		probe: input.probeMergeStall,
+		warningMs: input.mergeStallWarningMs,
+		repos: input.repos,
+		emit,
+		now,
+	});
 	await emit(run.id, "plan_run.waiting_for_merge", {
 		planRunId: planRun.id,
 		seq: child.seq,

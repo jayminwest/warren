@@ -17,6 +17,7 @@ import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
 	closeMergedChildSeed,
+	createMergeStallProbe,
 	createPlanRunSpawn,
 	createPrMergeChecker,
 	loadPlanRunCoordinatorConfigFromEnv,
@@ -243,6 +244,10 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 		// warren-63e7: the merge gate consumes the boot-resolved forge — no
 		// closure-captured token can ride a multi-hour poll loop anymore.
 		checkPrMerged: createPrMergeChecker({ forge, logger }),
+		// pl-92a3 step 7: one-shot stall warning on a green PR with no armed
+		// auto-merge, and the same diagnosis on a merge-timeout failure.
+		probeMergeStall: createMergeStallProbe({ forge }),
+		mergeStallWarningMs: planRunCoordinatorConfig.mergeStallWarningMs,
 		// warren-3806: deterministic host-side seed close when a child merges.
 		closeChildSeed: createCloseChildSeed({
 			forge,

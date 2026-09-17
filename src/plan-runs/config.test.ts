@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
 import {
+	DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS,
 	DEFAULT_PLAN_RUN_MERGE_TIMEOUT_MS,
 	DEFAULT_PLAN_RUN_TICK_MS,
 	loadPlanRunCoordinatorConfigFromEnv,
@@ -12,6 +13,7 @@ describe("loadPlanRunCoordinatorConfigFromEnv", () => {
 		expect(config.tickMs).toBe(DEFAULT_PLAN_RUN_TICK_MS);
 		expect(config.disabled).toBe(false);
 		expect(config.mergeTimeoutMs).toBe(DEFAULT_PLAN_RUN_MERGE_TIMEOUT_MS);
+		expect(config.mergeStallWarningMs).toBe(DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS);
 	});
 
 	test("WARREN_PLAN_RUN_DISABLED honors the standard truthy set", () => {
@@ -62,5 +64,44 @@ describe("loadPlanRunCoordinatorConfigFromEnv", () => {
 		expect(() =>
 			loadPlanRunCoordinatorConfigFromEnv({ WARREN_PLAN_RUN_MERGE_TIMEOUT_MS: "soon" }),
 		).toThrow(ValidationError);
+	});
+
+	describe("WARREN_PLAN_RUN_MERGE_STALLED_WARNING_MS (pl-92a3 step 7)", () => {
+		test("defaults to five minutes when env unset", () => {
+			expect(DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS).toBe(5 * 60 * 1000);
+			expect(loadPlanRunCoordinatorConfigFromEnv({}).mergeStallWarningMs).toBe(
+				DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS,
+			);
+		});
+
+		test("parses an explicit value", () => {
+			const config = loadPlanRunCoordinatorConfigFromEnv({
+				WARREN_PLAN_RUN_MERGE_STALLED_WARNING_MS: "60000",
+			});
+			expect(config.mergeStallWarningMs).toBe(60000);
+		});
+
+		test("stall warning of 0 disables the warning", () => {
+			const config = loadPlanRunCoordinatorConfigFromEnv({
+				WARREN_PLAN_RUN_MERGE_STALLED_WARNING_MS: "0",
+			});
+			expect(config.mergeStallWarningMs).toBe(0);
+		});
+
+		test("rejects a negative value", () => {
+			expect(() =>
+				loadPlanRunCoordinatorConfigFromEnv({
+					WARREN_PLAN_RUN_MERGE_STALLED_WARNING_MS: "-1",
+				}),
+			).toThrow(ValidationError);
+		});
+
+		test("rejects a non-numeric value", () => {
+			expect(() =>
+				loadPlanRunCoordinatorConfigFromEnv({
+					WARREN_PLAN_RUN_MERGE_STALLED_WARNING_MS: "soon",
+				}),
+			).toThrow(ValidationError);
+		});
 	});
 });
