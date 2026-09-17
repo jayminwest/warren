@@ -46,6 +46,7 @@ import { parseDurationMs } from "../preview/duration.ts";
 // here so role names and registry names can never drift apart.
 import { AGENT_NAME_PATTERN } from "../registry/agent-name.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
+import { PrConfigSchema } from "./pr-config.ts";
 import { AdmissionConfigSchema, ResourcesConfigSchema } from "./resources-config.ts";
 import { TrackerConfigSchema } from "./tracker-config.ts";
 
@@ -65,6 +66,7 @@ export {
 	type HealerConfig,
 	HealerConfigSchema,
 } from "./feature-loop-config.ts";
+export { type AutoMergeConfig, type PrConfig, PrConfigSchema } from "./pr-config.ts";
 export {
 	type AdmissionConfig,
 	AdmissionConfigSchema,
@@ -412,6 +414,8 @@ export const DefaultsConfigSchema = z
 		// warren-d3a9: external tracker container (warren-tracker/v1). Absent →
 		// the boot-resolved default tracker (SeedsTracker today).
 		tracker: TrackerConfigSchema.optional(),
+		// warren-6c5a / pl-92a3 step 4: opt-in PR auto-merge (pr-config.ts).
+		pr: PrConfigSchema.optional(),
 	})
 	.strict();
 

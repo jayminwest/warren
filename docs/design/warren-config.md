@@ -66,7 +66,7 @@ event). A malformed / non-positive value fails OPEN (no cap) so a budget
 typo never silently cancels every run. `config.yaml` and legacy
 `defaults.json` share the same
 schema — `{ defaultRole?, defaultBranch?, defaultPrompt?, defaultProvider?,
-defaultModel?, runBranchPrefix?, agentImage?, preview?, maxCostUsd? }` — all optional,
+defaultModel?, runBranchPrefix?, agentImage?, preview?, maxCostUsd?, pr? }` — all optional,
 all strict. `maxCostUsd` on `config.yaml` is the project-wide default
 spend cap, the weakest source in the warren-a63d chain: an explicit
 dispatch override (a `POST /runs` `maxCostUsd` body field / `warren run
@@ -105,6 +105,26 @@ control**: the host clone's untracked `.warren/config.yaml` survives
 every clone refresh, and `repoContext` rides the composed prompt so it
 reaches docker and k8s runs too. The end-to-end recipe lives in
 [`docs/onboarding-external-repos.md`](../onboarding-external-repos.md).
+
+**`pr.autoMerge` (warren-6c5a, plan pl-92a3).** Opt-in warren-armed
+auto-merge for this project's PRs. An absent block (the default) means
+the feature is off; present, the shape is
+`{ method: 'squash' | 'merge' | 'rebase' (default 'squash'), protectedPaths: string[] (default []) }`.
+`protectedPaths` entries are repo-relative path prefixes or globs (`docs/`,
+`src/forge/**`) — non-empty, no leading `/`, no `..` segment, at most 100
+entries of 512 characters each. The schema lives in
+`src/warren-config/pr-config.ts` (`PrConfigSchema`), folded into
+`DefaultsConfigSchema` from `schema.ts`. Because both files parse against
+that one shared schema, the block is accepted in `config.yaml` and the
+legacy `defaults.json` alike — the same rule its vintage siblings
+(tracker, admission) follow, and `warren config migrate` carries it
+unchanged. Two invariants are enforced by the later arming-policy step,
+not by the schema: `.warren/config.yaml` itself is always implicitly
+protected, and the policy resolves from the base branch, never the run
+branch — an agent must not be able to edit its own merge policy. A bare
+`pr: { autoMerge: true }` shorthand is rejected with a hint showing the
+object form. Nothing consumes the block yet; the reap PR-open step wires
+it in a later pl-92a3 step.
 
 **Loader contract** (`src/warren-config/load.ts`):
 
