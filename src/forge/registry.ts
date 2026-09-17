@@ -34,8 +34,12 @@
 import { AdoForge } from "./ado/provider.ts";
 import type { Forge } from "./contract.ts";
 import { UnknownForgeError } from "./errors.ts";
-import { FakeForge } from "./fake/fake-forge.ts";
-import { FAKE_FORGE_STATE_FILE_ENV, FakeForgeStore } from "./fake/store.ts";
+import { FakeForge, type FakeForgeOptions } from "./fake/fake-forge.ts";
+import {
+	FAKE_FORGE_AUTO_MERGE_ARM_ENV,
+	FAKE_FORGE_STATE_FILE_ENV,
+	FakeForgeStore,
+} from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
 import {
 	type GitHubAppCredentials,
@@ -192,8 +196,11 @@ function buildAdoForge(deps: ForgeDeps, env: ForgeEnv): Forge {
 }
 
 function buildFakeForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	// The fake's arm-capable mode (pl-92a3): an explicit non-default boot
+	// that acceptance scenarios select. The default stays off.
+	const armAutoMerge = isTruthyEnv(env[FAKE_FORGE_AUTO_MERGE_ARM_ENV]);
 	if (deps.fakeStore !== undefined) {
-		return new FakeForge({ store: deps.fakeStore() });
+		return armedFakeForge({ store: deps.fakeStore() }, armAutoMerge);
 	}
 	// Cross-process acceptance seam (warren-2600): the harness boots
 	// warren as a subprocess, so it drives FakeForge state transitions
@@ -201,7 +208,20 @@ function buildFakeForge(deps: ForgeDeps, env: ForgeEnv): Forge {
 	// reloads on every read. Unset → the pure in-memory store.
 	const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
 	if (stateFile === undefined || stateFile === "") {
-		return new FakeForge();
+		return armedFakeForge({}, armAutoMerge);
 	}
-	return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
+	return armedFakeForge({ store: new FakeForgeStore({ stateFile }) }, armAutoMerge);
+}
+
+/** Build a FakeForge and optionally flip its `autoMergeArm` capability on. */
+function armedFakeForge(options: FakeForgeOptions, armAutoMerge: boolean): FakeForge {
+	const forge = new FakeForge(options);
+	if (armAutoMerge) forge.setAutoMergeArmCapability(true);
+	return forge;
+}
+
+/** Truthy values for the fake-forge env knobs: exactly `1`/`true`, case-insensitive. */
+function isTruthyEnv(raw: string | undefined): boolean {
+	const value = raw?.trim().toLowerCase();
+	return value === "1" || value === "true";
 }

@@ -42,6 +42,15 @@ const FAILING_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "actio
 export const FAKE_FORGE_STATE_FILE_ENV = "WARREN_FAKE_FORGE_STATE_FILE";
 
 /**
+ * Env var that flips the fake's `autoMergeArm` capability on (pl-92a3).
+ * The default stays `false` — the design record (forge-auto-merge.md §2.2)
+ * calls this the fake's explicit non-default mode, booted only by
+ * acceptance scenarios that exercise warren-armed auto-merge end to end.
+ * Truthy values are exactly `1`/`true` (case-insensitive).
+ */
+export const FAKE_FORGE_AUTO_MERGE_ARM_ENV = "WARREN_FAKE_FORGE_AUTO_MERGE_ARM";
+
+/**
  * On-disk serialization shape for the cross-process seam. The acceptance
  * harness boots warren as a SUBPROCESS, so it cannot call the in-memory
  * seeding seams (`markMerged` & friends) directly. When the boot env

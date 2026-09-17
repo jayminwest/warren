@@ -134,6 +134,28 @@ describe("resolveForge", () => {
 		expect((forge as FakeForge).store).toBe(store);
 	});
 
+	test("WARREN_FAKE_FORGE_AUTO_MERGE_ARM flips the fake's arm capability on (pl-92a3)", () => {
+		const forge = resolveForge(fakeArmDeps, {
+			WARREN_FORGE: "fake",
+			WARREN_FAKE_FORGE_AUTO_MERGE_ARM: "1",
+		});
+		expect(forge.capabilities.autoMergeArm).toBe(true);
+	});
+
+	test("the fake's arm capability stays off without the env knob", () => {
+		const forge = resolveForge(fakeArmDeps, { WARREN_FORGE: "fake" });
+		expect(forge.capabilities.autoMergeArm).toBe(false);
+	});
+
+	test("the arm knob applies to the file-backed fake store too", () => {
+		const forge = resolveForge(fakeArmDeps, {
+			WARREN_FORGE: "fake",
+			WARREN_FAKE_FORGE_STATE_FILE: "/nonexistent/state.json",
+			WARREN_FAKE_FORGE_AUTO_MERGE_ARM: "true",
+		});
+		expect(forge.capabilities.autoMergeArm).toBe(true);
+	});
+
 	test("the default github token factory reads GITHUB_TOKEN from the selection env", async () => {
 		const forge: Forge = resolveForge({}, { GITHUB_TOKEN: "env-token" });
 		expect(forge).toBeInstanceOf(GitHubForge);
