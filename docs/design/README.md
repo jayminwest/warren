@@ -34,6 +34,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [Campaign controller](./campaign-controller.md) | `direction` | `approved` | `next` | 2026-08-20 |
 | [Resumable agent environments](./resumable-agent-environments.md) | `proposal` | `proposed` | `unscheduled` | 2026-08-20 |
 | [Agent analytics](./agent-analytics.md) | `direction` | `approved` | `mixed` | 2026-08-11 |
+| [TypeSafe judge backend](./typesafe-judge.md) | `proposal` | `proposed` | `unscheduled` | 2026-09-17 |
 | [Extensions](./extensions.md) | `direction` | `proposed` | `mixed` | 2026-08-04 |
 | [Agent composition and Pi runtime](./agent-composition.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
 | [Forge contract](./forge-contract.md) | `contract` | `approved` | `shipped` | 2026-08-11 |
@@ -54,7 +55,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 
 ## Pre-roadmap discovery
 
-The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), and the proposed [resumable agent environments](./resumable-agent-environments.md). They remain ideas until the roadmap promotes them.
+The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), the proposed [resumable agent environments](./resumable-agent-environments.md), and the proposed [TypeSafe judge backend](./typesafe-judge.md). They remain ideas until the roadmap promotes them.
 
 ## Build order
 
