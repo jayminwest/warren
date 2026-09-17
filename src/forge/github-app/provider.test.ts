@@ -86,9 +86,29 @@ describe("GitHubAppForge capabilities (forge-contract.md §5)", () => {
 			branchDelete: true,
 			botIdentity: true,
 			installationRepos: true,
-			autoMergeArm: false,
+			autoMergeArm: true,
 			credentialLifetime: "short-lived",
 		});
+	});
+});
+
+describe("GitHubAppForge.armAutoMerge (pl-92a3)", () => {
+	test("delegates the arm to the shared transport under the installation token", async () => {
+		const forge = makeForge();
+		const ref = forge.parseRepoRef(CLONE_URL);
+		if (ref === null) throw new Error("unreachable");
+		const opened = await forge.openPullRequest(ref, {
+			title: "t",
+			body: "b",
+			headBranch: "warren/run-1",
+			baseBranch: "main",
+		});
+		expect(opened.ok).toBe(true);
+		if (!opened.ok) return;
+		const armed = await forge.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(armed).toEqual({ ok: true, value: { outcome: "armed" } });
+		const state = await forge.getPullRequest(ref, opened.value);
+		expect(state.ok && state.value.autoMerge).toBe("armed");
 	});
 });
 

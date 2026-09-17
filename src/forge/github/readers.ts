@@ -9,6 +9,8 @@
  * persisted on a run row.
  */
 
+import type { PullRequestAutoMergeState } from "../contract.ts";
+
 /** Parse a response body as JSON, returning `null` on any parse failure. */
 export async function readJson(res: Response): Promise<unknown> {
 	try {
@@ -30,4 +32,15 @@ export async function readText(res: Response): Promise<string> {
 /** Cap `input` at `max` chars, appending an ellipsis when truncated. */
 export function truncate(input: string, max: number): string {
 	return input.length <= max ? input : `${input.slice(0, max)}…`;
+}
+
+/**
+ * Map the REST `auto_merge` field onto the seam's auto-merge state
+ * (pl-92a3): a non-null request object means armed, null means unarmed —
+ * GitHub sends the field on every pull-request read, null when nothing is
+ * armed. `unknown` stays the honest answer of forges that cannot tell; this
+ * reader is why the GitHub arm no longer says it.
+ */
+export function readAutoMergeState(autoMerge: unknown): PullRequestAutoMergeState {
+	return autoMerge !== null && autoMerge !== undefined ? "armed" : "unarmed";
 }

@@ -32,7 +32,6 @@
 
 import type {
 	ArmAutoMergeOptions,
-	ArmAutoMergeResult,
 	CheckRun,
 	CheckSummary,
 	Forge,
@@ -48,11 +47,11 @@ import type {
 	PullRequestState,
 	RepoRef,
 } from "../contract.ts";
-import { UNSUPPORTED_AUTO_MERGE_ARM } from "./auto-merge.ts";
+import { armGitHubAutoMerge } from "./auto-merge.ts";
 import type { GitHubHttpError } from "./errors.ts";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { requestGitHub } from "./http.ts";
-import { readJson, readText } from "./readers.ts";
+import { readAutoMergeState, readJson, readText } from "./readers.ts";
 import { GITHUB_FORGE_KIND, parseGitHubRepoRef } from "./repo-ref.ts";
 import {
 	type GitHubCredentialSecret,
@@ -118,6 +117,7 @@ interface GitHubPrJson {
 	readonly html_url?: unknown;
 	readonly state?: unknown;
 	readonly merged_at?: unknown;
+	readonly auto_merge?: unknown;
 	readonly head?: unknown;
 	readonly base?: unknown;
 }
@@ -148,8 +148,8 @@ export class GitHubForge implements Forge {
 			botIdentity: false,
 			// A PAT has no installation scope (§5): no repo listing.
 			installationRepos: false,
-			// Arming lands with the GraphQL transport (pl-92a3 step 3): off for now.
-			autoMergeArm: false,
+			// pl-92a3: the GraphQL transport arms; a scope-less PAT refuses insufficient_permission.
+			autoMergeArm: true,
 			credentialLifetime: "static",
 		};
 	}
@@ -264,18 +264,15 @@ export class GitHubForge implements Forge {
 			mergedAt,
 			headCommit: typeof head?.sha === "string" ? head.sha : "",
 			baseBranch: typeof base?.ref === "string" ? base.ref : "",
-			// REST carries no auto-merge field; the GraphQL arm (pl-92a3 step 3) will.
-			autoMerge: "unknown",
+			// pl-92a3: the REST `auto_merge` object maps onto the seam state.
+			autoMerge: readAutoMergeState(body.auto_merge),
 		});
 	}
 
-	/** pl-92a3 step 3 arms this over the GraphQL transport; unsupported until then. */
-	armAutoMerge(
-		_ref: RepoRef,
-		_pr: PullRequestRef,
-		_options: ArmAutoMergeOptions,
-	): Promise<ArmAutoMergeResult> {
-		return Promise.resolve(UNSUPPORTED_AUTO_MERGE_ARM);
+	/** pl-92a3: the arm flow lives in ./auto-merge.ts (this file sits at its size cap). */
+	armAutoMerge(ref: RepoRef, pr: PullRequestRef, options: ArmAutoMergeOptions) {
+		const slug = this.slug(ref);
+		return armGitHubAutoMerge({ tokens: this.tokens, fetch: this.fetch, slug, pr, ...options });
 	}
 
 	async setPullRequestBody(
