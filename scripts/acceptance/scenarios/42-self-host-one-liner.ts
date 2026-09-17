@@ -101,7 +101,9 @@ async function buildOwnFixtures(root: string): Promise<{
 	const gitConfigPath = join(root, "git-config");
 	await writeFile(
 		gitConfigPath,
-		`[url "${projectPath}"]\n\tinsteadOf = ${gitUrl}\n[init]\n\tdefaultBranch = main\n`,
+		// Only this host-owned fixture is trusted by the container's Git user.
+		// Upload/receive-pack inspect .git directly, while ordinary Git uses the root.
+		`[url "${projectPath}"]\n\tinsteadOf = ${gitUrl}\n[init]\n\tdefaultBranch = main\n[safe]\n\tdirectory = ${projectPath}\n\tdirectory = ${join(projectPath, ".git")}\n`,
 	);
 	return { projectPath, gitUrl, gitConfigPath };
 }
