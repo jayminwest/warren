@@ -1,13 +1,18 @@
 /**
  * Scenario 22 — seeds-extensions-roundtrip (R-01, pl-bb70 step 7).
  *
- * Acceptance criteria #3, #5, #6 of pl-bb70:
+ * Acceptance criteria #3 and #6 of pl-bb70:
  *   3. After a manual POST /runs with seedId, `sd show <seed> --format json`
  *      shows extensions.{role,trigger:'manual',lastRunId,lastRunAt}.
- *   5. Extension write failure emits a `seeds_extension_write_failed` system
- *      event on the run and does NOT abort the run (verified by injecting a
- *      bogus seedId that `sd update` rejects).
  *   6. RunDetail/Run API surfaces a seed back-link via runs.seedId.
+ *
+ * Criterion #5 (an extension write failure emits
+ * `seeds_extension_write_failed` and does NOT abort the run) is pinned by
+ * `src/runs/spawn/seed-extensions.test.ts`, which drives a failing
+ * `sd update` straight through spawnRun. This scenario used to reach that
+ * path by posting a seedId no tracker could resolve, which #1234 turned
+ * into a pre-dispatch 404, so the injection stopped being reachable over
+ * HTTP. The second half now pins the refusal itself.
  *
  * The cron-tick consolidation (#4) is already exercised end-to-end by
  * scenario 15, which asserts {scheduledFor:null, lastScheduledRun, role,
@@ -63,14 +68,14 @@ interface RefreshResponse {
 	readonly project: ProjectRow;
 }
 
-interface EventRow {
-	readonly id: number;
-	readonly runId: string;
-	readonly seq: number;
-	readonly ts: string;
-	readonly kind: string;
-	readonly stream: string | null;
-	readonly payload: Record<string, unknown> | null;
+/** GET /runs envelope; only `total` is read, as the no-new-row pin. */
+interface RunListResponse {
+	readonly total: number;
+}
+
+/** Error envelope every non-2xx warren response carries. */
+interface ErrorEnvelope {
+	readonly error?: { readonly code?: string; readonly message?: string };
 }
 
 const TARGET_SEED_ID = "ah-acceptance-22-target";
@@ -82,7 +87,7 @@ const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 export const scenario: Scenario = {
 	id: "22",
 	title:
-		"Seeds extensions roundtrip — manual POST /runs stamps {role,trigger,lastRunId,lastRunAt}; bogus seed surfaces seeds_extension_write_failed",
+		"Seeds extensions roundtrip: manual POST /runs stamps {role,trigger,lastRunId,lastRunAt}; an unknown seed is refused 404 before any run row",
 	// Drives source-repo edits the container harness doesn't bind-mount
 	// (mirrors scenario 14/15 rationale). In-proc only.
 	modes: ["in-proc"],
@@ -184,52 +189,44 @@ export const scenario: Scenario = {
 		await cancelAndDrain(http, happy.run.id);
 
 		// ----------------------------------------------------------------
-		// Failure path — POST /runs with a seedId that does NOT exist in
-		// .seeds/issues.jsonl. `sd update` exits non-zero;
-		// writeSeedExtensions swallows the failure, emits a
-		// `seeds_extension_write_failed` system event, and the run still
-		// reaches a terminal state cleanly (no rollback over a logging
-		// failure — see src/runs/spawn/seed-extensions.ts:writeSeedExtensions).
+		// Rejection path (#1234). A seedId the tracker cannot resolve is
+		// refused before any side effect: validateSeedId
+		// (src/server/handlers/runs/dispatch.ts) calls IssueTracker.getIssue,
+		// and src/server/errors.ts renders IssueNotFoundError as 404. No run
+		// row is minted, so the dispatch never reaches writeSeedExtensions.
 		// ----------------------------------------------------------------
-		const failing = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
+		const before = await http.expectJson<RunListResponse>("GET", "/runs", 200);
+		const rejected = await http.request("POST", "/runs", {
 			body: {
 				agent: ctx.fixtures.stubAgentName,
 				project: project.id,
-				prompt: "[sleep_ms=8000] scenario-22 seeds-extensions failure path",
+				prompt: "scenario-22 unknown seed rejection",
 				seedId: BOGUS_SEED_ID,
 			},
 		});
 		assertEqual(
-			failing.run.seedId,
-			BOGUS_SEED_ID,
-			"POST /runs (bogus seed): seedId persists on the row regardless of the downstream update outcome",
+			rejected.status,
+			404,
+			"POST /runs (unknown seed): the tracker lookup refuses the dispatch",
 		);
-		assertTrue(
-			typeof failing.run.sandboxRunId === "string" && failing.run.sandboxRunId.length > 0,
-			"POST /runs (bogus seed): sandboxRunId attached — dispatch succeeded; only the extension write failed",
-		);
-
-		const events = await fetchAllEvents(http, failing.run.id);
-		const failedEvent = events.find(
-			(e) => e.kind === "seeds_extension_write_failed" && e.stream === "system",
-		);
-		if (failedEvent === undefined) {
-			throw new AcceptanceError(
-				`expected a seeds_extension_write_failed system event on run ${failing.run.id}; got kinds: ${summariseKinds(events)}`,
-			);
-		}
-		const payload = failedEvent.payload ?? {};
+		const rejectedBody = (await rejected.json()) as ErrorEnvelope;
 		assertEqual(
-			payload.seedId,
-			BOGUS_SEED_ID,
-			"seeds_extension_write_failed: payload.seedId echoes the bogus seed id",
+			rejectedBody.error?.code,
+			"issue_not_found",
+			"POST /runs (unknown seed): the envelope carries the issue_not_found code",
 		);
 		assertTrue(
-			typeof payload.reason === "string" && payload.reason.length > 0,
-			`seeds_extension_write_failed: payload.reason is non-empty; got ${JSON.stringify(payload.reason)}`,
+			typeof rejectedBody.error?.message === "string" &&
+				rejectedBody.error.message.includes(BOGUS_SEED_ID),
+			`POST /runs (unknown seed): the message names the seed; got ${JSON.stringify(rejectedBody.error?.message)}`,
 		);
 
-		await cancelAndDrain(http, failing.run.id);
+		const after = await http.expectJson<RunListResponse>("GET", "/runs", 200);
+		assertEqual(
+			after.total,
+			before.total,
+			"POST /runs (unknown seed): the refusal mints no run row (fail before side effects)",
+		);
 
 		// ----------------------------------------------------------------
 		// Cleanup — restore source state so a re-run starts clean and
@@ -300,22 +297,6 @@ async function requireSeedRow(path: string, id: string): Promise<SeedRowOnDisk> 
 		throw new AcceptanceError(`expected seed row id=${id} in ${path}; file was:\n${body}`);
 	}
 	return found;
-}
-
-async function fetchAllEvents(http: WarrenHttp, runId: string): Promise<EventRow[]> {
-	const events: EventRow[] = [];
-	for await (const row of http.streamNdjson(`/runs/${encodeURIComponent(runId)}/events`)) {
-		events.push(row as EventRow);
-	}
-	return events;
-}
-
-function summariseKinds(events: readonly EventRow[]): string {
-	const counts = new Map<string, number>();
-	for (const e of events) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
-	return Array.from(counts.entries())
-		.map(([k, n]) => `${k}×${n}`)
-		.join(", ");
 }
 
 async function cancelAndDrain(http: WarrenHttp, runId: string): Promise<void> {
