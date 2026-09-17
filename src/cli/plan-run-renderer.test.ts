@@ -196,6 +196,25 @@ describe("createPrettyRenderer", () => {
 		expect(lines()[0]).toBe("[08:09:10] ⋯ waiting for merge of child #3");
 	});
 
+	test("renders-lifecycle-merge-stalled-with-hint", () => {
+		const { sink, lines } = capture();
+		createPrettyRenderer(sink).event(
+			event("plan_run.merge_stalled", {
+				seq: 3,
+				hint: "checks are passing but auto-merge is not armed — arm auto-merge",
+			}),
+		);
+		expect(lines()[0]).toBe(
+			"[08:09:10] ⚠ merge stalled for child #3: checks are passing but auto-merge is not armed — arm auto-merge",
+		);
+	});
+
+	test("renders-lifecycle-merge-stalled-without-hint", () => {
+		const { sink, lines } = capture();
+		createPrettyRenderer(sink).event(event("plan_run.merge_stalled", { seq: 4 }));
+		expect(lines()[0]).toBe("[08:09:10] ⚠ merge stalled for child #4");
+	});
+
 	test("renders-lifecycle-merged", () => {
 		const { sink, lines } = capture();
 		createPrettyRenderer(sink).event(event("plan_run.merged", { mergedChildSeq: 1 }));

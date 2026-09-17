@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	discoverExtensions,
+	discoverRepairOnlyPackages,
 	type ExtensionPlan,
+	ensureInstalled,
 	type RunCommand,
 	runExtensionGates,
 } from "./check-extensions.ts";
@@ -20,6 +22,20 @@ function writeExtension(
 	const dir = join(root, "extensions", name);
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "package.json"), JSON.stringify({ name, scripts, dependencies }));
+	if (installed) mkdirSync(join(dir, "node_modules"));
+}
+
+function writeUiPackage(
+	scripts: Record<string, string> = {},
+	dependencies: Record<string, string> = {},
+	installed = false,
+): void {
+	const dir = join(root, "src", "ui");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({ name: "warren-ui", scripts, dependencies }),
+	);
 	if (installed) mkdirSync(join(dir, "node_modules"));
 }
 
@@ -145,5 +161,50 @@ describe("runExtensionGates", () => {
 		expect(results[0]?.ok).toBe(false);
 		expect(results[0]?.gate).toBe("typecheck");
 		expect(results[0]?.output).toContain("bun install --frozen-lockfile failed");
+	});
+});
+
+describe("discoverRepairOnlyPackages", () => {
+	test("returns nothing when src/ui is absent", () => {
+		expect(discoverRepairOnlyPackages(root)).toEqual([]);
+	});
+
+	test("plans src/ui with no gates even though the manifest declares typecheck", () => {
+		writeUiPackage({ typecheck: "tsc -b --noEmit" }, { vite: "^7.0.0" });
+		const plan = discoverRepairOnlyPackages(root)[0];
+		expect(plan?.gates).toEqual([]);
+		expect(plan?.hasDependencies).toBe(true);
+		expect(plan?.installed).toBe(false);
+	});
+
+	test("reports src/ui as installed once node_modules is on disk", () => {
+		writeUiPackage({}, { vite: "^7.0.0" }, true);
+		expect(discoverRepairOnlyPackages(root)[0]?.installed).toBe(true);
+	});
+
+	test("the repair is frozen, so it never rewrites src/ui/bun.lock", () => {
+		writeUiPackage({}, { vite: "^7.0.0" });
+		const plan = discoverRepairOnlyPackages(root)[0];
+		if (plan === undefined) throw new Error("expected a src/ui plan");
+		const seen: string[][] = [];
+		const run: RunCommand = (_cwd, argv) => {
+			seen.push([...argv]);
+			return { ok: true, output: "" };
+		};
+		expect(ensureInstalled(plan, run).ok).toBe(true);
+		expect(seen).toEqual([["bun", "install", "--frozen-lockfile"]]);
+	});
+
+	test("an already-installed src/ui is left alone", () => {
+		writeUiPackage({}, { vite: "^7.0.0" }, true);
+		const plan = discoverRepairOnlyPackages(root)[0];
+		if (plan === undefined) throw new Error("expected a src/ui plan");
+		const seen: string[][] = [];
+		const run: RunCommand = (_cwd, argv) => {
+			seen.push([...argv]);
+			return { ok: true, output: "" };
+		};
+		expect(ensureInstalled(plan, run).ok).toBe(true);
+		expect(seen).toEqual([]);
 	});
 });

@@ -213,6 +213,10 @@ function renderLifecycle(event: RunEvent): string {
 			return `✔ merged child #${numberField(payload, "mergedChildSeq") ?? "?"}`;
 		case "waiting_for_merge":
 			return `⋯ waiting for merge of child #${numberField(payload, "seq") ?? "?"}`;
+		case "merge_stalled":
+			return `⚠ merge stalled for child #${numberField(payload, "seq") ?? "?"}${
+				stringField(payload, "hint") === "" ? "" : `: ${stringField(payload, "hint")}`
+			}`;
 		case "waiting_for_pr_reopen":
 			return `⋯ waiting for PR reopen of child #${numberField(payload, "seq") ?? "?"}`;
 		case "failed":
