@@ -336,6 +336,7 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 		fail: (step, err) => ctx.fail(step, err),
 		setPrUrl: (id, url) => ctx.input.repos.runs.setPrUrl(id, url),
 		...(ctx.input.prTemplate !== undefined ? { prTemplate: ctx.input.prTemplate } : {}),
+		...(ctx.input.prAutoMerge !== undefined ? { prAutoMerge: ctx.input.prAutoMerge } : {}),
 		...(ctx.input.sleep !== undefined ? { sleep: ctx.input.sleep } : {}),
 	});
 	state.prUrl = state.openedPr?.url ?? null;
@@ -351,8 +352,7 @@ async function previewLaunchStep(
 	state: ReapPipelineState,
 ): Promise<void> {
 	const { sandboxId } = ctx.run;
-	// Surface the skip only when a successful, committed run opted in (preview
-	// WOULD have launched locally); otherwise stay silent.
+	// Surface the skip only when a successful, committed run opted in (preview would launch locally).
 	if (!ctx.provider.capabilities.previewPorts) {
 		if (
 			ctx.input.outcome === "succeeded" &&

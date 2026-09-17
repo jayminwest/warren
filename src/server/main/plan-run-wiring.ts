@@ -11,7 +11,7 @@
  */
 
 import type { Repos } from "../../db/repos/index.ts";
-import type { Forge } from "../../forge/contract.ts";
+import type { Forge, PullRequestRef, RepoRef } from "../../forge/contract.ts";
 import { mintGitCredential } from "../../forge/credentials.ts";
 import {
 	bootPlanRunCoordinator,
@@ -30,6 +30,8 @@ import {
 	resolveRunBranchPrefix,
 } from "../../runs/index.ts";
 import { buildPrContent } from "../../runs/pr.ts";
+import { runAutoMergeArm } from "../../runs/reap/auto-merge-arm.ts";
+import type { ReapExec } from "../../runs/reap/types.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
@@ -41,10 +43,18 @@ import { planRunLoggerFromPino } from "./logging.ts";
 
 type ReopenPrDeps = Pick<
 	PlanRunWiringInput,
-	"repos" | "warrenConfigs" | "autoOpenPr" | "forge" | "runBranchPrefixDefault" | "logger"
+	| "repos"
+	| "warrenConfigs"
+	| "autoOpenPr"
+	| "forge"
+	| "runBranchPrefixDefault"
+	| "projectSpawn"
+	| "now"
+	| "logger"
 >;
 
 type RunRow = NonNullable<Awaited<ReturnType<Repos["runs"]["get"]>>>;
+type ProjectRow = NonNullable<Awaited<ReturnType<Repos["projects"]["get"]>>>;
 
 /** Build the optional `buildPrContent` fields (only-if-present spreads). */
 function buildReopenPrContent(
@@ -69,49 +79,19 @@ function buildReopenPrContent(
 /**
  * Build the `reopenPr` coordinator seam — reopens a run's PR when auto-open
  * is enabled. Returns `undefined` when auto-open is disabled / tokenless.
+ * Exported for the co-located reopen-arm test (warren-14d6).
  */
-function createReopenPr(
+export function createReopenPr(
 	deps: ReopenPrDeps,
 ): ((runId: string) => Promise<string | null>) | undefined {
-	const { repos, warrenConfigs, autoOpenPr, forge, runBranchPrefixDefault, logger } = deps;
+	const { autoOpenPr, logger } = deps;
 	// warren-63e7: the token-presence conjunct died with the captured token.
 	// A credential-less forge surfaces `no_credential` from openPullRequest
 	// (logged below, reopen skipped) — same net behavior, no §5 conditional.
 	if (!autoOpenPr.enabled) return undefined;
 	return async (runId: string): Promise<string | null> => {
 		try {
-			const run = await repos.runs.get(runId);
-			if (run === null || run.projectId === null) return null;
-			const project = await repos.projects.get(run.projectId);
-			if (project === null) return null;
-			const warrenConfig = await warrenConfigs.get(run.projectId, project.localPath);
-			const prefix = resolveRunBranchPrefix({
-				projectDefault: warrenConfig.defaults?.runBranchPrefix,
-				envDefault: runBranchPrefixDefault,
-			});
-			const branch = composeRunBranch(prefix, runId);
-			// warren-45e6: the reopen crosses the Forge seam. parseRepoRef never
-			// throws — null means no forge owns the URL, logged + skipped.
-			const ref = forge.parseRepoRef(project.gitUrl);
-			if (ref === null) {
-				logger.warn({ runId }, "plan_run.reopen_pr_unowned_url");
-				return null;
-			}
-			const content = buildReopenPrContent(run, autoOpenPr);
-			const result = await forge.openPullRequest(ref, {
-				headBranch: branch,
-				// warren-8cbf: the reopened PR targets the same base reap would
-				// have used — the run's frozen clone ref, else the default branch.
-				baseBranch: run.ref ?? project.defaultBranch,
-				title: content.title,
-				body: content.body,
-			});
-			if (result.ok) return result.value.webUrl;
-			logger.warn(
-				{ runId, kind: result.error.kind, detail: result.error.detail },
-				"plan_run.reopen_pr_failed",
-			);
-			return null;
+			return await reopenPrForRun(deps, runId);
 		} catch (err) {
 			logger.warn(
 				{ runId, reason: err instanceof Error ? err.message : String(err) },
@@ -119,6 +99,144 @@ function createReopenPr(
 			);
 			return null;
 		}
+	};
+}
+
+/**
+ * The reopen body, extracted from the seam closure to keep both under the
+ * cognitive-complexity budget (warren-d3a6). Resolves the run → project →
+ * branch, opens the PR through the Forge seam, and — on success — arms it
+ * (warren-14d6) before returning the new URL.
+ */
+async function reopenPrForRun(deps: ReopenPrDeps, runId: string): Promise<string | null> {
+	const { repos, warrenConfigs, autoOpenPr, forge, runBranchPrefixDefault, logger } = deps;
+	const run = await repos.runs.get(runId);
+	if (run === null || run.projectId === null) return null;
+	const project = await repos.projects.get(run.projectId);
+	if (project === null) return null;
+	const warrenConfig = await warrenConfigs.get(run.projectId, project.localPath);
+	const prefix = resolveRunBranchPrefix({
+		projectDefault: warrenConfig.defaults?.runBranchPrefix,
+		envDefault: runBranchPrefixDefault,
+	});
+	const branch = composeRunBranch(prefix, runId);
+	// warren-45e6: the reopen crosses the Forge seam. parseRepoRef never
+	// throws — null means no forge owns the URL, logged + skipped.
+	const ref = forge.parseRepoRef(project.gitUrl);
+	if (ref === null) {
+		logger.warn({ runId }, "plan_run.reopen_pr_unowned_url");
+		return null;
+	}
+	const content = buildReopenPrContent(run, autoOpenPr);
+	const baseBranch = run.ref ?? project.defaultBranch;
+	const result = await forge.openPullRequest(ref, {
+		headBranch: branch,
+		// warren-8cbf: the reopened PR targets the same base reap would
+		// have used — the run's frozen clone ref, else the default branch.
+		baseBranch,
+		title: content.title,
+		body: content.body,
+	});
+	if (result.ok) {
+		// warren-14d6 (pl-92a3 step 6): a reopened child PR arms exactly the
+		// way a reaped one does — through the SAME `runAutoMergeArm`, never a
+		// copy (AGENTS.md "Single source of truth").
+		await armReopenedPr(deps, {
+			run,
+			project,
+			ref,
+			prRef: result.value,
+			branch,
+			baseBranch,
+		});
+		return result.value.webUrl;
+	}
+	logger.warn(
+		{ runId, kind: result.error.kind, detail: result.error.detail },
+		"plan_run.reopen_pr_failed",
+	);
+	return null;
+}
+
+/** The reopened PR the arm sub-step targets (warren-14d6). */
+interface ReopenedPrArmTarget {
+	readonly run: RunRow;
+	readonly project: ProjectRow;
+	readonly ref: RepoRef;
+	readonly prRef: PullRequestRef;
+	readonly branch: string;
+	readonly baseBranch: string;
+}
+
+/**
+ * Arm auto-merge on a PR the reopen seam just opened (warren-14d6). Routed
+ * through the same `runAutoMergeArm` the reap PR-open sub-step calls, so a
+ * reopened child PR arms identically to a reaped one. Fully isolated from
+ * the reopen outcome: the arm is best-effort by contract (it cannot throw,
+ * cannot change run state, and stays silent when the project never opted
+ * in), and this wrapper catches even a config-load failure so the reopen's
+ * own return value — the PR URL — is never held hostage by arming.
+ */
+async function armReopenedPr(deps: ReopenPrDeps, target: ReopenedPrArmTarget): Promise<void> {
+	const { repos, warrenConfigs, forge, projectSpawn, logger, now } = deps;
+	const { run, project } = target;
+	try {
+		const config = await warrenConfigs.get(project.id, project.localPath);
+		await runAutoMergeArm({
+			projectAutoMerge: config.defaults?.pr?.autoMerge ?? undefined,
+			run: { id: run.id, trigger: run.trigger },
+			project: { gitUrl: project.gitUrl, localPath: project.localPath },
+			prUrl: target.prRef.webUrl,
+			prNumber: target.prRef.number,
+			repoRef: target.ref,
+			prRef: target.prRef,
+			branch: target.branch,
+			baseBranch: target.baseBranch,
+			// The reopen seam runs host-side after the workspace is gone, so the
+			// arm takes its no-workspace path: it fetches the pushed branch into
+			// the project clone before the policy's diff read.
+			workspacePath: null,
+			forge,
+			exec: execFromSpawn(projectSpawn),
+			emit: async (kind, payload) => {
+				const seq = ((await repos.events.maxSeqForRun(run.id)) ?? 0) + 1;
+				await repos.events.append({
+					runId: run.id,
+					sandboxEventSeq: seq,
+					ts: (now?.() ?? new Date()).toISOString(),
+					kind,
+					stream: "system",
+					payload,
+				});
+			},
+		});
+	} catch (err) {
+		logger.warn(
+			{ runId: run.id, reason: err instanceof Error ? err.message : String(err) },
+			"plan_run.reopen_pr_arm_error",
+		);
+	}
+}
+
+/**
+ * Adapt the boot-wired `SpawnFn` onto the `ReapExec` shape the arm step
+ * reads git through — same `{ cwd, timeoutMs?, env? }` options, rejection
+ * on a non-zero exit so `ReapExec` consumers keep their fail-closed reads.
+ */
+function execFromSpawn(spawn: SpawnFn): ReapExec {
+	return {
+		run: async (cmd, args, opts) => {
+			const result = await spawn([cmd, ...args], {
+				cwd: opts.cwd,
+				...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+				...(opts.env !== undefined ? { env: opts.env } : {}),
+			});
+			if (result.exitCode !== 0) {
+				const first = (args[0] ?? "").split(" ")[0] ?? "";
+				throw new Error(result.stderr.trim() || `${cmd} ${first} exited ${result.exitCode}`);
+			}
+			return { stdout: result.stdout, stderr: result.stderr };
+		},
 	};
 }
 
@@ -258,7 +376,9 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			warrenConfigs,
 			autoOpenPr,
 			forge,
+			projectSpawn,
 			logger,
+			...(now !== undefined ? { now } : {}),
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		}),
 		spawn: createPlanRunSpawn({

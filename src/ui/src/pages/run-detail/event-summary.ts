@@ -158,7 +158,43 @@ function reapFailedSummary(payload: Record<string, unknown>): string {
 	return message !== null ? `${step}: ${truncateSummary(message, 100)}` : `failed in ${step}`;
 }
 
+/**
+ * One-line summaries for the auto-merge arm events (warren-14d6 / pl-92a3
+ * §5). Extracted from `summarizeReap` to keep both under the cognitive-
+ * complexity budget; returns null for every other reap kind.
+ */
+function summarizeAutoMergeKind(kind: string, payload: Record<string, unknown>): string | null {
+	switch (kind) {
+		case "reap.auto_merge_armed": {
+			const outcome = readString(payload.outcome) ?? "armed";
+			const method = readString(payload.method);
+			const prNumber = readNumber(payload.prNumber);
+			const parts = [`auto-merge ${outcome}`];
+			if (method !== null) parts.push(method);
+			if (prNumber !== null) parts.push(`PR #${prNumber}`);
+			return parts.join(" · ");
+		}
+		case "reap.auto_merge_skipped": {
+			const reason = readString(payload.reason) ?? "unknown";
+			const paths = Array.isArray(payload.paths) ? payload.paths : [];
+			const parts = [`auto-merge skipped: ${reason}`];
+			if (paths.length > 0) parts.push(`${paths.length} protected path(s)`);
+			return parts.join(" · ");
+		}
+		case "reap.auto_merge_not_armed": {
+			const reason = readString(payload.reason) ?? "unknown";
+			const message = readString(payload.message);
+			const label = `auto-merge not armed: ${reason}`;
+			return message !== null ? `${label} · ${truncateSummary(message, 80)}` : label;
+		}
+		default:
+			return null;
+	}
+}
+
 function summarizeReap(kind: string, payload: Record<string, unknown>): string {
+	const autoMerge = summarizeAutoMergeKind(kind, payload);
+	if (autoMerge !== null) return autoMerge;
 	switch (kind) {
 		case "reap.completed":
 			return reapCompletedSummary(payload);

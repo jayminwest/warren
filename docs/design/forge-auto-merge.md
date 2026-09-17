@@ -294,18 +294,21 @@ event per run:
    `reap.auto_merge_armed`. A refusal or a transport failure emits
    `reap.auto_merge_not_armed`.
 
-The arm sub-step runs last in the reap PR-open phase, after
-`reap.pr_opened` and the preview annotate, so its bounded latency never
-delays them. Arming is best-effort: no outcome fails the run, delays
-reap past the fifteen-second ceiling, or changes the run's terminal
-state. A re-reap sweep runs the step again against the same PR, and
-`already_armed` keeps that safe.
+The arm sub-step runs last in the `pr_open` reap sub-step, immediately
+after `reap.pr_opened` (both the created and the resolved-existing paths),
+and ahead of the preview launch/annotate sub-steps, so its bounded
+latency never delays the PR-open event itself. Arming is best-effort:
+no outcome fails the run, delays reap past the fifteen-second ceiling,
+or changes the run's terminal state. A re-reap sweep runs the step again
+against the same PR, and `already_armed` keeps that safe. The plan-run
+coordinator's reopen seam (warren-22de) routes through the SAME arm
+function, so a reopened child PR arms identically to a reaped one.
 
 ## 5. Event vocabulary
 
 | Kind | Payload | Fires |
 |---|---|---|
-| `reap.auto_merge_armed` | `{ prUrl, outcome, method }` | The arm succeeded. `outcome` is `armed` or `already_armed`. `method` mirrors the config. |
+| `reap.auto_merge_armed` | `{ prUrl, prNumber, method, outcome }` | The arm succeeded. `outcome` is `armed` or `already_armed`. `method` mirrors the config. |
 | `reap.auto_merge_skipped` | `{ reason, paths? }` | Arming never started. `reason` is one of `off`, `unsupported_forge`, `protected_path`, `config_changed`, `empty_diff`, `diff_unreadable`, `ci_fixer_run`. `paths` carries the changed files on `protected_path` and `config_changed`. |
 | `reap.auto_merge_not_armed` | `{ reason, message }` | The forge refused or the transport failed. `reason` is the closed refusal vocabulary of §2.1. `message` is the forge's redacted text, and a transport failure names its `ForgeErrorKind` in `message` with reason `unknown`. |
 | `plan_run.merge_stalled` | `{ planRunId, seq, prUrl, checksPassing, autoMerge, waitedMs }` | See §7. |

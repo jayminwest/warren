@@ -27,10 +27,7 @@ import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { IssueTracker } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
-import {
-	resolveProjectPreviewConfig,
-	resolveProjectPrTemplate,
-} from "./bridge-reconnect-config.ts";
+import { resolveSucceededReapProjectConfig } from "./bridge-reconnect-config.ts";
 import { teardownLostRunWorkspace } from "./bridge-reconnect-teardown.ts";
 
 export const TERMINAL_RUN_STATES: ReadonlySet<RunState> = new Set([
@@ -170,14 +167,10 @@ export async function runWithReconnect(
 			// external scheduler. reap is idempotent + best-effort, so
 			// errors land as `reap.completed`/`reap_failed` events on the
 			// run rather than escaping back up the registry.
-			const previewConfig =
+			const { previewConfig, prTemplate, prAutoMerge } =
 				result.terminalDetected.outcome === "succeeded"
-					? await resolveProjectPreviewConfig(input, log)
-					: undefined;
-			const prTemplate =
-				result.terminalDetected.outcome === "succeeded"
-					? await resolveProjectPrTemplate(input, log)
-					: undefined;
+					? await resolveSucceededReapProjectConfig(input, log)
+					: { previewConfig: undefined, prTemplate: undefined, prAutoMerge: undefined };
 			try {
 				await input.reap({
 					runId: input.runId,
@@ -203,6 +196,7 @@ export async function runWithReconnect(
 						? { previewLaunchConfig: input.previewLaunchConfig }
 						: {}),
 					...(prTemplate !== undefined ? { prTemplate } : {}),
+					...(prAutoMerge !== undefined ? { prAutoMerge } : {}),
 					...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
 					...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 				});

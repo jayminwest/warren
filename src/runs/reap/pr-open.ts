@@ -2,8 +2,10 @@ import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
 import type { Forge, ForgeErrorKind, PullRequestRef, RepoRef } from "../../forge/contract.ts";
 import { mintGitCredential } from "../../forge/credentials.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
+import type { AutoMergeConfig } from "../../warren-config/pr-config.ts";
 import { type AutoOpenPrConfig, type BuildPrContentInput, buildPrContent } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
+import { runAutoMergeArm } from "./auto-merge-arm.ts";
 import { type CloneFetchConfig, gatherPrContext, type PrContext } from "./pr-context.ts";
 import type { ReapExec } from "./types.ts";
 
@@ -196,6 +198,15 @@ export interface RunPrOpenInput {
 	readonly issueTracker?: IssueTracker;
 	/** Injected sleep for tests; defaults to real setTimeout-based sleep. */
 	readonly sleep?: (ms: number) => Promise<void>;
+	/**
+	 * The project's own `pr.autoMerge` block — the auto-merge ENGAGEMENT gate
+	 * (warren-14d6 / pl-92a3 §4). `undefined` (absent block, unwired caller,
+	 * tests) keeps the arm sub-step fully silent: no event, no git read, no
+	 * forge call. Resolved by the caller from the project config warren already
+	 * loads; the POLICY itself still resolves from the PR's base ref inside
+	 * the arm step.
+	 */
+	readonly prAutoMerge?: AutoMergeConfig;
 }
 
 /**
@@ -289,6 +300,26 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null>
 				mode: opened.pr.mode,
 				branch: input.branch,
 				baseBranch: input.baseBranch,
+			});
+			// warren-14d6 (pl-92a3 step 6): the auto-merge arm sub-step — the LAST
+			// sub-step of the PR-open phase, after `reap.pr_opened`, for both the
+			// created and the resolved-existing paths. Best-effort by contract:
+			// it never throws, never changes run state, and emits nothing when the
+			// project never opted in (the module owns all three invariants).
+			await runAutoMergeArm({
+				projectAutoMerge: input.prAutoMerge,
+				run: { id: input.run.id, trigger: input.run.trigger },
+				project: input.project,
+				prUrl: opened.pr.url,
+				prNumber: opened.pr.prRef.number,
+				repoRef: opened.pr.repoRef,
+				prRef: opened.pr.prRef,
+				branch: input.branch,
+				baseBranch,
+				workspacePath: input.workspacePath,
+				forge: input.forge,
+				exec: input.exec,
+				emit: input.emit,
 			});
 			return opened.pr;
 		}

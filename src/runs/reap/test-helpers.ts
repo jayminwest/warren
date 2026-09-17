@@ -185,6 +185,22 @@ export interface FakeExecOpts {
 	gitStatus?: string;
 	/** Throw on `git status --porcelain` calls (default: succeed). */
 	failGitStatus?: string;
+	/**
+	 * Stdout for `git show <ref>:<path>` (warren-14d6: the base-ref
+	 * `pr.autoMerge` policy read). Default `""` — the file reads as absent
+	 * at the ref, the auto-merge `off` arm.
+	 */
+	showStdout?: string;
+	/** Throw on `git show` calls (default: succeed). */
+	failShow?: string;
+	/**
+	 * Stdout for `git diff --name-only --no-renames -z <base>...<head>`
+	 * (warren-14d6: the auto-merge changed-path read). NUL-separated;
+	 * default `""` — a computed-empty diff, the policy's `empty_diff`.
+	 */
+	nameOnlyDiff?: string;
+	/** Throw on `git diff --name-only` calls (default: succeed). */
+	failNameOnlyDiff?: string;
 }
 
 /** Match a `git <sub> …` invocation for the fakeExec command router. */
@@ -228,12 +244,27 @@ function handleMergeBase(mergeBase: string): ExecResult {
 	return { stdout: `${mergeBase}\n`, stderr: "" };
 }
 
+/** The `git show <ref>:<path>` reads (warren-14d6 base-ref config probe). */
+function handleShow(failShow: string | null, showStdout: string): ExecResult {
+	if (failShow !== null) throw new Error(failShow);
+	return { stdout: showStdout, stderr: "" };
+}
+
+/** The `git diff --name-only` reads (warren-14d6 changed-path probe). */
+function handleNameOnlyDiff(failNameOnlyDiff: string | null, nameOnlyDiff: string): ExecResult {
+	if (failNameOnlyDiff !== null) throw new Error(failNameOnlyDiff);
+	return { stdout: nameOnlyDiff, stderr: "" };
+}
+
 /** The `git diff` probes; split out of `route` to keep both under the complexity budget. */
 function routeDiffProbe(
 	args: readonly string[],
 	stagedDelta: boolean,
 	numstat: string,
+	failNameOnlyDiff: string | null,
+	nameOnlyDiff: string,
 ): ExecResult | null {
+	if (args.includes("--name-only")) return handleNameOnlyDiff(failNameOnlyDiff, nameOnlyDiff);
 	if (args.includes("--cached") && args.includes("--quiet")) {
 		return handleDiffCached(stagedDelta);
 	}
@@ -259,9 +290,14 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const stagedDelta = opts.stagedDelta === true;
 	const gitStatus = opts.gitStatus ?? "";
 	const failGitStatus = opts.failGitStatus ?? null;
+	const showStdout = opts.showStdout ?? "";
+	const failShow = opts.failShow ?? null;
+	const nameOnlyDiff = opts.nameOnlyDiff ?? "";
+	const failNameOnlyDiff = opts.failNameOnlyDiff ?? null;
 	// Routed `git <sub>` reads, split out of `run` (and of each other) to keep
-	// every function under the cognitive-complexity budget.
-	const route = (cmd: string, args: readonly string[]): ExecResult | null => {
+	// every function under the cognitive-complexity budget. `routeSub` answers
+	// the single-subcommand probes; the `diff` router splits again by flag.
+	const routeSub = (cmd: string, args: readonly string[]): ExecResult | null => {
 		if (isGitSub(cmd, args, "cat-file")) return handleCatFile(failCatFile);
 		if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
 		if (isGitSub(cmd, args, "rev-parse")) return handleRevParse(revParse);
@@ -269,7 +305,15 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 			return handleStatus(failGitStatus, gitStatus);
 		}
 		if (isGitSub(cmd, args, "merge-base")) return handleMergeBase(mergeBase);
-		if (isGitSub(cmd, args, "diff")) return routeDiffProbe(args, stagedDelta, numstat);
+		if (isGitSub(cmd, args, "show")) return handleShow(failShow, showStdout);
+		return null;
+	};
+	const route = (cmd: string, args: readonly string[]): ExecResult | null => {
+		const sub = routeSub(cmd, args);
+		if (sub !== null) return sub;
+		if (isGitSub(cmd, args, "diff")) {
+			return routeDiffProbe(args, stagedDelta, numstat, failNameOnlyDiff, nameOnlyDiff);
+		}
 		return null;
 	};
 	const exec: ReapExec = {

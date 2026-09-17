@@ -12,6 +12,7 @@ import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
+import type { AutoMergeConfig } from "../../warren-config/pr-config.ts";
 import type { RunEventBroker } from "../events.ts";
 import type { AutoOpenPrConfig } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
@@ -155,6 +156,16 @@ export interface ReapRunInput {
 	 * config cache the same way it resolves `previewConfig`.
 	 */
 	readonly prTemplate?: PrTemplateOverrides;
+	/**
+	 * The project's own `pr.autoMerge` block — the auto-merge ENGAGEMENT gate
+	 * (warren-14d6 / pl-92a3 step 6). Resolved by the caller from the
+	 * project's `.warren/config.yaml` (the warren-config cache warren already
+	 * loads per run); `undefined` — absent block, unwired caller, tests — keeps
+	 * the arm sub-step fully silent: no event, no git read, no forge call, so
+	 * existing deployments and test expectations stay byte-identical. The
+	 * policy itself still resolves from the PR's BASE ref inside the step.
+	 */
+	readonly prAutoMerge?: AutoMergeConfig;
 	/**
 	 * Override the preview-launch mechanics (tests). Defaults to
 	 * `launchPreview`. Receives the resolved input shape, including the
