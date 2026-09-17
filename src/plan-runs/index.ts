@@ -32,6 +32,7 @@ export {
 	closeMergedChildSeed,
 } from "./close-child-seed.ts";
 export {
+	DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS,
 	DEFAULT_PLAN_RUN_MERGE_TIMEOUT_MS,
 	DEFAULT_PLAN_RUN_TICK_MS,
 	type EnvLike,
@@ -61,6 +62,14 @@ export {
 } from "./create.ts";
 export { type CreatePlanRunSpawnInput, createPlanRunSpawn } from "./dispatch.ts";
 export { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
+export {
+	createMergeStallProbe,
+	hasMergeStalledEvent,
+	type MergeStallDiagnosis,
+	type MergeStallProbe,
+	maybeWarnMergeStalled,
+	mergeTimeoutDiagnosis,
+} from "./merge-stall.ts";
 export {
 	type ComputeReadyPlansInput,
 	computeReadyPlans,
