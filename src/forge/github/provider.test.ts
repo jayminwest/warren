@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { GitHubForge } from "./provider.ts";
+import { stubGitHubServer } from "./stub-server.ts";
 import { jsonResponse, recordingFetch } from "./test-helpers.ts";
 
 const REF = { forge: "github", key: "github.com/octo/widget" } as const;
@@ -35,7 +36,7 @@ function prJson(n: number, overrides: Record<string, unknown> = {}) {
 }
 
 describe("GitHubForge capabilities", () => {
-	test("reports the classic-PAT set: checkRuns true, static lifetime, no bot identity", () => {
+	test("reports the classic-PAT set: checkRuns, auto-merge arm, static lifetime, no bot identity", () => {
 		expect(new GitHubForge({ token: "t" }).capabilities).toEqual({
 			checkRuns: true,
 			jobLogs: true,
@@ -43,7 +44,7 @@ describe("GitHubForge capabilities", () => {
 			branchDelete: true,
 			botIdentity: false,
 			installationRepos: false,
-			autoMergeArm: false,
+			autoMergeArm: true,
 			credentialLifetime: "static",
 		});
 	});
@@ -191,9 +192,19 @@ describe("GitHubForge.getPullRequest", () => {
 				mergedAt: null,
 				headCommit: "deadbeef",
 				baseBranch: "main",
-				autoMerge: "unknown",
+				// No REST auto_merge object: nothing armed (pl-92a3).
+				autoMerge: "unarmed",
 			},
 		});
+	});
+
+	test("maps the REST auto_merge field onto the seam autoMerge state (pl-92a3)", async () => {
+		const armed = forgeWith([jsonResponse(200, prJson(5, { auto_merge: { enabled: true } }))]);
+		const first = await armed.forge.getPullRequest(REF, pr);
+		expect(first.ok && first.value.autoMerge).toBe("armed");
+		const unarmed = forgeWith([jsonResponse(200, prJson(5, { auto_merge: null }))]);
+		const second = await unarmed.forge.getPullRequest(REF, pr);
+		expect(second.ok && second.value.autoMerge).toBe("unarmed");
 	});
 
 	test("maps merged_at to the merged lifecycle with an epoch-ms mergedAt (§7)", async () => {
@@ -219,6 +230,78 @@ describe("GitHubForge.getPullRequest", () => {
 		const result = await forge.getPullRequest(REF, pr);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe("not_found");
+	});
+});
+
+describe("GitHubForge.armAutoMerge (pl-92a3)", () => {
+	function stubForge() {
+		const stub = stubGitHubServer();
+		return { stub, forge: new GitHubForge({ token: "pat-token", fetch: stub.fetch }) };
+	}
+
+	async function openPr(forge: GitHubForge) {
+		const opened = await forge.openPullRequest(REF, DRAFT);
+		if (!opened.ok) throw new Error("open failed");
+		return { ref: REF, pr: opened.value };
+	}
+
+	test("arms through the GraphQL transport and reports it on the PR state", async () => {
+		const { forge } = stubForge();
+		const { ref, pr } = await openPr(forge);
+		const armed = await forge.armAutoMerge(ref, pr, { method: "squash" });
+		expect(armed).toEqual({ ok: true, value: { outcome: "armed" } });
+		const state = await forge.getPullRequest(ref, pr);
+		expect(state.ok && state.value.autoMerge).toBe("armed");
+	});
+
+	test("is idempotent: a re-arm answers already_armed without a second mutation", async () => {
+		const { stub, forge } = stubForge();
+		const { ref, pr } = await openPr(forge);
+		expect(await forge.armAutoMerge(ref, pr, { method: "squash" })).toEqual({
+			ok: true,
+			value: { outcome: "armed" },
+		});
+		// A scripted refusal would win if the mutation ran again; the pre-check wins.
+		stub.scriptGraphQL({ errors: [{ message: "Auto merge is not allowed for this repository" }] });
+		expect(await forge.armAutoMerge(ref, pr, { method: "squash" })).toEqual({
+			ok: true,
+			value: { outcome: "already_armed" },
+		});
+	});
+
+	test("propagates a GraphQL-route refusal through the seam", async () => {
+		const { stub, forge } = stubForge();
+		const { ref, pr } = await openPr(forge);
+		stub.scriptGraphQL({ errors: [{ message: "Pull request is in clean status" }] });
+		const refused = await forge.armAutoMerge(ref, pr, { method: "squash" });
+		expect(refused).toEqual({
+			ok: false,
+			error: { reason: "clean_status", message: "Pull request is in clean status" },
+		});
+	});
+
+	test("refuses not_open on a merged PR without calling the mutation", async () => {
+		const { stub, forge } = stubForge();
+		const { ref, pr } = await openPr(forge);
+		stub.patchPullRequest(pr.number, { merged: true });
+		// A scripted refusal would win if the mutation ran; the state check wins first.
+		stub.scriptGraphQL({ errors: [{ message: "Auto merge is not allowed for this repository" }] });
+		const refused = await forge.armAutoMerge(ref, pr, { method: "squash" });
+		expect(refused).toEqual({
+			ok: false,
+			error: { reason: "not_open", message: expect.stringContaining("merged") },
+		});
+	});
+
+	test("an empty token refuses unknown naming the credential kind", async () => {
+		const forge = new GitHubForge({ token: "" });
+		const pr = { forge: "github", key: "k", number: 1, webUrl: "u" };
+		const result = await forge.armAutoMerge(REF, pr, { method: "squash" });
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.reason).toBe("unknown");
+			expect(result.error.message).toContain("no_credential");
+		}
 	});
 });
 
