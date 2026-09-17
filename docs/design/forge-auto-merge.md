@@ -90,7 +90,17 @@ interface ForgeCapabilities {
 
 type AutoMergeMethod = "squash" | "merge" | "rebase";
 
-type ArmAutoMergeRefusalReason =
+/** Options for armAutoMerge. */
+interface ArmAutoMergeOptions {
+  readonly method: AutoMergeMethod;
+}
+
+/** Success value of armAutoMerge — both outcomes are success. */
+interface AutoMergeArmOutcome {
+  readonly outcome: "armed" | "already_armed";
+}
+
+type AutoMergeRefusalReason =
   | "repo_auto_merge_disabled"
   | "clean_status"
   | "insufficient_permission"
@@ -99,35 +109,40 @@ type ArmAutoMergeRefusalReason =
   | "unsupported_forge"
   | "unknown";
 
-type ArmAutoMergeOutcome =
-  | { readonly outcome: "armed" }
-  | { readonly outcome: "already_armed" }
-  | {
-      readonly outcome: "refused";
-      readonly reason: ArmAutoMergeRefusalReason;
-      readonly message: string;
-    };
+/** One refusal: the stable reason code plus the forge's own words. */
+interface AutoMergeRefusal {
+  readonly reason: AutoMergeRefusalReason;
+  readonly message: string;
+}
+
+type ArmAutoMergeResult =
+  | { ok: true; value: AutoMergeArmOutcome }
+  | { ok: false; error: AutoMergeRefusal };
 
 interface Forge {
   // ...existing methods...
   armAutoMerge(
     ref: RepoRef,
     pr: PullRequestRef,
-    input: { method: AutoMergeMethod },
-  ): Promise<ForgeResult<ArmAutoMergeOutcome>>;
+    options: ArmAutoMergeOptions,
+  ): Promise<ArmAutoMergeResult>;
 }
 ```
 
-A refusal is a successful call with a semantic answer, not a transport
-error, so all three outcomes ride the `ok: true` arm of `ForgeResult`.
-Transport failures ride `ok: false` with `ForgeError`, unchanged.
+Both success outcomes ride the `ok: true` arm as `AutoMergeArmOutcome`,
+and every refusal rides the `ok: false` arm as an `AutoMergeRefusal` —
+the stable reason code plus the forge's own redacted words.
+`ArmAutoMergeResult` narrows the seam's `ForgeResult` convention to this
+vocabulary instead of `ForgeError`: arming is best-effort, so a refusal
+is a reportable answer with exactly one reason, never a run failure. A
+transport failure is classified into a refusal too — reason `unknown`,
+its `ForgeErrorKind` named in the message — so the caller switches on
+one taxonomy, never two.
 
 - `armed`: the mutation armed the pull request.
 - `already_armed`: the pull request already carries an auto-merge
   request. The provider detects it and skips the mutation. This is the
   idempotency contract.
-- `refused`: GitHub answered no. The reason comes from the closed
-  vocabulary above, and `message` carries GitHub's own words, redacted.
 - `not_open`: the pull request is closed, merged, or a draft at arm
   time. The provider checks state first and never attempts the mutation
   on a pull request it cannot arm. This covers the race where a human or
@@ -165,12 +180,13 @@ App answers without a special case.
 
 ### 2.3 Where the vocabulary lives
 
-The seam DTOs (`AutoMergeMethod`, `ArmAutoMergeRefusalReason`,
-`ArmAutoMergeOutcome`) live in `src/forge/contract.ts`, beside `CheckRun`
-and `PullRequestState`. Nothing in this plan enters `src/core/wire.ts`:
-no SDK or UI type renders these values as an enum today, and the events
-of §5 carry them as payload fields. `DOMAIN_STEMS` stays unchanged, so
-`check:wire-types` passes with no allowlist or stem widening.
+The seam DTOs (`AutoMergeMethod`, `AutoMergeRefusalReason`,
+`AutoMergeArmOutcome`, `AutoMergeRefusal`, `ArmAutoMergeResult`) live in
+`src/forge/contract.ts`, beside `CheckRun` and `PullRequestState`. Nothing in
+this plan enters `src/core/wire.ts`: no SDK or UI type renders these values
+as an enum today, and the events of §5 carry them as payload fields.
+`DOMAIN_STEMS` stays unchanged, so `check:wire-types` passes with no
+allowlist or stem widening.
 
 The GraphQL transport lands in a new file under `src/forge/github/`,
 because `provider.ts` sits at exactly 500 lines. The transport reuses
@@ -190,8 +206,8 @@ The provider absorbs that inside `armAutoMerge`:
 2. While it reads `UNKNOWN`, wait and re-read on the schedule 1s, 2s,
    4s, 8s. Four waits, so the arm adds at most about fifteen seconds to
    reap.
-3. When the state stays `UNKNOWN` past the schedule, return `refused`
-   with reason `mergeability_unsettled`.
+3. When the state stays `UNKNOWN` past the schedule, answer with a
+   refusal: reason `mergeability_unsettled`.
 4. A `CONFLICTING` pull request classifies as `unknown` with GitHub's
    message preserved. Warren does not repair conflicts here. The healer
    and fixer paths own repair, and a later re-reap sweep arms the pull

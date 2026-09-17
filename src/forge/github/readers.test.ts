@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readJson, readText, truncate } from "./readers.ts";
+import { readAutoMergeState, readJson, readText, truncate } from "./readers.ts";
 
 describe("readJson", () => {
 	test("parses a JSON body", async () => {
@@ -33,6 +33,17 @@ describe("readText", () => {
 			value: () => Promise.reject(new Error("boom")),
 		});
 		expect(await readText(res)).toBe("");
+	});
+});
+
+describe("readAutoMergeState", () => {
+	test("maps a non-null auto_merge request onto armed (pl-92a3)", () => {
+		expect(readAutoMergeState({ enabled: true, merge_method: "squash" })).toBe("armed");
+	});
+
+	test("maps a null or absent auto_merge onto unarmed", () => {
+		expect(readAutoMergeState(null)).toBe("unarmed");
+		expect(readAutoMergeState(undefined)).toBe("unarmed");
 	});
 });
 
