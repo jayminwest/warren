@@ -1,0 +1,39 @@
+name: Acceptance health issue
+
+# Separate from the suite so setup failures and timeouts also reach the tracker.
+# workflow_run uses the default branch; never execute the tested ref's code here.
+on:
+  workflow_run:
+    workflows: [Acceptance (nightly)]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: acceptance-health-issue
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Reconcile the nightly tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Optional override; personal repositories otherwise use their owner.
+          NIGHTLY_ISSUE_ASSIGNEE: ${{ vars.NIGHTLY_ISSUE_ASSIGNEE }}
+        run: bun scripts/report-acceptance.ts

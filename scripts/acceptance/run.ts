@@ -23,7 +23,6 @@ import { join } from "node:path";
 
 import {
 	type BootMode,
-	formatOutcomes,
 	runScenarios,
 	type Scenario,
 	type ScenarioCtx,
@@ -32,6 +31,7 @@ import {
 import { bootCompose, type ComposeBootHandle } from "./lib/compose.ts";
 import { type BuiltFixtures, buildFixtures } from "./lib/fixtures.ts";
 import { type BootHandle, bootInProc } from "./lib/inproc.ts";
+import { reportOutcomes } from "./lib/report.ts";
 
 import { scenario as scenario01 } from "./scenarios/01-boot-healthz-readyz.ts";
 import { scenario as scenario03 } from "./scenarios/03-projects-management.ts";
@@ -286,7 +286,7 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 			...(args.only !== undefined ? { only: args.only } : {}),
 		});
 
-		console.log(formatOutcomes(outcomes));
+		await reportOutcomes(outcomes);
 
 		// Teardown guardrail (warren-9f70): no scenario should leave
 		// user.name / user.email set on a project clone's local
@@ -436,7 +436,7 @@ async function runContainerMode(opts: RunModeArgs): Promise<number> {
 			...(args.only !== undefined ? { only: args.only } : {}),
 		});
 
-		console.log(formatOutcomes(outcomes));
+		await reportOutcomes(outcomes);
 		return exitCode;
 	} catch (err) {
 		const message = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);

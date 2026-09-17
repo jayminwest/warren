@@ -263,7 +263,12 @@ export const scenario: Scenario = {
 				1,
 				"the minted operator token prints exactly once (warren-ef6e)",
 			);
-			const persisted = await readFile(join(dataDir, "operator-token"), "utf8");
+			// The token is intentionally mode 0600 and owned by the container user.
+			// Read through that user rather than requiring the host runner to own it.
+			const { stdout: persisted } = await dockerOrThrow(
+				["exec", CONTAINER_NAME, "cat", join(dataDir, "operator-token")],
+				"read persisted operator token",
+			);
 			assertTrue(
 				persisted.includes(token),
 				"operator-token file under the data dir persists the minted token",

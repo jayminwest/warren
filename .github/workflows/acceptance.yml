@@ -136,6 +136,16 @@ jobs:
         env:
           # Surface warren + burrow child-process logs on failure so the
           # first triage step doesn't need a re-run with the knob flipped.
+          WARREN_ACCEPTANCE_RESULTS: test-results/acceptance.json
           WARREN_ACCEPTANCE_LOG_LEVEL: info
           WARREN_ACCEPTANCE_WARREN_STDERR: "1"
           WARREN_ACCEPTANCE_BURROW_STDERR: "1"
+
+      - name: Upload acceptance results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: acceptance-results-${{ github.run_attempt }}
+          path: test-results/acceptance.json
+          if-no-files-found: ignore
+          retention-days: 14

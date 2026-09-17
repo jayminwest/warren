@@ -404,3 +404,39 @@ constant with `id`, `title`, `modes`, and an async `run(ctx)`. Use
 `WarrenHttp` for HTTP, `assertEqual`/`assertTrue` for asserts, and
 `AcceptanceError` for thrown failures so the runner's table shows the
 message verbatim.
+
+## Nightly health tracking
+
+`Acceptance (nightly)` runs `acceptance:nightly` daily and supports manual
+dispatch. After each run on `main`, `Acceptance health issue` updates one
+GitHub issue titled **Nightly acceptance health**.
+
+The first failure opens the issue. A recurring failure reopens it. A
+successful run closes it.
+
+Identical failures refresh the body without a
+comment. A change in failing scenarios or workflow steps adds a comment.
+
+Cancelled and skipped runs do not count as recovery. An older rerun cannot
+supersede a newer nightly. The workflow conclusion controls issue state,
+including failures after the scenario scoreboard.
+
+The issue includes the run link, commit, scoreboard, and failed steps.
+`WARREN_ACCEPTANCE_RESULTS` tells the harness where to write its JSON
+results.
+
+The workflow uploads `test-results/acceptance.json` for the
+reporter. If setup fails or the job times out before this upload, the
+reporter uses job results alone.
+
+Personal repositories assign the issue to their owner. The repository
+variable `NIGHTLY_ISSUE_ASSIGNEE` overrides this default and supports an
+assignee for organization repositories.
+
+The reporter uses `GITHUB_TOKEN`
+with `actions: read`, `contents: read`, and `issues: write`. It needs no
+additional secret.
+
+The reporter runs code from the default branch and treats the artifact
+as data. It becomes active after merge. A manual acceptance run on a topic
+branch tests the suite and artifact upload without changing the issue.
