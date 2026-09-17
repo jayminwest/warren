@@ -109,8 +109,8 @@ export class GitHubAppForge implements Forge {
 		botIdentity: true,
 		// warren-2601: the installation token scopes GET /installation/repositories.
 		installationRepos: true,
-		// Arming lands with the GraphQL transport (pl-92a3 step 3): off for now.
-		autoMergeArm: false,
+		// pl-92a3: the shared transport arms over GraphQL with the installation token.
+		autoMergeArm: true,
 		credentialLifetime: "short-lived",
 	};
 
@@ -176,7 +176,7 @@ export class GitHubAppForge implements Forge {
 		return this.transport.getPullRequest(ref, pr);
 	}
 
-	/** pl-92a3: the transport owns the arming answer until step 3 turns it on. */
+	/** pl-92a3: the shared transport owns the arming answer, with the App's tokens. */
 	armAutoMerge(
 		ref: Parameters<Forge["armAutoMerge"]>[0],
 		pr: Parameters<Forge["armAutoMerge"]>[1],
