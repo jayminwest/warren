@@ -13,7 +13,10 @@ tokens), and FakeForge boot-resolve via `WARREN_FORGE`, with the boundary
 held by a `check:layers` rule pair.
 **Date:** 2026-08-08. **Amended:** 2026-08-11, from an eight-track audit of
 HEAD that re-verified every §6 claim and settled the four design questions
-the first draft left to house style (§1.1, §2.1, §2.2, §7).
+the first draft left to house style (§1.1, §2.1, §2.2, §7); 2026-09-17,
+`armAutoMerge` joined the seam behind the `autoMergeArm` capability (plan
+pl-92a3) — see [`forge-auto-merge.md`](./forge-auto-merge.md), which owns
+the method, the refusal vocabulary, and the `pr.autoMerge` config contract.
 **Companion:** [`ROADMAP.md`](../../ROADMAP.md) Next item 1 — the campaign this seam serves.
 Modeled on [`runtime-provider-contract.md`](./runtime-provider-contract.md).
 **Grounded in:** a full call-site audit of warren's GitHub and git-credential
@@ -132,6 +135,9 @@ place once App mode ships.
 There is no `mergePullRequest`. The old one was dead code and is already
 deleted. Warren merges through GitHub's auto-merge workflow, not through the
 API, and a merge method would give the seam a capability with no caller.
+*(Amended 2026-09-17: the seam gained `armAutoMerge` — warren arms GitHub's
+auto-merge and GitHub still performs the merge; see
+[`forge-auto-merge.md`](./forge-auto-merge.md).)*
 
 ### 1.1 Registry semantics (decided 2026-08-11)
 

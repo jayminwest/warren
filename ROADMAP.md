@@ -63,6 +63,12 @@ advance only when pilot evidence supplies their payer.
    Warren keeps only this commitment and any generalized changes that observed friction
    pays for. Design record: `docs/design/external-repository-mirror-pilot.md`.
 
+2. **Warren-armed auto-merge.** Plan `pl-92a3` moves arming from a per-repo
+   GitHub Actions workflow with its own credential into the Forge seam.
+   Warren arms GitHub auto-merge right after reap opens the pull request,
+   and a project opts in with one `pr.autoMerge` block in
+   `.warren/config.yaml`. Design record: `docs/design/forge-auto-merge.md`.
+
 ## Next — planned, in order
 
 1. **Campaign controller, later phases.** The upstream contribution loop v1

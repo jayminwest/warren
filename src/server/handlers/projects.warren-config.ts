@@ -55,8 +55,9 @@ export const PUBLIC_WARREN_CONFIG_DEFAULTS_FIELDS = [
  * - `qualityGate` — an executable command string.
  * - `maxCostUsd` — an admission-cap disclosure.
  * - `agentImage`, `preview`, `agent`, `interactiveAgents`, `resources`,
- *   `admission`, `ciFixer`, `healer`, `tracker` — nested operator
- *   configuration blocks (image names, ports, pod specs, prompt knobs).
+ *   `admission`, `ciFixer`, `healer`, `tracker`, `pr` — nested operator
+ *   configuration blocks (image names, ports, pod specs, prompt knobs,
+ *   PR auto-merge policy).
  */
 export const REDACTED_WARREN_CONFIG_FIELDS = [
 	"triggers",
@@ -75,6 +76,7 @@ export const REDACTED_WARREN_CONFIG_FIELDS = [
 	"ciFixer",
 	"healer",
 	"tracker",
+	"pr",
 ] as const satisfies readonly (keyof LoadedWarrenConfig | keyof DefaultsConfig)[];
 
 /**

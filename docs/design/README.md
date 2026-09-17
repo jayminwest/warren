@@ -31,6 +31,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [The corpus flywheel](./corpus-flywheel.md) | `direction` | `draft` | `unscheduled` | 2026-08-15 |
 | [MCP server](./mcp-server.md) | `proposal` | `draft` | `unscheduled` | 2026-08-26 |
 | [External-repository mirror pilot](./external-repository-mirror-pilot.md) | `pilot` | `approved` | `now` | 2026-08-20 |
+| [Warren-armed auto-merge](./forge-auto-merge.md) | `contract` | `approved` | `now` | 2026-09-17 |
 | [Campaign controller](./campaign-controller.md) | `direction` | `approved` | `next` | 2026-08-20 |
 | [Resumable agent environments](./resumable-agent-environments.md) | `proposal` | `proposed` | `unscheduled` | 2026-08-20 |
 | [Agent analytics](./agent-analytics.md) | `direction` | `approved` | `mixed` | 2026-08-11 |
@@ -59,7 +60,7 @@ The current unscheduled records are the draft [corpus flywheel](./corpus-flywhee
 
 [`ROADMAP.md`](../../ROADMAP.md) is the only source of build order. When a design is promoted, change its delivery to `now` or `next`, add `**Roadmap order:** N` for a `next` record, and reflect that lane here. Do not infer commitment from approval or from a detailed design.
 
-The [external-repository mirror pilot](./external-repository-mirror-pilot.md) is the `now` campaign. [Campaign controller](./campaign-controller.md) Phase 1 is roadmap order 1 in `next`; later controller phases remain evidence-gated. Integration breadth uses the already-shipped [`IssueTracker`](./issue-tracker.md) and [`Forge`](./forge-contract.md) contracts when a real deployment pays for it, but it is not currently scheduled.
+The [external-repository mirror pilot](./external-repository-mirror-pilot.md) is the `now` campaign. [Warren-armed auto-merge](./forge-auto-merge.md) is the second `now` item: plan pl-92a3 moves arming into the Forge seam. [Campaign controller](./campaign-controller.md) Phase 1 is roadmap order 1 in `next`; later controller phases remain evidence-gated. Integration breadth uses the already-shipped [`IssueTracker`](./issue-tracker.md) and [`Forge`](./forge-contract.md) contracts when a real deployment pays for it, but it is not currently scheduled.
 
 ## Shipped records
 
@@ -81,6 +82,7 @@ A shipped record preserves rationale and contract history. Its `Current truth` f
 | 2026-08-20 | Campaign controller; external-repository mirror pilot; IssueTracker contract; resumable agent environments |
 | 2026-08-22 | Provider-error retry |
 | 2026-08-26 | MCP server |
+| 2026-09-17 | Warren-armed auto-merge |
 
 ## Adding or changing a record
 
