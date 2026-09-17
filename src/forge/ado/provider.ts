@@ -28,6 +28,8 @@
  */
 
 import type {
+	ArmAutoMergeOptions,
+	ArmAutoMergeResult,
 	CheckSummary,
 	Forge,
 	ForgeCapabilities,
@@ -145,6 +147,8 @@ export class AdoForge implements Forge {
 			botIdentity: false,
 			// A PAT has no installation scope (§5): no repo listing.
 			installationRepos: false,
+			// ADO auto-complete is out of scope (pl-92a3 non-goal): no arming.
+			autoMergeArm: false,
 			credentialLifetime: "static",
 		};
 	}
@@ -255,6 +259,24 @@ export class AdoForge implements Forge {
 			mergedAt: lifecycle === "merged" ? closedAt : null,
 			headCommit: typeof head?.commitId === "string" ? head.commitId : "",
 			baseBranch: branchName(body.targetRefName),
+			// ADO auto-complete is not modeled (pl-92a3 non-goal): the honest reading.
+			autoMerge: "unknown",
+		});
+	}
+
+	/** ADO auto-complete is a pl-92a3 non-goal: arming is unsupported, honestly. */
+	armAutoMerge(
+		_ref: RepoRef,
+		_pr: PullRequestRef,
+		_options: ArmAutoMergeOptions,
+	): Promise<ArmAutoMergeResult> {
+		return Promise.resolve({
+			ok: false,
+			error: {
+				reason: "unsupported_forge",
+				message:
+					"AdoForge cannot arm auto-merge — Azure DevOps auto-complete is out of scope (pl-92a3 non-goals)",
+			},
 		});
 	}
 

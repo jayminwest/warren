@@ -16,6 +16,32 @@ describe("HotForge", () => {
 		expect(hot.activated).toBe(false);
 	});
 
+	test("delegates armAutoMerge and the autoMergeArm capability to the delegate", async () => {
+		const fake = new FakeForge();
+		const hot = new HotForge(fake);
+		expect(hot.capabilities.autoMergeArm).toBe(false);
+		const ref = fake.parseRepoRef("fake://projects/widget");
+		if (ref === null) throw new Error("unreachable");
+		const opened = await fake.openPullRequest(ref, {
+			title: "t",
+			body: "b",
+			headBranch: "warren/run-1",
+			baseBranch: "main",
+		});
+		if (!opened.ok) throw new Error("unreachable");
+		// The capability mirrors the delegate; the refused call changes nothing.
+		const refused = await hot.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(refused.ok).toBe(false);
+		if (!refused.ok) expect(refused.error.reason).toBe("unsupported_forge");
+		// Flip the delegate's flag and the hot wrapper arms through it.
+		fake.setAutoMergeArmCapability(true);
+		expect(hot.capabilities.autoMergeArm).toBe(true);
+		const armed = await hot.armAutoMerge(ref, opened.value, { method: "squash" });
+		expect(armed).toEqual({ ok: true, value: { outcome: "armed" } });
+		const state = await hot.getPullRequest(ref, opened.value);
+		expect(state.ok && state.value.autoMerge).toBe("armed");
+	});
+
 	test("mirrors the delegate's repoLayout declaration — present, layout-declaring, or absent", () => {
 		const layoutForge = new AdoForge({ token: "t" });
 		const hot = new HotForge(layoutForge);

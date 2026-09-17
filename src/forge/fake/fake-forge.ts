@@ -10,13 +10,20 @@
  * domain-code changes.
  *
  * The fake owns the `fake://` clone-URL grammar, keeps an in-memory PR store
- * (`store.ts`), reports every capability true with a `static` credential
- * lifetime, and synthesizes job logs. Seeding seams (`markMerged`,
- * `setChecks`, `isBranchDeleted`) are public so tests and the acceptance
- * harness drive state transitions GitHub would drive externally.
+ * (`store.ts`), reports the capability set a full-featured forge carries —
+ * except installation listing and auto-merge arming, both off by default
+ * (the arming flag flips via a seeding seam, pl-92a3) — with a `static`
+ * credential lifetime, and synthesizes job logs. Seeding seams
+ * (`markMerged`, `setChecks`, `isBranchDeleted`) are public so tests and
+ * the acceptance harness drive state transitions GitHub would drive
+ * externally.
  */
 
 import type {
+	ArmAutoMergeOptions,
+	ArmAutoMergeResult,
+	AutoMergeArmOutcome,
+	AutoMergeRefusalReason,
 	CheckRun,
 	CheckSummary,
 	Forge,
@@ -25,6 +32,7 @@ import type {
 	ForgeResult,
 	GitCredential,
 	GitIdentity,
+	PullRequestAutoMergeState,
 	PullRequestDraft,
 	PullRequestQuery,
 	PullRequestRef,
@@ -57,6 +65,15 @@ function notFound<T>(detail: string): ForgeResult<T> {
 	return { ok: false, error: { kind: "not_found", detail } };
 }
 
+/** One scripted `armAutoMerge` answer for {@link FakeForge.scriptAutoMergeArm}. */
+export type FakeAutoMergeArmScript =
+	| { readonly outcome: AutoMergeArmOutcome["outcome"] }
+	| { readonly refusal: AutoMergeRefusalReason; readonly message?: string };
+
+function refusedArm(reason: AutoMergeRefusalReason, message: string): ArmAutoMergeResult {
+	return { ok: false, error: { reason, message } };
+}
+
 export class FakeForge implements Forge {
 	readonly capabilities: ForgeCapabilities = {
 		checkRuns: true,
@@ -65,12 +82,16 @@ export class FakeForge implements Forge {
 		branchDelete: true,
 		botIdentity: true,
 		installationRepos: false,
+		// Default off (pl-92a3): a test flips it with setAutoMergeArmCapability.
+		autoMergeArm: false,
 		credentialLifetime: "static",
 	};
 
 	/** Exposed for the seeding seams; never serialized across the seam. */
 	readonly store: FakeForgeStore;
 	private readonly now: () => number;
+	/** Queued scripted `armAutoMerge` answers, drained before live behavior. */
+	private readonly armScripts: ArmAutoMergeResult[] = [];
 
 	constructor(options: FakeForgeOptions = {}) {
 		this.store = options.store ?? new FakeForgeStore();
@@ -124,7 +145,39 @@ export class FakeForge implements Forge {
 			mergedAt: record.mergedAt,
 			headCommit: record.headCommit,
 			baseBranch: record.baseBranch,
+			autoMerge: record.autoMerge,
 		});
+	}
+
+	/**
+	 * Scriptable auto-merge arm (pl-92a3). The capability gate comes first:
+	 * disabled, arming answers `unsupported_forge` with no side effects, the
+	 * same discipline the real forges follow (§5). Enabled, scripted answers
+	 * drain from the queue before the live behavior — arm an open unarmed
+	 * PR, `already_armed` when the store says armed.
+	 */
+	async armAutoMerge(
+		ref: RepoRef,
+		pr: PullRequestRef,
+		_options: ArmAutoMergeOptions,
+	): Promise<ArmAutoMergeResult> {
+		if (!this.capabilities.autoMergeArm) {
+			return refusedArm("unsupported_forge", "FakeForge auto-merge arming is not enabled");
+		}
+		const scripted = this.armScripts.shift();
+		if (scripted !== undefined) return scripted;
+		const record = this.store.getPr(ref.key, pr.number);
+		if (record === null) {
+			return refusedArm("not_open", `fake forge has no pull request #${pr.number} for ${ref.key}`);
+		}
+		if (record.lifecycle !== "open") {
+			return refusedArm("not_open", `fake forge pull request #${pr.number} is ${record.lifecycle}`);
+		}
+		if (record.autoMerge === "armed") {
+			return { ok: true, value: { outcome: "already_armed" } };
+		}
+		this.store.setAutoMerge(ref.key, pr.number, "armed");
+		return { ok: true, value: { outcome: "armed" } };
 	}
 
 	async setPullRequestBody(
@@ -204,6 +257,34 @@ export class FakeForge implements Forge {
 	/** Install the check runs `listChecks` reports for a commit. */
 	setChecks(ref: RepoRef, commit: string, runs: CheckRun[]): void {
 		this.store.setChecks(ref.key, commit, runs);
+	}
+
+	/** Flip the autoMergeArm capability (default false — pl-92a3). */
+	setAutoMergeArmCapability(enabled: boolean): void {
+		this.capabilities.autoMergeArm = enabled;
+	}
+
+	/**
+	 * Queue one scripted `armAutoMerge` answer — an outcome or a refusal
+	 * reason — returned (in order) before the live behavior above.
+	 */
+	scriptAutoMergeArm(script: FakeAutoMergeArmScript): void {
+		this.armScripts.push(
+			"outcome" in script
+				? { ok: true, value: { outcome: script.outcome } }
+				: {
+						ok: false,
+						error: {
+							reason: script.refusal,
+							message: script.message ?? `scripted refusal: ${script.refusal}`,
+						},
+					},
+		);
+	}
+
+	/** Set a PR's reported auto-merge state (the stall-warning input, pl-92a3). */
+	setAutoMergeState(ref: RepoRef, pr: PullRequestRef, state: PullRequestAutoMergeState): boolean {
+		return this.store.setAutoMerge(ref.key, pr.number, state) !== null;
 	}
 
 	/** Acceptance cleanup assertion: was this branch deleted through the seam? */

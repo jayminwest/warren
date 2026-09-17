@@ -88,13 +88,83 @@ export interface PullRequestQuery {
 	state?: "open" | "closed" | "all";
 }
 
+/**
+ * Whether the forge reports auto-merge as armed on a pull request
+ * (`PullRequestState.autoMerge`, pl-92a3). `'unknown'` is honest
+ * reporting, not a gap: a forge that cannot tell (ADO; GitHub's REST arm
+ * before the GraphQL transport) says so rather than guessing, so the
+ * plan-run stall warning never fires on a false reading.
+ */
+export type PullRequestAutoMergeState = "armed" | "unarmed" | "unknown";
+
 export interface PullRequestState {
 	lifecycle: PullRequestLifecycle;
 	/** epoch ms — required, not optional: the merge-watcher blocks on it (§7) */
 	mergedAt: number | null;
 	headCommit: string;
 	baseBranch: string;
+	/** auto-merge as the forge reports it; required so every provider answers */
+	autoMerge: PullRequestAutoMergeState;
 }
+
+/* --------------------------------------------------------------------- */
+/* Auto-merge (pl-92a3 — docs/design/forge-auto-merge.md)                 */
+/* --------------------------------------------------------------------- */
+
+/**
+ * The merge method the forge applies when auto-merge completes. The
+ * domain resolves the project default (`squash`) before the call — the
+ * seam carries resolved intent, like `PullRequestDraft` carries finished
+ * text.
+ */
+export type AutoMergeMethod = "squash" | "merge" | "rebase";
+
+/** Options for {@link Forge.armAutoMerge}. */
+export interface ArmAutoMergeOptions {
+	readonly method: AutoMergeMethod;
+}
+
+/** Success value of {@link Forge.armAutoMerge} — both outcomes are success. */
+export interface AutoMergeArmOutcome {
+	readonly outcome: "armed" | "already_armed";
+}
+
+/**
+ * The CLOSED refusal-reason vocabulary for `armAutoMerge`. A refusal is a
+ * reportable outcome (a `reap.auto_merge_not_armed` event), never a run
+ * failure: each forge error shape maps to exactly one reason, and
+ * `unsupported_forge` is what a capability-false forge answers. Seam DTOs
+ * like `CheckRun`, not wire vocabulary — nothing here crosses warren's
+ * own HTTP wire.
+ */
+export const AUTO_MERGE_REFUSAL_REASONS = [
+	"repo_auto_merge_disabled",
+	"clean_status",
+	"insufficient_permission",
+	"mergeability_unsettled",
+	"not_open",
+	"unsupported_forge",
+	"unknown",
+] as const;
+
+export type AutoMergeRefusalReason = (typeof AUTO_MERGE_REFUSAL_REASONS)[number];
+
+/** One refusal: the stable reason code plus the forge's own words. */
+export interface AutoMergeRefusal {
+	readonly reason: AutoMergeRefusalReason;
+	/** redacted, safe to persist on a run row */
+	readonly message: string;
+}
+
+/**
+ * The result of `armAutoMerge` — the `ForgeResult` ok/value/error
+ * convention (§2.2) with the error arm narrowed to the closed refusal
+ * vocabulary above: arming is best-effort, so a refusal carries a stable
+ * reason the domain can event on, not a `ForgeErrorKind` taxonomy.
+ */
+export type ArmAutoMergeResult =
+	| { ok: true; value: AutoMergeArmOutcome }
+	| { ok: false; error: AutoMergeRefusal };
 
 /**
  * CI rollup. `conclusion` is the domain's decision input; `runs` carries
@@ -178,22 +248,33 @@ export interface ForgeCapabilities {
 	botIdentity: boolean;
 	/** installation repository listing (GitHubApp: TRUE; PAT/fake: FALSE) */
 	installationRepos: boolean;
+	/**
+	 * warren can arm the forge's own auto-merge through `armAutoMerge`
+	 * (pl-92a3). FALSE → the domain never calls it and events a skipped
+	 * outcome with reason `unsupported_forge`.
+	 */
+	autoMergeArm: boolean;
 	/** drives the §4 re-mint: "static" skips it, "short-lived" requires it */
 	credentialLifetime: "static" | "short-lived";
 }
 
 /**
- * The forge seam. Ten methods. `parseRepoRef`, `openPullRequest`,
+ * The forge seam. Eleven methods. `parseRepoRef`, `openPullRequest`,
  * `findPullRequest`, `getPullRequest`, `setPullRequestBody`, `listChecks`,
  * `fetchJobLogTail`, and `deleteBranch` are FIRM — each replaces a call site
  * that exists today and the audit grounds every signature. `gitCredential`
  * is the method whose *shape* carries the §4 decision. `botIdentity` is the
  * least certain: warren sets the author identity from env today, and a
  * forge-supplied identity only earns its place once App mode ships.
+ * `armAutoMerge` (pl-92a3) is the newest: warren arms the forge's own
+ * auto-merge and the forge performs the merge once required checks pass.
  *
- * There is deliberately no `mergePullRequest`: warren merges through
- * GitHub's auto-merge workflow, not through the API, and a merge method
- * would give the seam a capability with no caller.
+ * There is still deliberately no `mergePullRequest`: `armAutoMerge` arms
+ * and the FORGE merges, which keeps required-check evaluation,
+ * branch-protection, and merge-queue semantics with the forge that already
+ * owns them. A direct merge method would re-implement them for no caller.
+ * See docs/design/forge-auto-merge.md (the forge auto-merge design record,
+ * plan pl-92a3).
  */
 export interface Forge {
 	readonly capabilities: ForgeCapabilities;
@@ -241,6 +322,22 @@ export interface Forge {
 	 * are the two consumers.
 	 */
 	getPullRequest(ref: RepoRef, pr: PullRequestRef): Promise<ForgeResult<PullRequestState>>;
+
+	/**
+	 * Arm the forge's own auto-merge on an open PR — the forge performs the
+	 * merge once its required checks pass; warren never merges directly
+	 * (there is no `mergePullRequest`, by design). Idempotent: an
+	 * already-armed PR reports `already_armed`. Gated by
+	 * `capabilities.autoMergeArm`: a forge that cannot arm answers the
+	 * `unsupported_forge` refusal and changes nothing. Best-effort by
+	 * contract — a refusal is a reportable outcome, never a run failure
+	 * (docs/design/forge-auto-merge.md, plan pl-92a3).
+	 */
+	armAutoMerge(
+		ref: RepoRef,
+		pr: PullRequestRef,
+		options: ArmAutoMergeOptions,
+	): Promise<ArmAutoMergeResult>;
 
 	/**
 	 * Rewrite a PR body. The domain composes the body; the forge only

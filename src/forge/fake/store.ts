@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 
 import type {
 	CheckRun,
+	PullRequestAutoMergeState,
 	PullRequestDraft,
 	PullRequestLifecycle,
 	PullRequestQuery,
@@ -30,6 +31,8 @@ export interface FakePullRequestRecord {
 	/** epoch ms; set by `markMerged` */
 	mergedAt: number | null;
 	headCommit: string;
+	/** auto-merge state as the fake reports it through `getPullRequest` (pl-92a3) */
+	autoMerge: PullRequestAutoMergeState;
 }
 
 /** Conclusions that roll a commit up to `failing` (Actions vocabulary). */
@@ -88,8 +91,13 @@ export class FakeForgeStore {
 		} catch {
 			return;
 		}
+		// `autoMerge` defaults to "unarmed" for records serialized before the
+		// field existed (pl-92a3) — the honest "nothing armed it" reading.
 		this.prsByRepo = new Map(
-			Object.entries(parsed.prs ?? {}).map(([key, list]) => [key, list.map((r) => ({ ...r }))]),
+			Object.entries(parsed.prs ?? {}).map(([key, list]) => [
+				key,
+				list.map((r) => ({ ...r, autoMerge: r.autoMerge ?? "unarmed" })),
+			]),
 		);
 		this.checksByCommit = new Map(
 			Object.entries(parsed.checks ?? {}).map(([key, runs]) => [key, runs.map((r) => ({ ...r }))]),
@@ -152,6 +160,7 @@ export class FakeForgeStore {
 			lifecycle: "open",
 			mergedAt: null,
 			headCommit,
+			autoMerge: "unarmed",
 		};
 		this.prs(repoKey).push(record);
 		this.persist();
@@ -180,6 +189,19 @@ export class FakeForgeStore {
 		const pr = this.getPr(repoKey, number);
 		if (pr === null) return null;
 		pr.body = body;
+		this.persist();
+		return pr;
+	}
+
+	/** Set a PR's auto-merge state (the `PullRequestState.autoMerge` input, pl-92a3). */
+	setAutoMerge(
+		repoKey: string,
+		number: number,
+		state: PullRequestAutoMergeState,
+	): FakePullRequestRecord | null {
+		const pr = this.getPr(repoKey, number);
+		if (pr === null) return null;
+		pr.autoMerge = state;
 		this.persist();
 		return pr;
 	}

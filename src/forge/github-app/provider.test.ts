@@ -86,6 +86,7 @@ describe("GitHubAppForge capabilities (forge-contract.md §5)", () => {
 			branchDelete: true,
 			botIdentity: true,
 			installationRepos: true,
+			autoMergeArm: false,
 			credentialLifetime: "short-lived",
 		});
 	});
