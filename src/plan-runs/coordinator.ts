@@ -39,8 +39,10 @@ import { type Issue, IssueNotFoundError } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
+import { DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS } from "./config.ts";
 import { handleInFlight } from "./in-flight.ts";
 import { type CoordinatorReopenPrFn, checkParentRunMerged } from "./merge-gate.ts";
+import type { MergeStallProbe } from "./merge-stall.ts";
 
 export type { CoordinatorReopenPrFn } from "./merge-gate.ts";
 
@@ -85,6 +87,7 @@ export const PLAN_RUN_EVENT_KINDS = [
 	"plan_run.advanced",
 	"plan_run.dispatched",
 	"plan_run.waiting_for_merge",
+	"plan_run.merge_stalled",
 	"plan_run.merged",
 	"plan_run.failed",
 	"plan_run.succeeded",
@@ -119,6 +122,10 @@ export interface AdvancePlanRunInput {
 	readonly closeChildSeed?: CoordinatorCloseChildSeedFn;
 	/** warren-3937: merge-wait budget (ms); defaults to {@link DEFAULT_MERGE_TIMEOUT_MS}, 0 disables. */
 	readonly mergeTimeoutMs?: number;
+	/** pl-92a3 step 7: stall-warning grace period (ms); 0 disables the warning. */
+	readonly mergeStallWarningMs?: number;
+	/** pl-92a3 step 7: best-effort stall probe (auto-merge state + check rollup). */
+	readonly probeMergeStall?: MergeStallProbe;
 	/** warren-22de: PR-(re)open seam. See {@link CoordinatorReopenPrFn}. */
 	readonly reopenPr?: CoordinatorReopenPrFn;
 	readonly now?: () => Date;
@@ -132,6 +139,8 @@ const IN_FLIGHT_STATES: readonly PlanRunChildState[] = ["dispatched", "running",
 export async function advancePlanRun(input: AdvancePlanRunInput): Promise<AdvanceResult> {
 	const nowFn = input.now ?? (() => new Date());
 	const mergeTimeoutMs = input.mergeTimeoutMs ?? DEFAULT_MERGE_TIMEOUT_MS;
+	const mergeStallWarningMs =
+		input.mergeStallWarningMs ?? DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS;
 	let planRun = input.planRun;
 
 	// (a) Queued → running.
@@ -172,6 +181,8 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 				emit: input.emit,
 				getIssue: input.getIssue,
 				mergeTimeoutMs,
+				mergeStallWarningMs,
+				probeMergeStall: input.probeMergeStall,
 				now: nowFn,
 				reopenPr: input.reopenPr,
 				spawn: input.spawn,

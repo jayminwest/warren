@@ -136,16 +136,17 @@ export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeC
 	};
 }
 
-type PollTarget =
+export type PollTarget =
 	| { readonly kind: "unparseable"; readonly detail: string }
 	| { readonly kind: "resolved"; readonly ref: RepoRef; readonly pr: PullRequestRef };
 
 /**
  * Route a stored PR URL to its forge. A null `parseRepoRef` (foreign-host
  * PR) keeps the wait-indefinitely-on-manual-merge behaviour, exactly as
- * before.
+ * before. Exported for the plan-run merge-stall probe (pl-92a3), which
+ * resolves the same target before it reads auto-merge state and checks.
  */
-function resolvePollTarget(forge: Forge, prUrl: string): PollTarget {
+export function resolvePollTarget(forge: Forge, prUrl: string): PollTarget {
 	const ref = forge.parseRepoRef(prUrl);
 	if (ref === null) {
 		return { kind: "unparseable", detail: `no forge owns pull request url: ${prUrl}` };

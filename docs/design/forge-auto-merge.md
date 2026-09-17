@@ -292,7 +292,7 @@ state. A re-reap sweep runs the step again against the same PR, and
 | `reap.auto_merge_armed` | `{ prUrl, outcome, method }` | The arm succeeded. `outcome` is `armed` or `already_armed`. `method` mirrors the config. |
 | `reap.auto_merge_skipped` | `{ reason, paths? }` | Arming never started. `reason` is one of `off`, `unsupported_forge`, `protected_path`, `config_changed`, `empty_diff`, `diff_unreadable`, `ci_fixer_run`. `paths` carries the changed files on `protected_path` and `config_changed`. |
 | `reap.auto_merge_not_armed` | `{ reason, message }` | The forge refused or the transport failed. `reason` is the closed refusal vocabulary of §2.1. `message` is the forge's redacted text, and a transport failure names its `ForgeErrorKind` in `message` with reason `unknown`. |
-| `plan_run.merge_stalled` | `{ planRunId, seq, prUrl, checksPassing, autoMerge, waitedMs }` | See §7. |
+| `plan_run.merge_stalled` | `{ planRunId, seq, seedId, prUrl, checksPassing, autoMerge, waitedMs, hint }` | See §7. |
 
 All four are best-effort system events on the run's stream. They render
 through the Event explorer's default arm today, a truncated JSON dump,
@@ -339,10 +339,12 @@ child, well before the merge deadline.
 - **One-shot.** The coordinator scans the child's run events for a
   prior `plan_run.merge_stalled` before it emits, the same scan shape
   as `hasEmptyPushEvent`. Exactly one event per child.
-- **Payload:** `{ planRunId, seq, prUrl, checksPassing, autoMerge,
-  waitedMs }`. `autoMerge` carries the PR-state value of §2.1, and it
-  reads `unarmed` or `unknown` here, because an armed PR does not stall
-  this way.
+- **Payload:** `{ planRunId, seq, seedId, prUrl, checksPassing, autoMerge,
+  waitedMs, hint }`. `autoMerge` carries the PR-state value of §2.1, and
+  it reads `unarmed` here by construction: an `armed` PR does not stall
+  this way, and an `unknown` reading (or unavailable checks) never
+  triggers the warning, so a forge that cannot tell stays silent rather
+  than firing a false alarm. `hint` names the operator fix.
 
 The `child_pr_merge_timeout` failure payload gains `checksPassing` and
 `autoMerge` beside `prUrl`, so the terminal failure states whether checks
