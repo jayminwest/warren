@@ -21,6 +21,22 @@
  * error that `bun run ext:install` would have repaired. That repair is
  * exported as `ensureInstalled` because `check:coverage` needs the same
  * one before the root test sweep reaches `extensions/**` (warren-fe72).
+ *
+ * `src/ui` gets the same repair and no gates (GitHub #1269). It is a
+ * standalone package for the same reason the extensions are, the root
+ * manifest declares no `workspaces`, so a fresh clone reaches
+ * `check:deps` with no `src/ui/node_modules` and knip cannot load
+ * `src/ui/vite.config.ts`.
+ *
+ * The install itself already existed, three gates too late: `build:ui`
+ * runs `bun install --frozen-lockfile` and `check:bundle-size --build`
+ * calls it at gate 8, while `check:deps` reads the workspace at gate 5.
+ * Because `check:all` does not stop at the first red gate, a fresh clone
+ * used to go 11/12 and then 12/12 on a second run with nothing changed,
+ * which teaches the contributor nothing. Repairing from `lint`, gate 1,
+ * puts the workspace on disk before either reader. The pre-commit hook
+ * runs the whole manifest, so that first red landed on the first commit
+ * of anyone who followed CONTRIBUTING.md exactly.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -67,6 +83,35 @@ export const defaultRunCommand: RunCommand = (cwd, argv) => {
 	return { ok: proc.exitCode === 0, output };
 };
 
+/**
+ * Plan one package directory. `gates` is the set the caller wants run, so
+ * a repair-only package passes none and is still eligible for the install.
+ */
+function planPackage(
+	root: string,
+	dir: string,
+	gates: readonly ExtensionGate[],
+): ExtensionPlan | undefined {
+	const manifestPath = join(dir, "package.json");
+	if (!existsSync(manifestPath)) return undefined;
+	const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+		scripts?: Record<string, string>;
+		dependencies?: Record<string, string>;
+		devDependencies?: Record<string, string>;
+	};
+	const scripts = manifest.scripts ?? {};
+	const declared =
+		Object.keys(manifest.dependencies ?? {}).length +
+		Object.keys(manifest.devDependencies ?? {}).length;
+	return {
+		dir,
+		name: relative(root, dir),
+		gates: gates.filter((gate) => typeof scripts[gate] === "string"),
+		installed: existsSync(join(dir, "node_modules")),
+		hasDependencies: declared > 0,
+	};
+}
+
 /** Every directory under `<root>/extensions` with a package.json, sorted. */
 export function discoverExtensions(root: string = REPO_ROOT): ExtensionPlan[] {
 	const extensionsDir = join(root, "extensions");
@@ -74,27 +119,34 @@ export function discoverExtensions(root: string = REPO_ROOT): ExtensionPlan[] {
 	const plans: ExtensionPlan[] = [];
 	for (const entry of readdirSync(extensionsDir, { withFileTypes: true })) {
 		if (!entry.isDirectory()) continue;
-		const dir = join(extensionsDir, entry.name);
-		const manifestPath = join(dir, "package.json");
-		if (!existsSync(manifestPath)) continue;
-		const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-			scripts?: Record<string, string>;
-			dependencies?: Record<string, string>;
-			devDependencies?: Record<string, string>;
-		};
-		const scripts = manifest.scripts ?? {};
-		const declared =
-			Object.keys(manifest.dependencies ?? {}).length +
-			Object.keys(manifest.devDependencies ?? {}).length;
-		plans.push({
-			dir,
-			name: relative(root, dir),
-			gates: EXTENSION_GATES.filter((gate) => typeof scripts[gate] === "string"),
-			installed: existsSync(join(dir, "node_modules")),
-			hasDependencies: declared > 0,
-		});
+		const plan = planPackage(root, join(extensionsDir, entry.name), EXTENSION_GATES);
+		if (plan !== undefined) plans.push(plan);
 	}
 	return plans.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Packages outside `extensions/` that own a manifest and a lockfile the
+ * root `bun install` never reaches, because the root manifest declares no
+ * `workspaces`. `src/ui` is the only one today.
+ */
+export const REPAIR_ONLY_PACKAGES = ["src/ui"] as const;
+
+/**
+ * Plans for `REPAIR_ONLY_PACKAGES`. They carry no gates on purpose: the
+ * point is to put dependencies on disk before a LATER gate reads them, so
+ * a fresh clone does not fail `check:deps` on a `vite.config.ts` that
+ * `bun run ui:install` would have made loadable. `src/ui` does declare
+ * `typecheck`, and running it here would widen the gate rather than fix a
+ * resolution error, because the root typecheck skips the UI on purpose.
+ */
+export function discoverRepairOnlyPackages(root: string = REPO_ROOT): ExtensionPlan[] {
+	const plans: ExtensionPlan[] = [];
+	for (const rel of REPAIR_ONLY_PACKAGES) {
+		const plan = planPackage(root, join(root, rel), []);
+		if (plan !== undefined) plans.push(plan);
+	}
+	return plans;
 }
 
 /**
@@ -142,6 +194,15 @@ export function runExtensionGates(
 }
 
 function main(): void {
+	for (const plan of discoverRepairOnlyPackages()) {
+		const install = ensureInstalled(plan);
+		if (!install.ok) {
+			console.error(`${plan.name}: bun install --frozen-lockfile failed`);
+			console.error(install.output.trimEnd());
+			console.error(`\nRepair it by hand with: cd ${plan.name} && bun install`);
+			process.exit(1);
+		}
+	}
 	const plans = discoverExtensions();
 	const results = runExtensionGates(plans);
 	const failures = results.filter((r) => !r.ok);
