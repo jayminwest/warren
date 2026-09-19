@@ -81,6 +81,11 @@ describe("auto-merge remote snapshot", () => {
 					"commit.gpgsign=false",
 					"-c",
 					"core.hooksPath=/dev/null",
+					// CI runners have no global identity; commits must not depend on one.
+					"-c",
+					"user.name=Fixture",
+					"-c",
+					"user.email=fixture@warren.invalid",
 					...args,
 				])
 			).stdout.trim();
