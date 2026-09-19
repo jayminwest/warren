@@ -34,7 +34,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [Campaign controller](./campaign-controller.md) | `direction` | `approved` | `next` | 2026-08-20 |
 | [Resumable agent environments](./resumable-agent-environments.md) | `proposal` | `proposed` | `unscheduled` | 2026-08-20 |
 | [Agent analytics](./agent-analytics.md) | `direction` | `approved` | `mixed` | 2026-08-11 |
-| [TypeSafe judge backend](./typesafe-judge.md) | `proposal` | `proposed` | `unscheduled` | 2026-09-17 |
+| [TypeSafe judge backend and routing exploration](./typesafe-judge.md) | `proposal` | `proposed` | `unscheduled` | 2026-09-17 |
 | [Extensions](./extensions.md) | `direction` | `proposed` | `mixed` | 2026-08-04 |
 | [Agent composition and Pi runtime](./agent-composition.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
 | [Forge contract](./forge-contract.md) | `contract` | `approved` | `shipped` | 2026-08-11 |

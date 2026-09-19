@@ -1,4 +1,4 @@
-# TypeSafe judge backend
+# TypeSafe judge backend and routing exploration
 
 **Kind:** proposal
 **Design state:** proposed
@@ -14,6 +14,10 @@ operator-only observation boundary.
 This proposal extends [Agent analytics](./agent-analytics.md) §12. It is
 not a roadmap commitment. The current implementation remains in
 `extensions/judge/src/judge-loop.ts` and `pi-session.ts`.
+
+The routing exploration below was added on 2026-09-17 after discussion
+of historical run costs. It is also unscheduled; neither integration
+depends on shipping the other.
 
 ## Why change the inference path
 
@@ -201,3 +205,117 @@ The proposed direction is to simplify the inference machinery. Rubric
 tuning is ordinary implementation work for either backend. The remaining
 design work specific to this integration is evidence localization,
 bounded transcript assembly, aggregation, and provider accounting.
+
+## Future exploration: task assessment and model routing
+
+The owner chose to record this direction without prioritizing implementation
+on 2026-09-17. Inter-agent communication is outside this exploration and has
+no identified payer. This section does not promote routing on the roadmap
+or change the evidence gates in [Corpus flywheel](./corpus-flywheel.md).
+
+### Historical evidence
+
+A read-only query of the deployed Postgres database on 2026-09-17 Pacific
+covered 673 retained runs, with start dates from July 28 through September
+17 Pacific (September 18 UTC). Model identity used `runs.model`, falling
+back to the frozen agent frontmatter when that column was absent. All rows
+declared API cost basis; the one active run had no recorded cost yet.
+
+For completed runs on the Warren repository:
+
+| Model identifier | Runs | Distinct merged PRs | Recorded cost | Cost per merged PR |
+|---|---:|---:|---:|---:|
+| `z-ai/glm-5.3` | 115 | 97 | $107.02 | $1.10 |
+| `z-ai/glm-5.3-flash` | 77 | 48 | $63.15 | $1.32 |
+| `moonshotai/kimi-k3` | 299 | 216 | $397.25 | $1.84 |
+| `x-ai/grok-4.5` | 14 | 13 | $19.16 | $1.47 |
+| `claude-opus-5` | 22 | 14 | $40.12 | $2.87 |
+| `claude-opus-4-8` | 38 | 20 | $89.28 | $4.46 |
+
+The numerator includes all recorded costs in the model/repository cohort,
+including failed attempts and runs without a merged PR. The denominator
+counts distinct nonempty `pr_url` values with recorded `pr_state=merged`.
+This is descriptive delivery economics, not a matched experiment or a
+complete repair-lineage accounting. Costs of subsequent work under another
+model stay in that model's cohort. Different identifiers were kept separate:
+the additional 20 Warren runs labeled `glm-5.3` are not in the OpenRouter
+`z-ai/glm-5.3` row. No transcript or credential export is included here.
+
+GLM 5.3 is a plausible Warren baseline from this sample. The ranking changes
+on Trellis: Kimi recorded $52.09 across 29 completed runs and 21 merged PRs
+($2.48/merge), versus GLM's $99.52 across 28 completed runs and 26 merged PRs
+($3.83/merge). Repository-specific baselines therefore deserve evaluation.
+
+Only eight issue histories in the retained dataset involved multiple model
+identifiers. Models ran in different periods, against different tasks and
+infrastructure conditions. Merges do not measure later defects, and stored
+costs are not a reconciliation against provider invoices. These results
+support provisional defaults, not a claim that one model is universally
+cheapest or strongest. Refresh the query before implementation; do not turn
+this snapshot into permanent model rankings.
+
+### Smallest useful policy
+
+Assess before dispatch and evaluate after completion:
+
+1. Gather the task, bounded repository context, and relevant historical
+   outcomes. Keep evidence selection deterministic and record missing context.
+2. Ask JEV focused questions about requirements clarity, scope, and risk.
+   Recommend clarification or decomposition when the task is not ready.
+3. Map the assessment to a small operator-configured model pool in code,
+   using repository baselines, allowed spend, and available credentials.
+   Preserve an explicit provider/model override as the operator's choice.
+4. Record the assessment, resolved JEV model, policy version, selected
+   provider/model, fallback reason, and eventual delivery outcome.
+5. Compare cost per accepted change, including retries and repairs, against
+   the static baseline. Use human review and objective delivery facts to
+   check judge labels; JEV's own score cannot be the sole success criterion.
+
+Start with shadow recommendations, then a bounded opt-in trial if evidence
+supports it. JEV estimates task characteristics; observed execution outcomes
+establish which models handle those characteristics economically. Model
+confidence is not an empirically established success probability.
+
+No online bandit, replica races, autonomous model discovery, or mid-run model
+switching is needed for this experiment. Existing budget, permission,
+provider-compatibility, and retry checks remain deterministic. Assessment
+calls need their own accounting and bounded timeout; unavailable or invalid
+assessments use a configured fallback within the existing spend policy.
+
+### Placement: controller first, core integration only with a consumer
+
+The initial experiment can live in the
+[campaign controller](./campaign-controller.md), before it submits a run
+through the existing provider/model overrides. The judge remains an
+independent observer extension. Neither core nor the router needs to read
+the judge extension's endpoint; any outcome join follows the existing
+corpus design boundary.
+
+This preserves the current direction of control: extensions call Warren;
+Warren does not synchronously call an extension to decide whether to
+dispatch. It also limits initial coverage to controller submissions.
+Manual, scheduled, and other dispatch paths retain their existing defaults.
+There is no new `model: auto` API or configuration contract in this proposal.
+
+If those other paths become concrete consumers, consider a small core
+`ModelRouter` provider contract shared by dispatch entry points. Core would
+own resolution, override precedence, decision provenance, and failure
+behavior; the routing policy could have an external implementation. That
+would be a deliberate new provider boundary requiring a separate contract,
+not an implicit synchronous call to an observer extension. Timeout,
+fallback, and whether explicit auto-routing may defer a submission must be
+settled before that integration ships.
+
+### Other candidate uses
+
+- **Repair triage:** classify ambiguous CI evidence into likely code repair,
+  infrastructure trouble, or a need for human diagnosis. Preserve existing
+  deterministic classifications and retry bounds.
+- **Review prioritization:** rank completed work for operator attention if
+  review volume establishes a payer.
+- **Mid-run intervention:** investigate stuck or off-target behavior only
+  after measuring false alarms and the cost of repeated evidence windows.
+
+These are independent candidates, not a general decision service backlog.
+The first evaluation should stay limited to task assessment, model-tier
+recommendations, and the judge backend described above.
