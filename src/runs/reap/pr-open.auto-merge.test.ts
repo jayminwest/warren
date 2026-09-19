@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
 import type { Forge } from "../../forge/contract.ts";
 import type { AutoMergeConfig } from "../../warren-config/pr-config.ts";
 import { reapRun } from "./index.ts";
@@ -73,7 +74,7 @@ describe("reapRun auto-merge arm sub-step (warren-14d6)", () => {
 	let ctx: Ctx;
 
 	beforeEach(async () => {
-		ctx = await setup();
+		ctx = await setup(`${tmpdir()}/unused-host`);
 	});
 
 	afterEach(async () => {

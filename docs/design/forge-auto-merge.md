@@ -251,10 +251,15 @@ The agent authors the run branch. A policy the agent can edit in the
 same pull request is not a policy, so the arm step resolves the policy
 from the PR's base ref and never reads the run branch's config.
 
-The step reads `.warren/config.yaml` at the base ref, in the project
-clone warren already holds. For a normal run the base ref is the project
-default branch. For a chained plan-run child it is the previous child's
-branch.
+The step fetches the remote base and pushed head into a fresh temporary
+repository beside the host clone at arm time, outside sandbox write grants,
+and pins both to commit SHAs (warren-8908).
+Policy reads and the three-dot diff use those SHAs; fetch failures refuse
+arming without a local-ref fallback. Local sandboxes expose the shared
+Git directory as writable, so neither its refs nor its config are trusted.
+
+For a normal run the base ref is the project default branch. For a chained
+plan-run child it is the previous child's branch.
 
 One guard closes the bypass the base-ref rule leaves open for chained
 children: a pull request whose diff touches `.warren/config.yaml` never
@@ -280,8 +285,8 @@ event per run:
    tree said on and the base ref this pull request targets said off.
 3. `capabilities.autoMergeArm === false`: skip `unsupported_forge`. The
    domain never calls past a false flag.
-4. Diff policy. Read the changed-file list from git in the project
-   clone, base ref against the pushed run branch. Never read it from
+4. Diff policy. Read the changed-file list from git in the isolated
+   snapshot, pinned base against the pushed head. Never read it from
    the forge files API: the warren-7b2f bypass was one wrong API field
    name away from a silent permit, and a git read cannot key the wrong
    field.

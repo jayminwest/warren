@@ -123,7 +123,7 @@ export function decideAutoMerge(input: AutoMergePolicyInput): AutoMergeDecision 
 	// §4.3 — the domain never calls past a false capability flag.
 	if (!input.forgeCanArm) return { decision: "skip", reason: "unsupported_forge" };
 	// §4.4 — diff policy, in record order. The list is read from git in the
-	// project clone (base ref against the pushed run branch), never from the
+	// remote snapshot (pinned base against the pushed head), never from the
 	// forge files API: the warren-7b2f bypass was one wrong API field name
 	// away from a silent permit, and a git read cannot key the wrong field.
 	const changed = input.changedPaths;

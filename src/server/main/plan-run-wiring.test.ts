@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 /**
  * Reopen-seam coverage for the auto-merge arm (warren-14d6 / pl-92a3
  * step 6): a child PR the coordinator's `reopenPr` seam opens must arm
@@ -41,6 +42,9 @@ function gitSpawn(opts: { showStdout?: string; nameOnlyDiff?: string } = {}): {
 		if (cmd[0] === "git" && cmd[1] === "show") {
 			return { stdout: opts.showStdout ?? "", stderr: "", exitCode: 0 };
 		}
+		if (cmd[0] === "git" && cmd[1] === "rev-parse") {
+			return { stdout: "a".repeat(40), stderr: "", exitCode: 0 };
+		}
 		if (cmd.includes("--name-only")) {
 			return { stdout: opts.nameOnlyDiff ?? "", stderr: "", exitCode: 0 };
 		}
@@ -67,7 +71,7 @@ describe("createReopenPr auto-merge arm (warren-14d6)", () => {
 	let ctx: Ctx;
 
 	beforeEach(async () => {
-		ctx = await setup();
+		ctx = await setup(`${tmpdir()}/unused-host`);
 	});
 
 	afterEach(async () => {

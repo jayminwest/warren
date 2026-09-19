@@ -398,13 +398,13 @@ export interface Ctx {
 	workspacePath: string;
 }
 
-export async function setup(): Promise<Ctx> {
+export async function setup(localPath = "/data/projects/x/y"): Promise<Ctx> {
 	const db = await openDatabase({ path: ":memory:" });
 	const repos = createRepos(db);
 	await repos.agents.upsert({ name: "refactor-bot", renderedJson: { sections: { system: "x" } } });
 	const project = await repos.projects.create({
 		gitUrl: "https://github.com/x/y.git",
-		localPath: "/data/projects/x/y",
+		localPath,
 		defaultBranch: "main",
 	});
 	const run = await repos.runs.create({

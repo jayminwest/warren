@@ -10,7 +10,7 @@
  * §4.4 / §3.1):
  *
  *   - The changed-path list comes from a three-dot diff (`base...head`,
- *     merge-base semantics) run in the project clone reap already holds,
+ *     merge-base semantics) run in the isolated remote snapshot,
  *     never from the forge files API — the warren-7b2f bypass was one wrong
  *     API field name away from a silent permit, and a git read cannot key
  *     the wrong field. ANY git failure returns the unreadable marker, which
@@ -42,9 +42,9 @@ const GIT_TIMEOUT_MS = 10_000;
 
 /**
  * Compute the changed-path list for the arm decision with
- * `git diff --name-only --no-renames -z base...head` in `cwd` (the project
- * clone reap already holds; under K8s the caller fetches the run branch
- * into a temp ref first, the `outcome-facts.ts` trick). Three-dot keeps
+ * `git diff --name-only --no-renames -z base...head` in `cwd`. The arm
+ * caller supplies an isolated repository and pinned remote commit SHAs.
+ * Three-dot keeps
  * merge-base semantics — the list shows what the head changed since the
  * branches diverged, base-side drift excluded, exactly the changes this
  * pull request carries.
@@ -82,7 +82,7 @@ export async function computeAutoMergeChangedPaths(
 
 /**
  * Load the `pr.autoMerge` block from `.warren/config.yaml` AT THE BASE REF —
- * `git show <base>:.warren/config.yaml` in the project clone — never from
+ * `git show <base>:.warren/config.yaml` in the isolated snapshot — never from
  * the run-branch working tree (the agent authors the run branch; see the
  * module header). For a normal run the base ref is the project default
  * branch; for a chained plan-run child it is the previous child's branch.

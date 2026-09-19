@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type {
 	ArmAutoMergeOptions,
 	AutoMergeRefusalReason,
@@ -7,7 +9,13 @@ import type {
 } from "../../forge/contract.ts";
 import type { AutoMergeConfig } from "../../warren-config/pr-config.ts";
 import { type RunAutoMergeArmInput, runAutoMergeArm } from "./auto-merge-arm.ts";
-import { fakeExec, fakeForge, stubForge, TEST_REPO_REF } from "./test-helpers.ts";
+import {
+	FAKE_REV_PARSE_SHA,
+	fakeExec,
+	fakeForge,
+	stubForge,
+	TEST_REPO_REF,
+} from "./test-helpers.ts";
 
 /** The opt-in project block; tests override method/protectedPaths per case. */
 const OPT_IN: AutoMergeConfig = { method: "squash", protectedPaths: [] };
@@ -38,7 +46,7 @@ function baseInput(overrides: Partial<RunAutoMergeArmInput> = {}): RunAutoMergeA
 	return {
 		projectAutoMerge: OPT_IN,
 		run: { id: "run_1", trigger: "manual" },
-		project: { gitUrl: "https://github.com/x/y.git", localPath: "/data/projects/x/y" },
+		project: { gitUrl: "https://github.com/x/y.git", localPath: `${tmpdir()}/unused-host` },
 		prUrl: "fake://x/y/pulls/1",
 		prNumber: 1,
 		repoRef: TEST_REPO_REF,
@@ -281,18 +289,22 @@ describe("runAutoMergeArm", () => {
 		await runAutoMergeArm(baseInput({ forge, exec: e.exec, emit: failingEmit }));
 	});
 
-	test("fetches the pushed branch into a temp ref on the no-workspace path", async () => {
+	test.each([
+		null,
+		"/data/sandbox/ws",
+	])("fetches remote snapshots with workspace %s", async (workspacePath) => {
 		const e = fakeExec({ showStdout: BASE_CONFIG_YAML, nameOnlyDiff: "src/a.ts\0" });
 		const { forge, armCalls } = armedForge();
 		const rec = recordingEmit();
-		await runAutoMergeArm(baseInput({ workspacePath: null, forge, exec: e.exec, emit: rec.emit }));
-		const fetch = e.calls.find((c) => c.args[0] === "fetch");
+		await runAutoMergeArm(baseInput({ workspacePath, forge, exec: e.exec, emit: rec.emit }));
+		const fetch = e.calls.filter((c) => c.args[0] === "fetch")[1];
 		expect(fetch?.args.join(" ")).toContain(
-			"agent/refactor-bot/run-1:refs/warren/auto-merge-arm/run_1",
+			"refs/heads/agent/refactor-bot/run-1:refs/warren/auto-merge/head",
 		);
 		const diff = e.calls.find((c) => c.args[0] === "diff" && c.args.includes("--name-only"));
-		expect(diff?.args.join(" ")).toContain("main...refs/warren/auto-merge-arm/run_1");
-		expect(e.calls.some((c) => c.args[0] === "update-ref" && c.args.includes("-d"))).toBe(true);
+		expect(diff?.args.join(" ")).toContain(`${FAKE_REV_PARSE_SHA}...${FAKE_REV_PARSE_SHA}`);
+		expect(fetch?.cwd).not.toBe("/data/projects/x/y");
+		expect(existsSync(fetch?.cwd ?? "")).toBe(false);
 		expect(armCalls).toHaveLength(1);
 		const ev = onlyEvent(rec.events);
 		expect(ev.kind).toBe("reap.auto_merge_armed");
