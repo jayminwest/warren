@@ -52,17 +52,17 @@ warren add-project [options] <git-url>
 dispatch a one-shot run against the warren server, tail events as NDJSON, and exit
 
 ```bash
-warren run [options] <agent> <project>
+warren run [options] [agent] [project]
 ```
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `<agent>` | yes | registered agent name |
-| `<project>` | yes | project id (prj_xxx) |
+| `[agent]` |  | registered agent name (optional with --rescue-from) |
+| `[project]` |  | project id (prj_xxx; optional with --rescue-from) |
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
-| `-p, --prompt <text>` | yes |  | prompt text the agent receives |
+| `-p, --prompt <text>` |  |  | prompt text the agent receives (optional with --rescue-from) |
 | `--trigger <label>` |  | `"cli"` | run trigger label |
 | `--provider <name>` |  |  | per-run override of agent frontmatter.provider |
 | `--model <name>` |  |  | per-run override of agent frontmatter.model |
@@ -70,6 +70,7 @@ warren run [options] <agent> <project>
 | `--seed <id>` |  |  | link the run to a seeds issue (POST /runs seedId) |
 | `--base-commit <sha>` |  |  | pin the workspace cut to a 40-hex commit SHA |
 | `--existing-branch <branch>` |  |  | run on an existing push-remote branch and push back to it; no PR |
+| `--rescue-from <runId>` |  |  | re-dispatch a salvaged run's recovered work off its warren/rescue/<runId> branch |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 

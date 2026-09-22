@@ -34,3 +34,19 @@ test("Spend panel renders the '$X of $Y cap' denominator only when the overlay s
 	expect(src.includes("of {formatCostUsd(cap)} cap")).toBe(true);
 	expect(src.includes("% OF CAP")).toBe(true);
 });
+
+test("Runtime panel surfaces the salvage rescue ref, bundle, hint, and dispatch button (#1241)", async () => {
+	const src = await Bun.file(new URL("./side-panels.tsx", import.meta.url)).text();
+	expect(src.includes("<RescueRows run={run} />")).toBe(true);
+	expect(src.includes('label="rescue"')).toBe(true);
+	expect(src.includes('label="rescue bundle"')).toBe(true);
+	// The hint names the CLI command; the button rides the operator gate.
+	expect(src.includes("{rescue.hint}")).toBe(true);
+	expect(src.includes("Dispatch from rescue")).toBe(true);
+	expect(src.includes("rescueFromRunId: run.id")).toBe(true);
+});
+
+test("Run definition labels a rescue chain as rescued from (#1241)", async () => {
+	const src = await Bun.file(new URL("./side-panels.tsx", import.meta.url)).text();
+	expect(src.includes('"rescued from"')).toBe(true);
+});

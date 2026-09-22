@@ -29,12 +29,14 @@ interface CloneDefaults {
 }
 
 /**
- * Resolve the prior run referenced by `cloneFromRunId` into dispatch
- * defaults (warren-e96f). The effective provider/model are read back off the
- * parent's frozen `rendered_agent_json` so the replica fires onto the exact
- * same model the parent used, regardless of which slot (override vs project
- * default vs agent frontmatter) originally supplied it.
+ * #1241 / warren-1db0: the resolved shape of a `rescueFromRunId` dispatch.
+ * `CloneDefaults` plus the source run's frozen `salvageRef` rescue branch,
+ * which becomes the dispatch's `existingBranch`.
  */
+interface RescueDefaults extends CloneDefaults {
+	readonly rescueRef: string;
+}
+
 /**
  * warren-6c4c: mint the spawn's clone-refresh credential per-spawn through
  * the boot forge (forge-contract.md §4); no config object holds a token.
@@ -65,6 +67,13 @@ async function validateSeedId(deps: ServerDeps, projectId: string, seedId: strin
 	await deps.issueTracker.getIssue(ctx, seedId);
 }
 
+/**
+ * Resolve the prior run referenced by `cloneFromRunId` into dispatch
+ * defaults (warren-e96f). The effective provider/model are read back off the
+ * parent's frozen `rendered_agent_json` so the replica fires onto the exact
+ * same model the parent used, regardless of which slot (override vs project
+ * default vs agent frontmatter) originally supplied it.
+ */
 async function resolveCloneDefaults(
 	deps: ServerDeps,
 	cloneFromRunId: string,
@@ -75,10 +84,67 @@ async function resolveCloneDefaults(
 			`run ${cloneFromRunId} has no project; cannot re-run a run whose project was deleted`,
 		);
 	}
+	return readParentDefaults({
+		agentName: parent.agentName,
+		projectId: parent.projectId,
+		prompt: parent.prompt,
+		renderedAgentJson: parent.renderedAgentJson,
+	});
+}
+
+/**
+ * #1241 / warren-1db0: resolve the source run referenced by `rescueFromRunId`
+ * into dispatch defaults plus its salvage rescue branch. The branch is stamped
+ * by the reap salvage path (`runs.salvage_ref`, `warren/rescue/<runId>` on
+ * origin); a run with none has nothing to re-dispatch from, so the dispatch is
+ * refused with 400 before any side effect. Everything else inherits from the
+ * source run the same way `resolveCloneDefaults` does.
+ */
+async function resolveRescueDefaults(
+	deps: ServerDeps,
+	rescueFromRunId: string,
+): Promise<RescueDefaults> {
+	const parent = await deps.repos.runs.require(rescueFromRunId);
+	if (parent.projectId === null) {
+		throw new ValidationError(
+			`run ${rescueFromRunId} has no project; cannot rescue a run whose project was deleted`,
+		);
+	}
+	if (parent.salvageRef === null || parent.salvageRef === "") {
+		throw new ValidationError(`run ${rescueFromRunId} has no rescue branch to re-dispatch from`, {
+			recoveryHint:
+				"The run's work was never salvaged (no warren/rescue/<runId> branch on origin). " +
+				"Dispatch a fresh run, or continue from it with continueFromRunId if it pushed a branch.",
+		});
+	}
+	return {
+		...readParentDefaults({
+			agentName: parent.agentName,
+			projectId: parent.projectId,
+			prompt: parent.prompt,
+			renderedAgentJson: parent.renderedAgentJson,
+		}),
+		rescueRef: parent.salvageRef,
+	};
+}
+
+/**
+ * Inherited dispatch defaults read off a prior run's frozen row — shared by
+ * the `cloneFromRunId` replicate path (warren-e96f) and the `rescueFromRunId`
+ * rescue path (#1241). The effective provider/model/cap are read back off the
+ * frozen `rendered_agent_json` so the follow-up fires onto the exact same
+ * model the parent used, regardless of which slot originally supplied it.
+ */
+function readParentDefaults(parent: {
+	agentName: string;
+	projectId: string;
+	prompt: string;
+	renderedAgentJson: unknown;
+}): CloneDefaults {
 	const rendered = parent.renderedAgentJson as { frontmatter?: Record<string, unknown> };
 	const fm = readProviderFrontmatter(rendered.frontmatter ?? {});
 	// warren-a63d: the parent's EFFECTIVE cap (whichever tier supplied it) sits
-	// folded on the frozen frontmatter; read it back so the replica inherits it
+	// folded on the frozen frontmatter; read it back so the follow-up inherits it
 	// verbatim, same as provider/model.
 	const capUsd = readMaxCostUsd(rendered.frontmatter ?? {});
 	return {
@@ -98,6 +164,34 @@ async function resolveCloneDefaults(
  * continuation/replicate fallbacks add several `??` chains that all collapse
  * here.
  */
+/**
+ * #1241: `rescueFromRunId` resolves its own base (the source run's salvage
+ * rescue branch), so it is mutually exclusive with the other base-resolving
+ * dispatch fields. Refused with 400 before any side effect.
+ */
+function assertRescueExclusivity(
+	body: Record<string, unknown>,
+	fields: {
+		continueFromRunId: string | undefined;
+		cloneFromRunId: string | undefined;
+		rescueFromRunId: string | undefined;
+	},
+): void {
+	if (fields.rescueFromRunId === undefined) return;
+	const explicitExistingBranch = optionalString(body, "existingBranch");
+	const conflicts = [
+		...(fields.continueFromRunId !== undefined ? ["continueFromRunId"] : []),
+		...(fields.cloneFromRunId !== undefined ? ["cloneFromRunId"] : []),
+		...(explicitExistingBranch !== undefined ? ["existingBranch"] : []),
+	];
+	if (conflicts.length === 0) return;
+	throw new ValidationError(`rescueFromRunId cannot be combined with: ${conflicts.join(", ")}`, {
+		recoveryHint:
+			"rescueFromRunId resolves the base branch itself (the source run's " +
+			"salvage rescue branch). Dispatch it on its own.",
+	});
+}
+
 interface ResolvedDispatchFields {
 	readonly agentName: string;
 	readonly projectId: string;
@@ -106,7 +200,9 @@ interface ResolvedDispatchFields {
 	readonly modelOverride?: string;
 	readonly maxCostUsd?: number;
 	readonly parentRunId?: string;
-	readonly cloneKind?: "replicate";
+	readonly cloneKind?: "replicate" | "rescue";
+	/** #1241: the source run's rescue branch, dispatched as `existingBranch`. */
+	readonly rescueRef?: string;
 }
 
 async function resolveDispatchFields(
@@ -122,27 +218,56 @@ async function resolveDispatchFields(
 	// agent / model / project / prompt against the project default base.
 	// Mutually exclusive with the continuation path; continuation wins.
 	const cloneFromRunId = optionalString(body, "cloneFromRunId");
+	// #1241 / warren-1db0: "dispatch from the rescue" — re-dispatch a salvaged
+	// run's recovered work off its `warren/rescue/<runId>` branch.
+	const rescueFromRunId = optionalString(body, "rescueFromRunId");
+	assertRescueExclusivity(body, {
+		continueFromRunId,
+		cloneFromRunId,
+		rescueFromRunId,
+	});
+	const rescue =
+		rescueFromRunId !== undefined ? await resolveRescueDefaults(deps, rescueFromRunId) : undefined;
 	const clone =
-		continueFromRunId === undefined && cloneFromRunId !== undefined
+		continueFromRunId === undefined && rescue === undefined && cloneFromRunId !== undefined
 			? await resolveCloneDefaults(deps, cloneFromRunId)
 			: undefined;
 
 	return {
-		agentName: optionalString(body, "agent") ?? clone?.agentName ?? requireString(body, "agent"),
+		agentName:
+			optionalString(body, "agent") ??
+			rescue?.agentName ??
+			clone?.agentName ??
+			requireString(body, "agent"),
 		projectId:
-			optionalString(body, "project") ?? clone?.projectId ?? requireString(body, "project"),
-		prompt: optionalString(body, "prompt") ?? clone?.prompt ?? requireString(body, "prompt"),
-		providerOverride: optionalString(body, "providerOverride") ?? clone?.providerOverride,
-		modelOverride: optionalString(body, "modelOverride") ?? clone?.modelOverride,
+			optionalString(body, "project") ??
+			rescue?.projectId ??
+			clone?.projectId ??
+			requireString(body, "project"),
+		prompt:
+			optionalString(body, "prompt") ??
+			rescue?.prompt ??
+			clone?.prompt ??
+			requireString(body, "prompt"),
+		providerOverride:
+			optionalString(body, "providerOverride") ??
+			rescue?.providerOverride ??
+			clone?.providerOverride,
+		modelOverride:
+			optionalString(body, "modelOverride") ?? rescue?.modelOverride ?? clone?.modelOverride,
 		// Per-dispatch spend cap (warren-a63d): explicit body field wins; a
-		// replicate falls back to the parent's effective cap read off its
-		// frozen frontmatter, matching the provider/model inheritance above.
-		maxCostUsd: optionalPositiveNumber(body, "maxCostUsd") ?? clone?.maxCostUsd,
-		// A replicate records the same `parent_run_id` column as a continuation;
-		// the `clone_kind` discriminator keeps them apart.
+		// replicate or rescue falls back to the source run's effective cap read
+		// off its frozen frontmatter, matching the provider/model inheritance.
+		maxCostUsd:
+			optionalPositiveNumber(body, "maxCostUsd") ?? rescue?.maxCostUsd ?? clone?.maxCostUsd,
+		// A replicate or rescue records the same `parent_run_id` column as a
+		// continuation; the `clone_kind` discriminator keeps them apart.
 		...(continueFromRunId !== undefined ? { parentRunId: continueFromRunId } : {}),
 		...(clone !== undefined && cloneFromRunId !== undefined
 			? { parentRunId: cloneFromRunId, cloneKind: "replicate" as const }
+			: {}),
+		...(rescue !== undefined && rescueFromRunId !== undefined
+			? { parentRunId: rescueFromRunId, cloneKind: "rescue" as const, rescueRef: rescue.rescueRef }
 			: {}),
 	};
 }
@@ -168,7 +293,10 @@ async function buildHttpSpawnOptions(
 	const targetBranch = optionalString(body, "targetBranch");
 	// warren-326f: opt-in dispatch onto an existing push-remote branch. The
 	// fail-closed remote-existence check lives in spawnRun (domain layer), so
-	// the handler only forwards the field.
+	// the handler only forwards the field. #1241: a `rescueFromRunId` dispatch
+	// resolves to this same field (the source run's salvage rescue branch), so
+	// the domain path — shape validation, remote probe, push-back, no PR — is
+	// the one warren-326f already owns.
 	const existingBranch = optionalString(body, "existingBranch");
 	const dispatcherHandle = optionalString(body, "dispatcherHandle");
 	// warren-97a2: the HTTP-collapsed `warren run` labels its dispatches
@@ -183,7 +311,12 @@ async function buildHttpSpawnOptions(
 		maxCostUsd,
 		parentRunId,
 		cloneKind,
+		rescueRef,
 	} = await resolveDispatchFields(deps, body);
+	// #1241: the rescue branch wins over an explicit `existingBranch` (the two
+	// fields are mutually exclusive — checked above), and rides the identical
+	// existing-branch domain path.
+	const effectiveExistingBranch = rescueRef ?? existingBranch;
 
 	if (seedId !== undefined) await validateSeedId(deps, projectId, seedId);
 
@@ -213,7 +346,7 @@ async function buildHttpSpawnOptions(
 		...(maxCostUsd !== undefined ? { maxCostUsdOverride: maxCostUsd } : {}),
 		seedId,
 		...(targetBranch !== undefined ? { targetBranch } : {}),
-		...(existingBranch !== undefined ? { existingBranch } : {}),
+		...(effectiveExistingBranch !== undefined ? { existingBranch: effectiveExistingBranch } : {}),
 		...(parentRunId !== undefined ? { parentRunId } : {}),
 		...(cloneKind !== undefined ? { cloneKind } : {}),
 		dispatcherHandle,

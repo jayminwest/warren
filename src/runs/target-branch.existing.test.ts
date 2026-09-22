@@ -58,6 +58,29 @@ describe("validateExistingBranchShape", () => {
 			}),
 		).toThrow(/parentRunId/);
 	});
+
+	test("exempts parentRunId for a rescue dispatch (#1241, warren-1db0)", () => {
+		// A rescue IS the parent + rescue-branch combination: the parent link
+		// is lineage only and the base is the rescue branch itself.
+		expect(
+			validateExistingBranchShape({
+				...base,
+				existingBranch: "warren/rescue/run_abc",
+				parentRunId: "run_abc",
+				cloneKind: "rescue",
+			}),
+		).toBe("warren/rescue/run_abc");
+		// ref/targetBranch conflicts still apply to a rescue dispatch.
+		expect(() =>
+			validateExistingBranchShape({
+				...base,
+				existingBranch: "warren/rescue/run_abc",
+				parentRunId: "run_abc",
+				cloneKind: "rescue",
+				ref: "release/v2",
+			}),
+		).toThrow(/ref/);
+	});
 });
 
 describe("assertBranchOnRemote", () => {
