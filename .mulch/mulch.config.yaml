@@ -75,6 +75,7 @@ domains:
   ops-overview: {}
   run-detail: {}
   telemetry: {}
+  harness: {}
 governance:
   max_entries: 100
   warn_entries: 150
