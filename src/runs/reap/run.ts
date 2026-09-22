@@ -8,7 +8,7 @@ import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
 import { detectTerminalProviderError, providerErrorEventPayload } from "./provider-error.ts";
-import { salvageWorkspace, type WorkspaceSalvageOutcome } from "./salvage.ts";
+import { salvageWorkspace, surfacePodSalvage, type WorkspaceSalvageOutcome } from "./salvage.ts";
 import {
 	detectSpawnExecFailure,
 	inferFailureReason,
@@ -55,12 +55,12 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	});
 	const providerErrorMessage = providerError?.message ?? null;
 	const failedFromProviderError = providerError !== null && input.outcome !== "cancelled";
-	// The success pipeline gates PR-open / seed-close / preview / auto-dispatch
-	// on `outcome === "succeeded"`, so thread the overridden outcome in so a
-	// provider-error run skips them (no bookkeeping-only PR, no seed close,
-	// no plan-run advance) — same posture as a normal bridge-failed run.
+	// warren-cbd3: seed-close / preview / auto-dispatch stay gated on
+	// `outcome === "succeeded"`, so thread the overridden outcome in so a
+	// provider-error run skips them — same posture as a bridge-failed run.
+	// `providerErrorPr` is the PR-open exception: pushed work still gets a PR.
 	const pipelineInput: ReapRunInput = failedFromProviderError
-		? { ...input, outcome: "failed" }
+		? { ...input, outcome: "failed", providerErrorPr: { message: providerErrorMessage } }
 		: input;
 
 	// `run.projectId` is null when the project was deleted while the run
@@ -244,37 +244,20 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// capture also lifts the destroy skip below: the work is safe, so the
 	// workspace no longer needs preserving.
 	let salvage: WorkspaceSalvageOutcome | null = null;
-	// warren-985e: the pod-side surfacing arm also covers a provider_error
-	// failure — that run's finalize SUCCEEDED (it pushed the zero-commit
-	// branch), so `finalizeFailed` never fires, but the pod's
-	// `empty_push_dirty` salvage window may still have captured the
-	// uncommitted work and stamped the row before posting its result.
+	// warren-985e / warren-5ea1 / warren-cbd3: the pod-side surfacing arm lives
+	// in `salvage.ts` (`surfacePodSalvage`) — under K8s it surfaces whatever
+	// the pod POSTed, stays silent when a provider-error run already pushed
+	// its work, and only then claims a salvage failure.
 	if ((state.finalizeFailed || failedFromProviderError) && workspacePath === null) {
-		// warren-5ea1 (k8s): the control plane cannot reach the pod's emptyDir,
-		// so reap cannot capture anything itself — but the pod may have POSTed a
-		// self-salvage (`/runs/:id/salvage` intake stamps the run row) before
-		// exiting. Surface whatever landed so the terminal record names the
-		// recovery path at a glance, and let the destroy proceed when the work
-		// is already durable elsewhere (the intake's `reap.workspace_salvaged`
-		// event carries the operator-visible detail; re-fetch the row since the
-		// stamp can land after reap's initial read).
-		const fresh = await input.repos.runs.require(run.id);
-		if (fresh.salvageRef !== null || fresh.salvagePath !== null) {
-			salvage = { rescueRef: fresh.salvageRef, bundlePath: fresh.salvagePath, errors: [] };
-			await emit("reap.workspace_salvage_recorded", {
-				source: "pod",
-				rescueRef: fresh.salvageRef,
-				bundlePath: fresh.salvagePath,
-			});
-		} else {
-			await emit("reap.workspace_salvage_failed", {
-				errors: [
-					failedFromProviderError && !state.finalizeFailed
-						? "run failed with provider_error and the pod posted no salvage bundle; any uncommitted work is unrecoverable"
-						: "pod reached a terminal phase without posting a finalize result or a salvage bundle; committed work is unrecoverable",
-				],
-			});
-		}
+		salvage = await surfacePodSalvage({
+			runId: run.id,
+			failedFromProviderError,
+			finalizeFailed: state.finalizeFailed,
+			branchPushed: state.branchPushed,
+			commitsAhead: state.commitsAhead,
+			requireRun: (id) => input.repos.runs.require(id),
+			emit,
+		});
 	}
 	if (state.finalizeFailed && workspacePath !== null) {
 		// warren-4e1c: mint the rescue-push credential immediately before the

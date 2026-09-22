@@ -6,6 +6,7 @@ import type { AutoMergeConfig } from "../../warren-config/pr-config.ts";
 import { type AutoOpenPrConfig, type BuildPrContentInput, buildPrContent } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
 import { runAutoMergeArm } from "./auto-merge-arm.ts";
+import type { ReapPipelineContext, ReapPipelineState } from "./pipeline.ts";
 import { type CloneFetchConfig, gatherPrContext, type PrContext } from "./pr-context.ts";
 import type { ReapExec } from "./types.ts";
 
@@ -85,6 +86,13 @@ export interface TryOpenPrInput {
 	};
 	readonly prContext: PrContext;
 	readonly previewOptedIn: boolean;
+	/**
+	 * warren-cbd3: the terminal provider-error message when the run failed
+	 * with one AFTER committing and pushing. Labels the PR body's `run`
+	 * fragment so a reviewer sees the run itself did not finish cleanly;
+	 * undefined = the run ended normally.
+	 */
+	readonly providerError?: string | null;
 	readonly prTemplate?: PrTemplateOverrides;
 }
 
@@ -119,6 +127,7 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<TryOpenPrResult>
 		...(input.run.tokensInput !== null ? { tokensInput: input.run.tokensInput } : {}),
 		...(input.run.tokensOutput !== null ? { tokensOutput: input.run.tokensOutput } : {}),
 		...(input.run.tokensCacheRead !== null ? { tokensCacheRead: input.run.tokensCacheRead } : {}),
+		...(input.providerError !== undefined ? { providerError: input.providerError } : {}),
 		...(input.prTemplate !== undefined ? { templateOverrides: input.prTemplate } : {}),
 	};
 	const content = buildPrContent(contentInput);
@@ -196,6 +205,8 @@ export interface RunPrOpenInput {
 	readonly prTemplate?: PrTemplateOverrides;
 	/** Boot-resolved issue tracker for seed attribution (warren-47b0). */
 	readonly issueTracker?: IssueTracker;
+	/** warren-cbd3: terminal provider-error message; labels the PR body. */
+	readonly providerError?: string | null;
 	/** Injected sleep for tests; defaults to real setTimeout-based sleep. */
 	readonly sleep?: (ms: number) => Promise<void>;
 	/**
@@ -284,6 +295,7 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null>
 			run: input.run,
 			prContext,
 			previewOptedIn: input.previewOptedIn,
+			providerError: input.providerError,
 			...(input.prTemplate !== undefined ? { prTemplate: input.prTemplate } : {}),
 		};
 		const sleep = input.sleep ?? defaultSleep;
@@ -329,4 +341,59 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null>
 		await input.fail("pr_open", err);
 		return null;
 	}
+}
+
+/**
+ * Auto-open PR (warren-f6af); a CI-fixer run self-skips inside runPrOpen
+ * (warren-a993). Extracted from pipeline.ts in warren-cbd3 to respect the
+ * per-file size budget; still driven by `runReapPipeline` in pipeline order.
+ *
+ * warren-cbd3: a provider-error run whose finalize pushed real commits still
+ * opens a PR — the work is reviewable on origin, and a provider error after
+ * the push must not strand it on a branch with no PR. `providerErrorPr` rides
+ * the outcome-overridden reap input; every other success-pipeline gate (seed
+ * close, plan-run advance, preview) stays keyed on a true success. The PR
+ * body's `run` fragment labels the provider error via `providerError`.
+ */
+export async function prOpenStep(
+	ctx: ReapPipelineContext,
+	state: ReapPipelineState,
+): Promise<void> {
+	const { branch } = ctx;
+	if (
+		!(
+			ctx.input.autoOpenPr?.enabled === true &&
+			(ctx.input.outcome === "succeeded" || ctx.input.providerErrorPr !== undefined) &&
+			state.branchPushed &&
+			state.commitsAhead !== null &&
+			state.commitsAhead > 0 &&
+			branch !== null &&
+			branch !== ctx.project.defaultBranch
+		)
+	) {
+		return;
+	}
+	// warren-45e6: a reap input without a forge (tests) skips pr_open as if disabled.
+	const forge = ctx.input.forge;
+	if (forge === undefined) return;
+	state.openedPr = await runPrOpen({
+		autoOpen: ctx.input.autoOpenPr,
+		forge,
+		project: ctx.project,
+		run: ctx.run,
+		branch,
+		baseBranch: ctx.baseBranch,
+		workspacePath: ctx.workspacePath,
+		previewOptedIn: ctx.input.previewConfig !== undefined,
+		exec: ctx.exec,
+		emit: ctx.emit,
+		issueTracker: ctx.input.issueTracker,
+		fail: (step, err) => ctx.fail(step, err),
+		setPrUrl: (id, url) => ctx.input.repos.runs.setPrUrl(id, url),
+		providerError: ctx.input.providerErrorPr?.message,
+		...(ctx.input.prTemplate !== undefined ? { prTemplate: ctx.input.prTemplate } : {}),
+		...(ctx.input.prAutoMerge !== undefined ? { prAutoMerge: ctx.input.prAutoMerge } : {}),
+		...(ctx.input.sleep !== undefined ? { sleep: ctx.input.sleep } : {}),
+	});
+	state.prUrl = state.openedPr?.url ?? null;
 }
