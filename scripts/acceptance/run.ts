@@ -175,7 +175,8 @@ Options:
 
 Set WARREN_ACCEPTANCE_LOG_LEVEL to "info" or "debug" to see warren server
 logs; set WARREN_ACCEPTANCE_WARREN_STDOUT=1 / _STDERR=1 / _BURROW_STDOUT=1
-to passthrough child-process logs.`);
+to passthrough child-process logs. By default warren's child output is
+captured and attached to the error when healthz times out (warren-f074).`);
 }
 
 async function main(): Promise<number> {

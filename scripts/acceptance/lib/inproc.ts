@@ -29,6 +29,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { AcceptanceError } from "./assert.ts";
 import { waitForHealthz } from "./poll.ts";
 
 export interface InProcBootOptions {
@@ -126,7 +127,7 @@ export async function bootInProc(opts: InProcBootOptions): Promise<BootHandle> {
 	};
 
 	state.warren = state.warrenStartCmd();
-	await waitForHealthz(warrenUrl, HEALTHZ_WAIT_TIMEOUT_MS);
+	await waitForHealthzWithDiagnostics(warrenUrl, HEALTHZ_WAIT_TIMEOUT_MS, state.warren);
 
 	return {
 		warrenUrl,
@@ -150,7 +151,7 @@ export async function bootInProc(opts: InProcBootOptions): Promise<BootHandle> {
 		restartWarren: async () => {
 			if (state.warren !== undefined) return;
 			state.warren = state.warrenStartCmd();
-			await waitForHealthz(warrenUrl, HEALTHZ_WAIT_TIMEOUT_MS);
+			await waitForHealthzWithDiagnostics(warrenUrl, HEALTHZ_WAIT_TIMEOUT_MS, state.warren);
 		},
 	};
 }
@@ -158,6 +159,12 @@ export async function bootInProc(opts: InProcBootOptions): Promise<BootHandle> {
 interface SpawnedProc {
 	readonly proc: ReturnType<typeof Bun.spawn>;
 	readonly exited: Promise<number>;
+	/** Resolves once both piped output streams are fully drained. */
+	readonly drained: Promise<void>;
+	/** Bounded tail of the child's stdout, when not live-streamed. */
+	readonly stdoutTail: TailCapture;
+	/** Bounded tail of the child's stderr, when not live-streamed. */
+	readonly stderrTail: TailCapture;
 }
 
 interface ProcState {
@@ -166,14 +173,120 @@ interface ProcState {
 }
 
 function spawnWarren(serverEntry: string, env: Record<string, string>): SpawnedProc {
+	return spawnCaptured(["bun", "run", serverEntry], env);
+}
+
+/**
+ * Last `OUTPUT_TAIL_CHARS` characters kept per stream — a few hundred log
+ * lines, enough to see a boot crash without an unbounded buffer.
+ */
+const OUTPUT_TAIL_CHARS = 8_000;
+
+/** Bounded append-only tail buffer for one child output stream. */
+export class TailCapture {
+	private tail = "";
+
+	append(text: string): void {
+		this.tail += text;
+		if (this.tail.length > OUTPUT_TAIL_CHARS) {
+			this.tail = this.tail.slice(-OUTPUT_TAIL_CHARS);
+		}
+	}
+
+	text(): string {
+		return this.tail;
+	}
+}
+
+async function drainInto(stream: ReadableStream<Uint8Array>, capture: TailCapture): Promise<void> {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value !== undefined) capture.append(decoder.decode(value, { stream: true }));
+		}
+		capture.append(decoder.decode());
+	} catch {
+		// Best-effort: a child that dies mid-write still yields what it wrote.
+	}
+}
+
+/**
+ * Spawn a child whose stdout/stderr are piped into bounded tail buffers
+ * (warren-f074) unless `WARREN_ACCEPTANCE_WARREN_STDOUT=1` / `_STDERR=1`
+ * opts a stream back into live `inherit` passthrough. Captured output is
+ * surfaced by {@link waitForHealthzWithDiagnostics} when the boot fails.
+ */
+export function spawnCaptured(cmd: readonly string[], env?: Record<string, string>): SpawnedProc {
+	const stdoutLive = process.env.WARREN_ACCEPTANCE_WARREN_STDOUT === "1";
+	const stderrLive = process.env.WARREN_ACCEPTANCE_WARREN_STDERR === "1";
 	const proc = Bun.spawn({
-		cmd: ["bun", "run", serverEntry],
-		env,
+		cmd: [...cmd],
+		...(env !== undefined ? { env } : {}),
 		stdin: "ignore",
-		stdout: process.env.WARREN_ACCEPTANCE_WARREN_STDOUT === "1" ? "inherit" : "ignore",
-		stderr: process.env.WARREN_ACCEPTANCE_WARREN_STDERR === "1" ? "inherit" : "ignore",
+		stdout: stdoutLive ? "inherit" : "pipe",
+		stderr: stderrLive ? "inherit" : "pipe",
 	});
-	return { proc, exited: proc.exited.then((c) => c ?? 0) };
+	const stdoutTail = new TailCapture();
+	const stderrTail = new TailCapture();
+	const drains: Promise<void>[] = [];
+	if (!stdoutLive && proc.stdout instanceof ReadableStream) {
+		drains.push(drainInto(proc.stdout, stdoutTail));
+	}
+	if (!stderrLive && proc.stderr instanceof ReadableStream) {
+		drains.push(drainInto(proc.stderr, stderrTail));
+	}
+	return {
+		proc,
+		exited: proc.exited.then((c) => c ?? 0),
+		drained: Promise.all(drains).then(() => undefined),
+		stdoutTail,
+		stderrTail,
+	};
+}
+
+/**
+ * `waitForHealthz`, but on timeout the AcceptanceError carries the child's
+ * buffered stdout/stderr tails and its exit status, so a CI boot failure
+ * leaves evidence instead of a single `last state` line (warren-f074).
+ */
+export async function waitForHealthzWithDiagnostics(
+	baseUrl: string,
+	timeoutMs: number,
+	child: SpawnedProc,
+): Promise<void> {
+	try {
+		await waitForHealthz(baseUrl, timeoutMs);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		throw new AcceptanceError(`${message}${describeExit(child.proc)}${renderTails(child)}`, {
+			cause: err,
+		});
+	}
+}
+
+function describeExit(proc: ReturnType<typeof Bun.spawn>): string {
+	if (typeof proc.exitCode === "number") {
+		return `\nchild exited with code ${proc.exitCode}.`;
+	}
+	if (proc.signalCode !== null) {
+		return `\nchild killed by signal ${proc.signalCode}.`;
+	}
+	return "";
+}
+
+function renderTails(child: SpawnedProc): string {
+	const parts: string[] = [];
+	const stderr = child.stderrTail.text().trimEnd();
+	const stdout = child.stdoutTail.text().trimEnd();
+	if (stderr !== "") parts.push(`--- child stderr tail ---\n${stderr}`);
+	if (stdout !== "") parts.push(`--- child stdout tail ---\n${stdout}`);
+	if (parts.length === 0) {
+		return "\nchild produced no captured output (empty streams, or live-streamed via WARREN_ACCEPTANCE_WARREN_STDOUT/_STDERR).";
+	}
+	return `\n${parts.join("\n\n")}`;
 }
 
 async function stopChild(child: SpawnedProc | undefined): Promise<void> {
