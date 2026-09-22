@@ -29,12 +29,18 @@ function captureContext(): { context: CliContext; out: string[]; err: string[] }
 interface MockClientInput {
 	readonly agents?: readonly { readonly name: string }[];
 	readonly projects?: Readonly<Record<string, { readonly localPath: string }>>;
+	/** Recorded `initProject` calls (warren-166d remote mode). */
+	readonly initCalls?: {
+		readonly projectId: string;
+		readonly input: unknown;
+	}[];
 }
 
 /** Mocked WarrenClient (warren-97a2): the CLI no longer opens a DB. */
 function mockClient(input: MockClientInput = {}): WarrenClient {
 	const agents = input.agents ?? [];
 	const projects = input.projects ?? {};
+	const initCalls = input.initCalls ?? [];
 	return {
 		listAgents: async () => ({ agents: agents.map((a) => ({ name: a.name })) }),
 		getAgent: async (name: string) => {
@@ -46,6 +52,20 @@ function mockClient(input: MockClientInput = {}): WarrenClient {
 			const found = projects[id];
 			if (found === undefined) throw new WarrenClientError(404, "not_found", "project not found");
 			return found;
+		},
+		initProject: async (projectId: string, reqInput: unknown = {}) => {
+			if (projects[projectId] === undefined) {
+				throw new WarrenClientError(404, "not_found", "project not found");
+			}
+			initCalls.push({ projectId, input: reqInput });
+			const defaults = reqInput as { defaultRole?: string };
+			return {
+				projectId,
+				scaffolded: {
+					files: [".warren/triggers.yaml", ".warren/config.yaml"],
+					defaultRole: defaults.defaultRole ?? null,
+				},
+			};
 		},
 	} as unknown as WarrenClient;
 }
@@ -156,7 +176,11 @@ describe("runInit (--cwd mode)", () => {
 	});
 });
 
-describe("runInit (--project mode)", () => {
+describe("runInit (--project mode, remote)", () => {
+	// warren-166d: `--project` dispatches through POST /projects/:id/init.
+	// The CLI never touches the local filesystem in this mode — the server
+	// writes into its own host clone — so the tests pin the request the CLI
+	// sends and the output it composes from the response.
 	let tmp: string;
 
 	beforeEach(async () => {
@@ -167,19 +191,56 @@ describe("runInit (--project mode)", () => {
 		await rm(tmp, { recursive: true, force: true });
 	});
 
-	test("scaffolds into the project's local clone", async () => {
+	test("dispatches through the server route with the resolved defaults", async () => {
+		const initCalls: { projectId: string; input: unknown }[] = [];
 		const client = mockClient({
 			agents: [{ name: "claude-code" }],
-			projects: { prj_1: { localPath: tmp } },
+			projects: { prj_1: { localPath: "/data/projects/x/y" } },
+			initCalls,
+		});
+		const { context, out } = captureContext();
+		const result = await runInit(context, { client }, { mode: "project", projectId: "prj_1" });
+		expect(result.exitCode).toBe(0);
+		// One registered agent → auto-filled defaultRole rides the POST body.
+		expect(initCalls).toEqual([{ projectId: "prj_1", input: { defaultRole: "claude-code" } }]);
+		const stdout = JSON.parse(out.join(""));
+		expect(stdout.ok).toBe(true);
+		expect(stdout.scaffolded.project).toBe("prj_1");
+		expect(stdout.scaffolded.files).toEqual([".warren/triggers.yaml", ".warren/config.yaml"]);
+		expect(stdout.scaffolded.defaultRole).toBe("claude-code");
+	});
+
+	test("forwards an explicit --default-role after validating the agent", async () => {
+		const initCalls: { projectId: string; input: unknown }[] = [];
+		const client = mockClient({
+			agents: [{ name: "claude-code" }, { name: "pi" }],
+			projects: { prj_1: { localPath: "/data/projects/x/y" } },
+			initCalls,
+		});
+		const { context } = captureContext();
+		const result = await runInit(
+			context,
+			{ client },
+			{ mode: "project", projectId: "prj_1", defaultRole: "pi" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(initCalls).toEqual([{ projectId: "prj_1", input: { defaultRole: "pi" } }]);
+	});
+
+	test("never writes into the CLI machine's filesystem", async () => {
+		const client = mockClient({
+			agents: [{ name: "claude-code" }],
+			// A server path that does NOT exist locally — the pre-warren-166d
+			// behavior failed exactly here ("project clone missing on disk").
+			projects: { prj_1: { localPath: join(tmp, "server-side-clone") } },
 		});
 		const { context } = captureContext();
 		const result = await runInit(context, { client }, { mode: "project", projectId: "prj_1" });
 		expect(result.exitCode).toBe(0);
-		expect(existsSync(join(tmp, ".warren/triggers.yaml"))).toBe(true);
-		expect(existsSync(join(tmp, ".warren/config.yaml"))).toBe(true);
+		expect(existsSync(join(tmp, "server-side-clone"))).toBe(false);
 	});
 
-	test("rejects an unknown project id with exit 1", async () => {
+	test("rejects an unknown project id with exit 1 (server 404)", async () => {
 		const { context, err } = captureContext();
 		const result = await runInit(
 			context,
@@ -190,12 +251,14 @@ describe("runInit (--project mode)", () => {
 		expect(err.join("")).toContain("project not found");
 	});
 
-	test("rejects a project whose clone is missing on disk with exit 2", async () => {
-		const missing = join(tmp, "vanished");
-		const client = mockClient({ projects: { prj_1: { localPath: missing } } });
+	test("surfaces a server-side refusal (existing triggers.yaml) on stderr", async () => {
+		const client = mockClient({ projects: { prj_1: { localPath: "/data/projects/x/y" } } });
+		client.initProject = async () => {
+			throw new WarrenClientError(400, "validation_failed", "refusing to overwrite");
+		};
 		const { context, err } = captureContext();
 		const result = await runInit(context, { client }, { mode: "project", projectId: "prj_1" });
-		expect(result.exitCode).toBe(2);
-		expect(err.join("")).toContain("missing on disk");
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("refusing to overwrite");
 	});
 });

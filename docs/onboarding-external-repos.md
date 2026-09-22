@@ -16,7 +16,10 @@ a repo whose upstream will never carry them.
 
 That path works today and is the blessed way to configure a foreign
 repo. `warren init --project <id>` scaffolds the two files into the
-host clone for you.
+host clone for you — from any machine: the write goes through
+`POST /projects/:id/init`, so the CLI talks to the server and the
+server writes into its own clone (warren-166d). No need to run the
+CLI on the warren host.
 
 ## End-to-end mirror recipe
 
@@ -35,9 +38,11 @@ host clone for you.
    warren init --project prj_xxxxxxxxxxxx
    ```
 
-   This writes `.warren/triggers.yaml` and `.warren/config.yaml` into
-   the host clone (never committed upstream — the files are untracked
-   there and survive every refresh).
+   This asks the warren server to write `.warren/triggers.yaml` and
+   `.warren/config.yaml` into the host clone (never committed upstream
+   — the files are untracked there and survive every refresh). It works
+   from any machine with a warren CLI and an API token; the CLI does not
+   need to see the host clone on disk.
 
 3. **Edit `.warren/config.yaml`** to describe the repo to the agents.
    The fields that matter most for a foreign repo:

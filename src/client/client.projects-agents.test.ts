@@ -115,6 +115,78 @@ describe("WarrenClient projects/agents", () => {
 		expect(JSON.parse(observedBody || "{}")).toEqual({});
 	});
 
+	// warren-166d: the server-side `.warren/` write routes backing
+	// `warren init --project` / `warren config migrate --project`.
+	test("initProject POSTs /projects/:id/init with the scaffold options", async () => {
+		let observedUrl: string | undefined;
+		let observedMethod: string | undefined;
+		let observedBody: string | undefined;
+		const stubFetch = stub(async (input, init) => {
+			observedUrl = String(input);
+			observedMethod = init?.method;
+			observedBody = init?.body as string;
+			return jsonResponse(201, {
+				projectId: "p1",
+				scaffolded: {
+					files: [".warren/triggers.yaml", ".warren/config.yaml"],
+					defaultRole: "claude-code",
+				},
+			});
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		const res = await c.initProject("p 1", { defaultRole: "claude-code", overwrite: true });
+		expect(observedUrl).toBe("https://w.local/projects/p%201/init");
+		expect(observedMethod).toBe("POST");
+		expect(JSON.parse(observedBody || "{}")).toEqual({
+			defaultRole: "claude-code",
+			overwrite: true,
+		});
+		expect(res.scaffolded.files).toEqual([".warren/triggers.yaml", ".warren/config.yaml"]);
+		expect(res.scaffolded.defaultRole).toBe("claude-code");
+	});
+
+	test("initProject sends an empty body by default", async () => {
+		let observedBody: string | undefined;
+		const stubFetch = stub(async (_input, init) => {
+			observedBody = init?.body as string;
+			return jsonResponse(201, {
+				projectId: "p1",
+				scaffolded: { files: [], defaultRole: null },
+			});
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		await c.initProject("p1");
+		expect(JSON.parse(observedBody || "{}")).toEqual({});
+	});
+
+	test("migrateProjectConfig POSTs /projects/:id/config-migrate", async () => {
+		let observedUrl: string | undefined;
+		let observedMethod: string | undefined;
+		const stubFetch = stub(async (input, init) => {
+			observedUrl = String(input);
+			observedMethod = init?.method;
+			return jsonResponse(200, {
+				projectId: "p1",
+				migrated: { written: [".warren/config.yaml"], previewHoisted: false },
+			});
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		const res = await c.migrateProjectConfig("p1");
+		expect(observedUrl).toBe("https://w.local/projects/p1/config-migrate");
+		expect(observedMethod).toBe("POST");
+		expect(res.migrated.written).toEqual([".warren/config.yaml"]);
+		expect(res.migrated.previewHoisted).toBe(false);
+	});
+
 	test("listAgents GETs /agents", async () => {
 		const urls: string[] = [];
 		const stubFetch = stub(async (input) => {
