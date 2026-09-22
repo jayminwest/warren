@@ -13,6 +13,12 @@
  *                            so it must run AFTER the rewrite)
  *   4. `README.md`         — the semver in the `## Status` paragraph
  *
+ * The warren-prime goldens (`src/cli/commands/__golden__/prime/`) are
+ * deliberately NOT a fifth site: their test substitutes a `<VERSION>`
+ * placeholder for the live semver before serializing (warren-17d4),
+ * so the fixtures never pin a real version and a bump leaves them
+ * untouched.
+ *
  * It also drafts a `[Unreleased]` block into `CHANGELOG.md` from the PR
  * titles in `git log <last-tag>..HEAD`. That draft is **assistive only** —
  * CHANGELOG curation stays human, and nothing in CI gates on it. The

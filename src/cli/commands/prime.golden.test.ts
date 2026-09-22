@@ -11,6 +11,12 @@
  *
  * then diff the fixture and commit only what you meant. See the sibling
  * convention in src/server/responses.golden.test.ts.
+ *
+ * The fixtures pin a `<VERSION>` placeholder, never the live semver
+ * (warren-17d4): `doc.version` travels with every `version:bump`, so an
+ * exact snapshot would leave the suite red after each release until
+ * someone regenerated the goldens by hand. The version is not part of
+ * the contract this golden protects.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -18,10 +24,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildProgram } from "../main.ts";
 import type { CliContext } from "../output.ts";
-import { buildPrimeDocument, renderPretty, runPrime } from "./prime.ts";
+import { buildPrimeDocument, type PrimeDocument, renderPretty, runPrime } from "./prime.ts";
 
 const GOLDEN_DIR = join(import.meta.dir, "__golden__", "prime");
 const UPDATE = process.env.WARREN_UPDATE_GOLDENS === "1";
+const VERSION_PLACEHOLDER = "<VERSION>";
+
+/** Substitute the placeholder for the live version before serializing (warren-17d4). */
+function pinVersion(doc: PrimeDocument): PrimeDocument {
+	return { ...doc, version: VERSION_PLACEHOLDER };
+}
 
 function testProgram() {
 	const context: CliContext = {
@@ -48,11 +60,11 @@ function compareGolden(name: string, actual: unknown): void {
 
 describe("warren prime golden", () => {
 	test("prime document matches the pinned fixture", () => {
-		compareGolden("prime-document", buildPrimeDocument(testProgram()));
+		compareGolden("prime-document", pinVersion(buildPrimeDocument(testProgram())));
 	});
 
 	test("pretty rendering matches the pinned fixture", () => {
-		compareGolden("prime-pretty", renderPretty(buildPrimeDocument(testProgram())));
+		compareGolden("prime-pretty", renderPretty(pinVersion(buildPrimeDocument(testProgram()))));
 	});
 
 	test("runPrime emits ndjson by default and exits 0", async () => {

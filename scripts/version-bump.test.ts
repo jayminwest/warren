@@ -286,6 +286,26 @@ describe("draftUnreleasedSection", () => {
 	});
 });
 
+// The warren-prime goldens serialize a `<VERSION>` placeholder instead of the
+// live semver (warren-17d4). This is the property that keeps them out of the
+// bumper's write set entirely: a version:bump never touches them, and a
+// future change that reintroduces the real version here fails this test
+// instead of leaving the suite red after the next release.
+describe("prime goldens", () => {
+	const PRIME_GOLDEN_DIR = resolve(REPO_ROOT, "src/cli/commands/__golden__/prime");
+	const PRIME_GOLDENS = ["prime-document.json", "prime-pretty.json"] as const;
+
+	test("pins a placeholder, not the live version, so version:bump leaves them untouched", () => {
+		const pkgText = readFileSync(resolve(REPO_ROOT, "package.json"), "utf8");
+		const current = (JSON.parse(pkgText) as { version: string }).version;
+		for (const name of PRIME_GOLDENS) {
+			const golden = readFileSync(join(PRIME_GOLDEN_DIR, name), "utf8");
+			expect(golden).toContain("<VERSION>");
+			expect(golden).not.toContain(current);
+		}
+	});
+});
+
 describe("CHANGELOG archive split (warren-222c)", () => {
 	const ARCHIVE_REL = "docs/CHANGELOG-archive.md";
 

@@ -1,6 +1,6 @@
 {
   "command": "prime",
-  "version": "0.19.2",
+  "version": "<VERSION>",
   "commands": [
     {
       "name": "add-project",
