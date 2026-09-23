@@ -240,6 +240,7 @@ export class WarrenClient {
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
 		if (input.continueFromRunId !== undefined) body.continueFromRunId = input.continueFromRunId;
 		if (input.cloneFromRunId !== undefined) body.cloneFromRunId = input.cloneFromRunId;
+		if (input.rescueFromRunId !== undefined) body.rescueFromRunId = input.rescueFromRunId;
 		if (input.maxCostUsd !== undefined) body.maxCostUsd = input.maxCostUsd;
 		return this.createRun(body);
 	}

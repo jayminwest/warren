@@ -1315,6 +1315,7 @@ components:
       enum:
         - replicate
         - continue
+        - rescue
     PreviewState:
       type: string
       enum:
@@ -1471,6 +1472,7 @@ components:
           enum:
             - replicate
             - continue
+            - rescue
             - null
         mode:
           $ref: '#/components/schemas/RunMode'

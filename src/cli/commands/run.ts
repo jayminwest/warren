@@ -70,6 +70,12 @@ export interface RunArgs {
 	readonly baseCommit?: string;
 	/** Opt-in existing-branch dispatch (warren-326f), forwarded to `POST /runs`. */
 	readonly existingBranch?: string;
+	/**
+	 * Dispatch-from-rescue (#1241, warren-1db0), forwarded to `POST /runs`
+	 * `rescueFromRunId`. When set, agent/project/prompt become optional
+	 * overrides — the server inherits them from the salvaged source run.
+	 */
+	readonly rescueFrom?: string;
 }
 
 export interface RunDeps extends RemoteTailDeps {
@@ -92,7 +98,13 @@ export async function runRun(
 	deps: RunDeps,
 	args: RunArgs,
 ): Promise<RunResult> {
-	if (args.agent === "" || args.project === "" || args.prompt === "") {
+	// #1241: `--rescue-from` is the one-flag recovery — the server fills
+	// agent/project/prompt from the salvaged source run, so each becomes an
+	// optional override instead of a required field.
+	if (
+		args.rescueFrom === undefined &&
+		(args.agent === "" || args.project === "" || args.prompt === "")
+	) {
 		context.stdio.stderr.write("warren: agent, project, and --prompt are all required\n");
 		return { exitCode: EXIT_USAGE };
 	}
@@ -105,9 +117,12 @@ export async function runRun(
 	let runId: string;
 	try {
 		const spawned = await deps.client.createRun({
-			agent: args.agent,
-			project: args.project,
-			prompt: args.prompt,
+			// #1241: with --rescue-from the server inherits any of these the
+			// operator leaves off, so an absent field is omitted — never sent
+			// as an empty string that would override the inherited value.
+			...(args.agent !== "" ? { agent: args.agent } : {}),
+			...(args.project !== "" ? { project: args.project } : {}),
+			...(args.prompt !== "" ? { prompt: args.prompt } : {}),
 			trigger: args.trigger ?? "cli",
 			...(args.providerOverride !== undefined ? { providerOverride: args.providerOverride } : {}),
 			...(args.modelOverride !== undefined ? { modelOverride: args.modelOverride } : {}),
@@ -115,6 +130,7 @@ export async function runRun(
 			...(args.seedId !== undefined ? { seedId: args.seedId } : {}),
 			...(args.baseCommit !== undefined ? { baseCommit: args.baseCommit } : {}),
 			...(args.existingBranch !== undefined ? { existingBranch: args.existingBranch } : {}),
+			...(args.rescueFrom !== undefined ? { rescueFromRunId: args.rescueFrom } : {}),
 		});
 		runId = spawned.run.id;
 		if (mode === "ndjson") {
@@ -298,9 +314,9 @@ export function registerRunCommand(program: Command, context: CliContext): void 
 			.description(
 				"dispatch a one-shot run against the warren server, tail events as NDJSON, and exit",
 			)
-			.argument("<agent>", "registered agent name")
-			.argument("<project>", "project id (prj_xxx)")
-			.requiredOption("-p, --prompt <text>", "prompt text the agent receives")
+			.argument("[agent]", "registered agent name (optional with --rescue-from)")
+			.argument("[project]", "project id (prj_xxx; optional with --rescue-from)")
+			.option("-p, --prompt <text>", "prompt text the agent receives (optional with --rescue-from)")
 			.option("--trigger <label>", "run trigger label", "cli")
 			.option("--provider <name>", "per-run override of agent frontmatter.provider")
 			.option("--model <name>", "per-run override of agent frontmatter.model")
@@ -314,13 +330,17 @@ export function registerRunCommand(program: Command, context: CliContext): void 
 			.option(
 				"--existing-branch <branch>",
 				"run on an existing push-remote branch and push back to it; no PR",
+			)
+			.option(
+				"--rescue-from <runId>",
+				"re-dispatch a salvaged run's recovered work off its warren/rescue/<runId> branch",
 			),
 	).action(
 		async (
-			agent: string,
-			project: string,
+			agent: string | undefined,
+			project: string | undefined,
 			opts: {
-				prompt: string;
+				prompt?: string;
 				trigger?: string;
 				provider?: string;
 				model?: string;
@@ -328,6 +348,7 @@ export function registerRunCommand(program: Command, context: CliContext): void 
 				seed?: string;
 				baseCommit?: string;
 				existingBranch?: string;
+				rescueFrom?: string;
 			} & RemoteOpts,
 		) => {
 			const { client, context: ctx } = resolveCommandClient(context, opts);
@@ -335,9 +356,9 @@ export function registerRunCommand(program: Command, context: CliContext): void 
 				ctx,
 				{ client },
 				{
-					agent,
-					project,
-					prompt: opts.prompt,
+					agent: agent ?? "",
+					project: project ?? "",
+					prompt: opts.prompt ?? "",
 					...(opts.trigger !== undefined ? { trigger: opts.trigger } : {}),
 					...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
 					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
@@ -345,6 +366,7 @@ export function registerRunCommand(program: Command, context: CliContext): void 
 					...(opts.seed !== undefined ? { seedId: opts.seed } : {}),
 					...(opts.baseCommit !== undefined ? { baseCommit: opts.baseCommit } : {}),
 					...(opts.existingBranch !== undefined ? { existingBranch: opts.existingBranch } : {}),
+					...(opts.rescueFrom !== undefined ? { rescueFrom: opts.rescueFrom } : {}),
 				},
 			);
 			process.exit(result.exitCode);

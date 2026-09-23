@@ -219,7 +219,8 @@ export type { ErrorEnvelope } from "../core/wire.ts";
 export type ApiErrorEnvelope = ErrorEnvelope;
 
 export interface CreateRunInput {
-	// agent/project/prompt: required unless cloneFromRunId is set (warren-e96f).
+	// agent/project/prompt: required unless cloneFromRunId (warren-e96f) or
+	// rescueFromRunId (#1241, warren-1db0) is set — both inherit them from the parent.
 	agent?: string;
 	project?: string;
 	prompt?: string;
@@ -240,38 +241,38 @@ export interface CreateRunInput {
 	continueFromRunId?: string;
 	/** Replicate parent (warren-e96f): re-dispatch this run's config against the project base. */
 	cloneFromRunId?: string;
+	/**
+	 * Rescue parent (#1241, warren-1db0): re-dispatch a salvaged run's recovered
+	 * work off its `warren/rescue/<runId>` salvage branch. The source run must
+	 * carry a `salvageRef`; agent/project/prompt/provider/model/cap inherit from
+	 * it when omitted. Mutually exclusive with continueFromRunId /
+	 * cloneFromRunId / existingBranch.
+	 */
+	rescueFromRunId?: string;
 	/** Per-run USD spend cap (warren-a63d): wins over the agent's own and the project default. */
 	maxCostUsd?: number;
 }
 
-/** Ergonomic input for {@link WarrenClient.dispatch}: mirrors {@link CreateRunInput} with
- * `warren run` CLI field names (`model`/`branch`/`provider`), mapped at request time. */
-export interface DispatchRunInput {
+/**
+ * Ergonomic input for {@link WarrenClient.dispatch}: {@link CreateRunInput} with
+ * the `warren run` CLI field names (`branch`/`provider`/`model` instead of
+ * `ref`/`providerOverride`/`modelOverride`), mapped at request time. Extends
+ * `CreateRunInput` (Omit + rename re-declaration) so the field set is declared
+ * once — a mirrored copy here drifted enough to trip check:dups (#1241).
+ */
+export interface DispatchRunInput
+	extends Omit<CreateRunInput, "ref" | "providerOverride" | "modelOverride"> {
+	// The three required fields re-narrow their CreateRunInput optional forms:
+	// a dispatch() caller must name the workload (or use a parent-field variant).
 	agent: string;
 	project: string;
 	prompt: string;
 	/** Maps to CreateRunInput.ref — git branch / ref to clone the workspace from. */
 	branch?: string;
-	/** Maps to CreateRunInput.baseCommit — 40-hex SHA to pin the workspace cut (warren-aaf7). */
-	baseCommit?: string;
-	/** Maps to CreateRunInput.targetBranch — branch reap pushes back to (#419). */
-	targetBranch?: string;
-	/** Maps to CreateRunInput.existingBranch — opt-in existing-branch dispatch (warren-326f). */
-	existingBranch?: string;
-	/** Maps to CreateRunInput.modelOverride. */
-	model?: string;
 	/** Maps to CreateRunInput.providerOverride. */
 	provider?: string;
-	/** Maps to CreateRunInput.trigger (warren-97a2). */
-	trigger?: string;
-	seedId?: string;
-	dispatcherHandle?: string;
-	/** Maps to CreateRunInput.continueFromRunId (warren-4b11). */
-	continueFromRunId?: string;
-	/** Maps to CreateRunInput.cloneFromRunId (warren-e96f). */
-	cloneFromRunId?: string;
-	/** Maps to CreateRunInput.maxCostUsd — per-run USD spend cap (warren-a63d). */
-	maxCostUsd?: number;
+	/** Maps to CreateRunInput.modelOverride. */
+	model?: string;
 }
 
 export interface SpawnRunResponse {

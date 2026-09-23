@@ -24,6 +24,7 @@
  */
 
 import { ValidationError } from "../core/errors.ts";
+import type { CloneKind } from "../core/wire.ts";
 import type { SpawnFn, SpawnOptions } from "../projects/clone.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import { gitCredentialGitEnv } from "../workspace/git/credential-env.ts";
@@ -109,8 +110,17 @@ export interface ExistingBranchShapeInput {
 	readonly ref: string | undefined;
 	/** The project's default branch (drives the same refusal as `targetBranch`). */
 	readonly defaultBranch: string | undefined;
-	/** The run continues another run; an existing-branch push-back would fork on the wrong base. */
+	/**
+	 * The run continues another run; an existing-branch push-back would fork
+	 * on the wrong base. Exempt for `cloneKind: "rescue"` (warren-1db0): the
+	 * parent link is lineage only and the base IS the rescue branch.
+	 */
 	readonly parentRunId: string | undefined;
+	/**
+	 * Chain-kind discriminator (warren-e96f / warren-1db0). `rescue` exempts
+	 * `parentRunId` from the exclusivity check.
+	 */
+	readonly cloneKind?: CloneKind;
 }
 
 /**
@@ -131,7 +141,13 @@ export function validateExistingBranchShape(input: ExistingBranchShapeInput): st
 		...(input.targetBranch !== undefined && input.targetBranch.trim() !== ""
 			? ["targetBranch"]
 			: []),
-		...(input.parentRunId !== undefined && input.parentRunId !== "" ? ["parentRunId"] : []),
+		// warren-1db0: a rescue dispatch (`cloneKind: "rescue"`) carries
+		// `parentRunId` as lineage bookkeeping while `existingBranch` IS the
+		// parent's salvage rescue branch — the combination is the point, not a
+		// conflict. Every other kind keeps the historic refusal.
+		...(input.parentRunId !== undefined && input.parentRunId !== "" && input.cloneKind !== "rescue"
+			? ["parentRunId"]
+			: []),
 	];
 	if (conflicts.length > 0) {
 		throw new ValidationError(`existingBranch cannot be combined with: ${conflicts.join(", ")}`, {
