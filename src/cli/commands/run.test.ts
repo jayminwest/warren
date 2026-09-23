@@ -206,6 +206,41 @@ describe("runRun", () => {
 		expect(err.join("")).toContain("--prompt are all required");
 	});
 
+	test("forwards --rescue-from as rescueFromRunId on POST /runs (#1241)", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		const result = await runRun(
+			context,
+			{ client: mockClient({ createCalls }) },
+			{ ...ARGS, rescueFrom: "run_salvaged1234" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(createCalls[0]?.rescueFromRunId).toBe("run_salvaged1234");
+		// Explicit fields still ride along as overrides of the inherited config.
+		expect(createCalls[0]?.agent).toBe("claude-code");
+		expect(createCalls[0]?.prompt).toBe("do the thing");
+	});
+
+	test("one-click rescue dispatches with only rescueFromRunId (#1241)", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		const result = await runRun(
+			context,
+			{ client: mockClient({ createCalls }) },
+			{ agent: "", project: "", prompt: "", rescueFrom: "run_salvaged1234" },
+		);
+		expect(result.exitCode).toBe(0);
+		// Absent fields are omitted, never sent as empty strings that would
+		// override the config inherited from the salvaged source run.
+		expect(createCalls).toEqual([{ rescueFromRunId: "run_salvaged1234", trigger: "cli" }]);
+	});
+	test("rejects empty agent/project/prompt with exit 2", async () => {
+		const { context, err } = captureContext();
+		const result = await runRun(context, { client: mockClient() }, { ...ARGS, prompt: "" });
+		expect(result.exitCode).toBe(2);
+		expect(err.join("")).toContain("--prompt are all required");
+	});
+
 	test("an unreachable server exits 3 before dispatching", async () => {
 		const { context, err } = captureContext();
 		const createCalls: CreateRunInput[] = [];

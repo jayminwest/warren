@@ -73,14 +73,14 @@ export * from "./wire-runtime.ts";
 export * from "./wire-tracker.ts";
 
 /**
- * Chain-kind discriminator for a run that carries a `parent_run_id`
- * (warren-e96f). `continue` (warren-4b11) seeds the new run's workspace from
- * the parent's pushed branch; `replicate` (warren-e96f) is a fresh re-dispatch
- * of the parent's exact agent / model / project / prompt against the default
- * base. Nullable on the row (root runs leave it null); TS-only narrowing
- * (mx-2ab984); no SQL CHECK. Set at run-create time and never mutated.
+ * Chain-kind discriminator for a run carrying a `parent_run_id` (warren-e96f):
+ * `continue` (warren-4b11) seeds the workspace from the parent's pushed branch;
+ * `replicate` re-runs the parent's exact config against the default base;
+ * `rescue` (warren-1db0, #1241) re-runs it off the parent's `salvageRef` branch —
+ * the only kind that may pair `parentRunId` with `existingBranch` (lineage
+ * only, not base resolution). Nullable on the row; TS narrowing (mx-2ab984).
  */
-export const CLONE_KINDS = ["replicate", "continue"] as const;
+export const CLONE_KINDS = ["replicate", "continue", "rescue"] as const;
 export type CloneKind = (typeof CLONE_KINDS)[number];
 
 /**

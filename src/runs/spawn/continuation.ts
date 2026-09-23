@@ -52,6 +52,7 @@ export async function resolveExistingBranch(
 		ref: input.ref,
 		defaultBranch: project.defaultBranch ?? undefined,
 		parentRunId: input.parentRunId,
+		cloneKind: input.cloneKind,
 	});
 	if (branch === undefined) return undefined;
 	await assertBranchOnRemote({
@@ -82,6 +83,23 @@ export async function resolveContinuationRef(
 			);
 		}
 		return input.ref;
+	}
+	// Rescue (warren-1db0): the base is the rescue branch the caller pinned via
+	// `existingBranch` — the push target this function receives — never the
+	// parent's own run branch (which is exactly what failed to land). The
+	// same cross-project guard as every other parent link applies.
+	if (input.cloneKind === "rescue") {
+		const parent = await input.repos.runs.require(input.parentRunId);
+		if (parent.projectId !== project.id) {
+			throw new ValidationError(
+				`parent run ${parent.id} belongs to a different project; ` +
+					`a rescue must reuse the same project's rescue branch`,
+				{
+					recoveryHint: "re-dispatch with a rescueFromRunId from the same project, or omit it",
+				},
+			);
+		}
+		return input.ref ?? targetBranch;
 	}
 	const parent = await input.repos.runs.require(input.parentRunId);
 	if (parent.projectId !== project.id) {

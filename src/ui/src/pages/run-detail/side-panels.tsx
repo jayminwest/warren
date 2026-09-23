@@ -1,10 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { RunRow } from "@/api/types.ts";
 import { CostBasisNote } from "@/components/cost-basis-note.tsx";
+import { OperatorOnly } from "@/components/operator-only.tsx";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
+import type { DispatchRouteState } from "@/pages/dispatch/dispatch-draft.ts";
 import { formatCostUsd, formatTokens } from "@/pages/run-detail-format.ts";
 import { shortSha } from "@/pages/runs/runs-format.ts";
-import { formatRunElapsed } from "./run-detail-format.ts";
+import { formatRunElapsed, readRescueFacts } from "./run-detail-format.ts";
 
 /**
  * The Direction C run-detail side column's fact cards (warren-8c85 /
@@ -64,6 +67,45 @@ function totalTokens(run: RunRow): number | null {
 	return parts.reduce((a, b) => a + b, 0);
 }
 
+/**
+ * #1241 (warren-1db0): the salvage rescue block on the Runtime panel — the
+ * rescue branch, the durable bundle path, the copy-ready re-dispatch command,
+ * and (operators only) a button that navigates to Dispatch with the run's
+ * `rescueFromRunId` pre-filled. Renders nothing for unsalvaged runs.
+ */
+function RescueRows({ run }: { run: RunRow }) {
+	const navigate = useNavigate();
+	const rescue = readRescueFacts(run);
+	if (rescue === null) return null;
+	return (
+		<div className="flex flex-col gap-2 border-t border-(--color-border) pt-2">
+			<MetaRow label="rescue">{rescue.ref}</MetaRow>
+			{rescue.bundlePath !== null ? (
+				<MetaRow label="rescue bundle">{rescue.bundlePath}</MetaRow>
+			) : null}
+			<p className="font-mono text-[9px] leading-3 text-(--color-text-3)">{rescue.hint}</p>
+			<OperatorOnly>
+				<button
+					type="button"
+					className="self-start rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] py-1 text-[10px] leading-3 font-medium text-(--color-text) hover:bg-(--color-surface-hover)"
+					onClick={() =>
+						navigate("/dispatch", {
+							state: {
+								rescueFromRunId: run.id,
+								agent: run.agentName,
+								...(run.projectId !== null ? { project: run.projectId } : {}),
+								prompt: run.prompt,
+							} satisfies DispatchRouteState,
+						})
+					}
+				>
+					Dispatch from rescue
+				</button>
+			</OperatorOnly>
+		</div>
+	);
+}
+
 export function RuntimePanel({ run }: { run: RunRow }) {
 	const handle = run.sandboxRunId ?? run.sandboxId ?? null;
 	const workspaceBranch = run.branch ?? run.targetBranch ?? run.ref;
@@ -100,6 +142,7 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 			</MetaRow>
 			<MetaRow label="branch">{workspaceBranch ?? DASH}</MetaRow>
 			{showTarget ? <MetaRow label="target">{run.targetBranch}</MetaRow> : null}
+			<RescueRows run={run} />
 		</PanelShell>
 	);
 }
@@ -170,7 +213,15 @@ export function RunDefinitionPanel({ run, projectName }: { run: RunRow; projectN
 			<MetaRow label="started">{formatTimestamp(run.startedAt)}</MetaRow>
 			<MetaRow label="elapsed">{formatRunElapsed(run, Date.now())}</MetaRow>
 			{run.parentRunId !== null ? (
-				<MetaRow label={run.cloneKind === "replicate" ? "re-run of" : "continued from"}>
+				<MetaRow
+					label={
+						run.cloneKind === "replicate"
+							? "re-run of"
+							: run.cloneKind === "rescue"
+								? "rescued from"
+								: "continued from"
+					}
+				>
 					{run.parentRunId}
 				</MetaRow>
 			) : null}

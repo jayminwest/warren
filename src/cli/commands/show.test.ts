@@ -141,6 +141,38 @@ describe("runShow", () => {
 		expect(text).toContain("https://github.com/os-eco/warren/pull/42");
 	});
 
+	test("pretty-renders-the-salvage-rescue-facts-and-redispatch-hint (#1241)", async () => {
+		const { context, out } = captureContext("pretty");
+		const res = await runShow(
+			context,
+			{
+				client: client({
+					getRun: () =>
+						Promise.resolve(
+							runRow({
+								salvageRef: "warren/rescue/run-1",
+								salvagePath: "/data/salvage/run-1.bundle",
+							}),
+						),
+				}),
+			},
+			{ runId: "run-1" },
+		);
+		expect(res.exitCode).toBe(0);
+		const text = out.join("");
+		expect(text).toContain("  rescue: warren/rescue/run-1");
+		expect(text).toContain("  rescue bundle: /data/salvage/run-1.bundle");
+		expect(text).toContain("  re-dispatch from this rescue: warren run --rescue-from run-1");
+	});
+
+	test("pretty-omits-the-rescue-lines-for-an-unsalvaged-run (#1241)", async () => {
+		const { context, out } = captureContext("pretty");
+		const res = await runShow(context, { client: client() }, { runId: "run-1" });
+		expect(res.exitCode).toBe(0);
+		const text = out.join("");
+		expect(text).not.toContain("rescue");
+	});
+
 	test("summary-emits-the-compact-projection-as-one-line", async () => {
 		const { context, out } = captureContext();
 		const res = await runShow(context, { client: client() }, { runId: "run-1", summary: true });
