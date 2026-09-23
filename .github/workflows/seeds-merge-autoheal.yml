@@ -168,7 +168,18 @@ jobs:
 
       - name: Push the heal merge back to the PR branch
         if: steps.gate.outputs.needed == 'true'
-        run: git push origin "HEAD:${HEAD_BRANCH}"
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:${HEAD_BRANCH}"; then
+              echo "Heal merge pushed (attempt $attempt)."
+              exit 0
+            fi
+            echo "::warning::push attempt $attempt failed — GitHub 5xx/transient error; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::heal merge could not be pushed after 5 attempts."
+          exit 1
 
   # Push-to-main trigger (warren-c84c): a `.seeds` merge to main is what
   # makes open `.seeds`-touching PRs flip to CONFLICTING, and no pull_request
@@ -328,4 +339,15 @@ jobs:
 
       - name: Push the heal merge back to the PR branch
         if: steps.gate.outputs.needed == 'true'
-        run: git push origin "HEAD:${HEAD_BRANCH}"
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:${HEAD_BRANCH}"; then
+              echo "Heal merge pushed (attempt $attempt)."
+              exit 0
+            fi
+            echo "::warning::push attempt $attempt failed — GitHub 5xx/transient error; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::heal merge could not be pushed after 5 attempts."
+          exit 1
