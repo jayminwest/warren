@@ -173,9 +173,8 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-97ae: spectators get the reduced projection — counts, rates and timings survive; USD
-        aggregates stay redacted except the instance-wide cost/merged-PR ratio. The
-        per-agent/per-model/ per-provider buckets keep their USD figures redacted because ratio ×
-        merged count reconstructs spend.
+        aggregates stay redacted, including the per-agent/per-model/per-provider buckets, because
+        ratio × merged count reconstructs spend (instance-wide cost/merged-PR ratio excepted).
   /events:
     get:
       operationId: listEventsHandler
@@ -658,6 +657,52 @@ paths:
           required: true
           schema:
             type: string
+  /projects/{id}/config-migrate:
+    post:
+      operationId: configMigrateProjectHandler
+      tags:
+        - projects
+      summary: POST /projects/:id/config-migrate
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /projects/{id}/init:
+    post:
+      operationId: initProjectHandler
+      tags:
+        - projects
+      summary: POST /projects/:id/init
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-166d: server-side `.warren/` writes into the host clone, so a remote CLI can scaffold
+        or migrate a project it cannot see on disk. `admin` matches refresh — an operator-gated
+        mutation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /projects/{id}/ready-plans:
     get:
       operationId: listReadyPlansHandler
@@ -715,9 +760,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-      description: >-
-        Static path — must precede `/projects/:id/seeds/:seedId` so the param route doesn't swallow
-        `plans` as a seed id.
+      description: Static path — must precede the :seedId param route so "plans" isn't swallowed as a seed id.
       parameters:
         - name: id
           in: path

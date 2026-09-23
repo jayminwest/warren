@@ -29,7 +29,7 @@ import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from ".
 import { applyK8sCloneDeltas } from "./clone-apply.ts";
 import { runProviderFinalize } from "./finalize-intent.ts";
 import { type DiffStats, recordOutcomeFacts } from "./outcome-facts.ts";
-import { type OpenedPr, runPrOpen } from "./pr-open.ts";
+import { type OpenedPr, prOpenStep } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
 import { classifyEmptyPush } from "./util.ts";
@@ -300,46 +300,6 @@ async function autoDispatchStep(
 	state.autoPlanRunCreated = autoDispatch.created;
 	state.autoPlanRunId = autoDispatch.id;
 	state.autoPlanRunPlanId = autoDispatch.planId;
-}
-
-/** Auto-open PR (warren-f6af); a CI-fixer run self-skips inside runPrOpen (warren-a993). */
-async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): Promise<void> {
-	const { branch } = ctx;
-	if (
-		!(
-			ctx.input.autoOpenPr?.enabled === true &&
-			ctx.input.outcome === "succeeded" &&
-			state.branchPushed &&
-			state.commitsAhead !== null &&
-			state.commitsAhead > 0 &&
-			branch !== null &&
-			branch !== ctx.project.defaultBranch
-		)
-	) {
-		return;
-	}
-	// warren-45e6: a reap input without a forge (tests) skips pr_open as if disabled.
-	const forge = ctx.input.forge;
-	if (forge === undefined) return;
-	state.openedPr = await runPrOpen({
-		autoOpen: ctx.input.autoOpenPr,
-		forge,
-		project: ctx.project,
-		run: ctx.run,
-		branch,
-		baseBranch: ctx.baseBranch,
-		workspacePath: ctx.workspacePath,
-		previewOptedIn: ctx.input.previewConfig !== undefined,
-		exec: ctx.exec,
-		emit: ctx.emit,
-		issueTracker: ctx.input.issueTracker,
-		fail: (step, err) => ctx.fail(step, err),
-		setPrUrl: (id, url) => ctx.input.repos.runs.setPrUrl(id, url),
-		...(ctx.input.prTemplate !== undefined ? { prTemplate: ctx.input.prTemplate } : {}),
-		...(ctx.input.prAutoMerge !== undefined ? { prAutoMerge: ctx.input.prAutoMerge } : {}),
-		...(ctx.input.sleep !== undefined ? { sleep: ctx.input.sleep } : {}),
-	});
-	state.prUrl = state.openedPr?.url ?? null;
 }
 
 /**

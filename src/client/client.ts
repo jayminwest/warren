@@ -14,6 +14,8 @@ import {
 	type CreateRunInput,
 	type DispatchRunInput,
 	type GetRunResponse,
+	type InitProjectInput,
+	type InitProjectResponse,
 	isTerminalPlanRunState,
 	isTerminalRunState,
 	type ListAgentsResponse,
@@ -22,6 +24,7 @@ import {
 	type ListProjectsResponse,
 	type ListReadyPlansResponse,
 	type ListRunsResponse,
+	type MigrateProjectConfigResponse,
 	type PlanRunDetailResponse,
 	type PlanRunRow,
 	type ProjectRow,
@@ -182,6 +185,23 @@ export class WarrenClient {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(input),
 			},
+		);
+	}
+
+	/** `POST /projects/:id/init` (warren-166d) — scaffold `.warren/` into the project's host clone, server-side; backs `warren init --project`. */
+	async initProject(projectId: string, input: InitProjectInput = {}): Promise<InitProjectResponse> {
+		return this.request<InitProjectResponse>(`/projects/${encodeURIComponent(projectId)}/init`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+	}
+
+	/** `POST /projects/:id/config-migrate` (warren-166d) — the remote-mode backing of `warren config migrate --project`. */
+	async migrateProjectConfig(projectId: string): Promise<MigrateProjectConfigResponse> {
+		return this.request<MigrateProjectConfigResponse>(
+			`/projects/${encodeURIComponent(projectId)}/config-migrate`,
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) },
 		);
 	}
 

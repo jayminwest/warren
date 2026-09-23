@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **53**.
+Total routes: **55**.
 
 ## /agents
 
@@ -27,7 +27,7 @@ Total routes: **53**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/analytics/cost` | `listCostAnalyticsHandler` |  |
-| `GET` | `/analytics/runs` | `listRunAnalyticsHandler` | warren-97ae: spectators get the reduced projection — counts, rates and timings survive; USD aggregates stay redacted except the instance-wide cost/merged-PR ratio. The per-agent/per-model/ per-provider buckets keep their USD figures redacted because ratio × merged count reconstructs spend. |
+| `GET` | `/analytics/runs` | `listRunAnalyticsHandler` | warren-97ae: spectators get the reduced projection — counts, rates and timings survive; USD aggregates stay redacted, including the per-agent/per-model/per-provider buckets, because ratio × merged count reconstructs spend (instance-wide cost/merged-PR ratio excepted). |
 | `GET` | `/analytics/behavior` | `listBehaviorAnalyticsHandler` |  |
 | `GET` | `/analytics/dispatch` | `listDispatchAnalyticsHandler` |  |
 
@@ -108,11 +108,13 @@ Total routes: **53**.
 | `GET` | `/projects/:id` | `getProjectHandler` |  |
 | `GET` | `/projects/:id/warren-config` | `getProjectWarrenConfigHandler` |  |
 | `GET` | `/projects/:id/triggers` | `getProjectTriggersHandler` |  |
-| `GET` | `/projects/:id/seeds/plans` | `listProjectSeedPlansHandler` | Static path — must precede `/projects/:id/seeds/:seedId` so the param route doesn't swallow `plans` as a seed id. |
+| `GET` | `/projects/:id/seeds/plans` | `listProjectSeedPlansHandler` | Static path — must precede the :seedId param route so "plans" isn't swallowed as a seed id. |
 | `GET` | `/projects/:id/ready-plans` | `listReadyPlansHandler` |  |
 | `GET` | `/projects/:id/seeds/:seedId` | `getProjectSeedHandler` |  |
 | `POST` | `/projects/:id/triggers/:triggerId/run` | `runProjectTriggerHandler` |  |
 | `POST` | `/projects/:id/refresh` | `refreshProjectHandler` |  |
+| `POST` | `/projects/:id/init` | `initProjectHandler` | warren-166d: server-side `.warren/` writes into the host clone, so a remote CLI can scaffold or migrate a project it cannot see on disk. `admin` matches refresh — an operator-gated mutation. |
+| `POST` | `/projects/:id/config-migrate` | `configMigrateProjectHandler` |  |
 | `DELETE` | `/projects/:id` | `deleteProjectHandler` |  |
 
 ## /readyz

@@ -76,6 +76,13 @@ export interface BuildPrContentInput {
 	 */
 	readonly agentNotes?: string;
 	/**
+	 * warren-cbd3: the terminal provider-error message when the run ended in
+	 * one after committing and pushing. The `run` fragment labels the body
+	 * with the outcome so a reviewer knows the run itself did not finish
+	 * cleanly; absent = the run ended normally.
+	 */
+	readonly providerError?: string | null;
+	/**
 	 * Per-project PR-template overrides (warren-bd49). Loaded from
 	 * `.warren/pr-template.md` by `loadPrTemplate` and threaded through
 	 * `reapRun`. Each key is a fragment name from `PR_FRAGMENT_NAMES`
@@ -146,6 +153,7 @@ function buildContext(input: BuildPrContentInput): PrFragmentContext {
 		tokensCacheRead?: number;
 		previewOptedIn?: boolean;
 		agentNotes?: string;
+		providerError?: string | null;
 	} = {
 		prompt: input.prompt,
 		runId: input.runId,
@@ -163,6 +171,7 @@ function buildContext(input: BuildPrContentInput): PrFragmentContext {
 	if (input.tokensCacheRead !== undefined) ctx.tokensCacheRead = input.tokensCacheRead;
 	if (input.previewOptedIn !== undefined) ctx.previewOptedIn = input.previewOptedIn;
 	if (input.agentNotes !== undefined) ctx.agentNotes = input.agentNotes;
+	if (input.providerError !== undefined) ctx.providerError = input.providerError;
 	return ctx;
 }
 

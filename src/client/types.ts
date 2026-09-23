@@ -323,6 +323,40 @@ export interface RefreshProjectResponse {
 }
 
 /**
+ * `POST /projects/:id/init` body (warren-166d) — the dispatch-time default
+ * knobs the scaffolded `.warren/config.yaml` carries, plus the
+ * refusal-bypass flag. All optional; an empty body scaffolds an empty
+ * defaults block.
+ */
+export interface InitProjectInput {
+	defaultRole?: string;
+	defaultPrompt?: string;
+	defaultProvider?: string;
+	defaultModel?: string;
+	defaultBranch?: string;
+	runBranchPrefix?: string;
+	overwrite?: boolean;
+}
+
+/** `POST /projects/:id/init` response (warren-166d). */
+export interface InitProjectResponse {
+	projectId: string;
+	scaffolded: {
+		files: string[];
+		defaultRole: string | null;
+	};
+}
+
+/** `POST /projects/:id/config-migrate` response (warren-166d). */
+export interface MigrateProjectConfigResponse {
+	projectId: string;
+	migrated: {
+		written: string[];
+		previewHoisted: boolean;
+	};
+}
+
+/**
  * Inbox message priority. Alias of the canonical `InboxPriority`
  * (`src/core/wire.ts`), kept under the SDK's historical name.
  */

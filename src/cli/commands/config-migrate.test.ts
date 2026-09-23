@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "js-yaml";
-import type { WarrenClient } from "../../client/index.ts";
+import { type WarrenClient, WarrenClientError } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
 import { runConfigMigrate } from "./config-migrate.ts";
 
@@ -166,5 +166,57 @@ describe("runConfigMigrate (--cwd mode)", () => {
 		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toMatch(/nothing to migrate/);
+	});
+});
+
+describe("runConfigMigrate (--project mode, remote)", () => {
+	// warren-166d: `--project` dispatches through POST /projects/:id/config-migrate.
+	// The CLI never touches the local filesystem in this mode — the server
+	// migrates its own host clone — so the tests pin the request and output.
+	test("dispatches through the server route and reports the result", async () => {
+		const calls: string[] = [];
+		const client = {
+			migrateProjectConfig: async (projectId: string) => {
+				calls.push(projectId);
+				return {
+					projectId,
+					migrated: {
+						written: [".warren/config.yaml", ".warren/preview.yaml"],
+						previewHoisted: true,
+					},
+				};
+			},
+		} as unknown as WarrenClient;
+		const { context, out } = captureContext();
+		const result = await runConfigMigrate(
+			context,
+			{ client },
+			{ mode: "project", projectId: "prj_1" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(calls).toEqual(["prj_1"]);
+
+		const stdout = JSON.parse(out.join(""));
+		expect(stdout.ok).toBe(true);
+		expect(stdout.migrated.project).toBe("prj_1");
+		expect(stdout.migrated.removed).toBe(".warren/defaults.json");
+		expect(stdout.migrated.written).toEqual([".warren/config.yaml", ".warren/preview.yaml"]);
+		expect(stdout.migrated.previewHoisted).toBe(true);
+	});
+
+	test("rejects an unknown project id with exit 1 (server 404)", async () => {
+		const client = {
+			migrateProjectConfig: async () => {
+				throw new WarrenClientError(404, "not_found", "project not found");
+			},
+		} as unknown as WarrenClient;
+		const { context, err } = captureContext();
+		const result = await runConfigMigrate(
+			context,
+			{ client },
+			{ mode: "project", projectId: "prj_missing" },
+		);
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("project not found");
 	});
 });
