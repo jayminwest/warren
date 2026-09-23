@@ -26,7 +26,7 @@
       "options": [
         {
           "flags": "-p, --prompt <text>",
-          "description": "prompt text the agent receives"
+          "description": "prompt text the agent receives (optional with --rescue-from)"
         },
         {
           "flags": "--trigger <label>",
@@ -55,6 +55,10 @@
         {
           "flags": "--existing-branch <branch>",
           "description": "run on an existing push-remote branch and push back to it; no PR"
+        },
+        {
+          "flags": "--rescue-from <runId>",
+          "description": "re-dispatch a salvaged run's recovered work off its warren/rescue/<runId> branch"
         },
         {
           "flags": "--url <url>",

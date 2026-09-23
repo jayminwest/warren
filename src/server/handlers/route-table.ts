@@ -2,8 +2,7 @@
  * The canonical HTTP route table (`ROUTE_TABLE`) and everything derived
  * from it: the route builder, the API path prefixes, the auth-exemption
  * predicate, and the policy projections consumed by tests and the docs
- * generators. Split out of `./index.ts` when the merged table pushed that
- * file over the 500-line budget (warren-a647 merge with warren-c9ac).
+ * generators (split out of `./index.ts`, warren-a647/c9ac).
  * `scripts/generate-docs.ts` and `scripts/generate-openapi.ts` parse
  * `ROUTE_TABLE` out of THIS file textually.
  */
@@ -36,6 +35,7 @@ import {
 	resumePlanRunHandler,
 	streamPlanRunEventsHandler,
 } from "./plan-runs.ts";
+import { configMigrateProjectHandler, initProjectHandler } from "./projects.init.ts";
 import {
 	createProjectHandler,
 	deleteProjectHandler,
@@ -178,14 +178,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/instance", policy: "readPublic", build: instanceFactsHandler },
 	// warren-2601: installation repo listing for the Add Project picker (readOperator — private repo names).
 	{ method: "GET", pattern: "/forge/repos", policy: "readOperator", build: forgeReposHandler },
-
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
 	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", build: getAgentHandler },
-
 	// warren-3db0: closed-loop alert intake. Token-gated via the standard
 	// bearer gate (not auth-exempt); webhook senders carry the bearer.
 	{ method: "POST", pattern: "/alerts/heal", policy: "dispatch", build: healAlertHandler },
-
 	{ method: "GET", pattern: "/projects", policy: "readPublic", build: listProjectsHandler },
 	{ method: "POST", pattern: "/projects", policy: "admin", build: createProjectHandler },
 	{ method: "GET", pattern: "/projects/:id", policy: "readPublic", build: getProjectHandler },
@@ -201,8 +198,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		policy: "readOperator",
 		build: getProjectTriggersHandler,
 	},
-	// Static path — must precede `/projects/:id/seeds/:seedId` so the param
-	// route doesn't swallow `plans` as a seed id.
+	// Static path — must precede the :seedId param route so "plans" isn't swallowed as a seed id.
 	{
 		method: "GET",
 		pattern: "/projects/:id/seeds/plans",
@@ -233,19 +229,25 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		policy: "admin",
 		build: refreshProjectHandler,
 	},
+	// warren-166d: server-side `.warren/` writes into the host clone, so a remote CLI can scaffold
+	// or migrate a project it cannot see on disk. `admin` matches refresh — an operator-gated mutation.
+	{ method: "POST", pattern: "/projects/:id/init", policy: "admin", build: initProjectHandler },
+	{
+		method: "POST",
+		pattern: "/projects/:id/config-migrate",
+		policy: "admin",
+		build: configMigrateProjectHandler,
+	},
 	{ method: "DELETE", pattern: "/projects/:id", policy: "admin", build: deleteProjectHandler },
-
 	{
 		method: "GET",
 		pattern: "/analytics/cost",
 		policy: "readOperator",
 		build: listCostAnalyticsHandler,
 	},
-	// warren-97ae: spectators get the reduced projection — counts, rates
-	// and timings survive; USD aggregates stay redacted except the
-	// instance-wide cost/merged-PR ratio. The per-agent/per-model/
-	// per-provider buckets keep their USD figures redacted because
-	// ratio × merged count reconstructs spend.
+	// warren-97ae: spectators get the reduced projection — counts, rates and timings survive; USD
+	// aggregates stay redacted, including the per-agent/per-model/per-provider buckets, because
+	// ratio × merged count reconstructs spend (instance-wide cost/merged-PR ratio excepted).
 	{
 		method: "GET",
 		pattern: "/analytics/runs",
@@ -350,14 +352,12 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		policy: "dispatch",
 		build: previewTeardownHandler,
 	},
-
 	{
 		method: "GET",
 		pattern: "/preview/config",
 		policy: "readOperator",
 		build: previewConfigHandler,
 	},
-
 	{ method: "GET", pattern: "/plan-runs", policy: "readPublic", build: listPlanRunsHandler },
 	{ method: "POST", pattern: "/plan-runs", policy: "dispatch", build: createPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id", policy: "readPublic", build: getPlanRunHandler },
