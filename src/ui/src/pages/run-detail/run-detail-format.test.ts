@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { RunEvent, RunRow } from "@/api/types.ts";
-import { deriveStageDurations, formatRunElapsed } from "./run-detail-format.ts";
+import {
+	deriveStageDurations,
+	formatRunElapsed,
+	readRescueFacts,
+	rescueRedispatchCommand,
+} from "./run-detail-format.ts";
 
 function makeRun(overrides: Partial<RunRow> = {}): RunRow {
 	return {
@@ -29,6 +34,37 @@ function makeEvent(overrides: Partial<RunEvent> = {}): RunEvent {
 		...overrides,
 	};
 }
+
+describe("readRescueFacts", () => {
+	test("returns null for a run with no salvage rescue branch", () => {
+		expect(readRescueFacts(makeRun({ salvageRef: null }))).toBeNull();
+		expect(readRescueFacts(makeRun({ salvageRef: "" }))).toBeNull();
+	});
+
+	test("projects the rescue ref, bundle path, and re-dispatch command (#1241)", () => {
+		const facts = readRescueFacts(
+			makeRun({
+				salvageRef: "warren/rescue/run_test",
+				salvagePath: "/data/salvage/run_test.bundle",
+			}),
+		);
+		expect(facts?.ref).toBe("warren/rescue/run_test");
+		expect(facts?.bundlePath).toBe("/data/salvage/run_test.bundle");
+		expect(facts?.command).toBe("warren run --rescue-from run_test");
+		expect(facts?.hint).toBe("Re-dispatch from this rescue: warren run --rescue-from run_test");
+	});
+
+	test("treats an absent bundle path as null, never an empty string", () => {
+		const facts = readRescueFacts(
+			makeRun({ salvageRef: "warren/rescue/run_test", salvagePath: null }),
+		);
+		expect(facts?.bundlePath).toBeNull();
+	});
+
+	test("rescueRedispatchCommand names the CLI flag verbatim", () => {
+		expect(rescueRedispatchCommand("run_abc123")).toBe("warren run --rescue-from run_abc123");
+	});
+});
 
 describe("deriveStageDurations", () => {
 	test("segments tile the run: sum(segments) === totalMs", () => {

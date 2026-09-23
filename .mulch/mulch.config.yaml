@@ -75,6 +75,8 @@ domains:
   ops-overview: {}
   run-detail: {}
   telemetry: {}
+  stream-bridge: {}
+  repo-ops: {}
 governance:
   max_entries: 100
   warn_entries: 150

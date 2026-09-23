@@ -51,6 +51,15 @@ export function runCost(costUsd: number | null): string {
 	return costUsd === null ? "—" : `$${costUsd.toFixed(4)}`;
 }
 
+/**
+ * #1241 (warren-1db0): the one-line re-dispatch hint for a salvaged run, shown
+ * beside the rescue facts in `warren show --output pretty`. Exposed so tests
+ * and future callers share the exact command spelling.
+ */
+export function rescueRedispatchCommand(runId: string): string {
+	return `warren run --rescue-from ${runId}`;
+}
+
 /** Render a run row as a multi-line human summary (`warren show --output pretty`). */
 export function renderRunPretty(run: RunRow): string {
 	const lines = [
@@ -61,5 +70,12 @@ export function renderRunPretty(run: RunRow): string {
 	if (run.failureReason !== null) lines.push(`  failure: ${run.failureReason}`);
 	if (run.prUrl !== null && run.prUrl !== "") lines.push(`  pr: ${run.prUrl}`);
 	if (run.seedId !== null) lines.push(`  seed: ${run.seedId}`);
+	if (run.salvageRef !== null && run.salvageRef !== "") {
+		lines.push(`  rescue: ${run.salvageRef}`);
+		if (run.salvagePath !== null && run.salvagePath !== "") {
+			lines.push(`  rescue bundle: ${run.salvagePath}`);
+		}
+		lines.push(`  re-dispatch from this rescue: ${rescueRedispatchCommand(run.id)}`);
+	}
 	return lines.join("\n");
 }

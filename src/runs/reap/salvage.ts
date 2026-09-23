@@ -24,6 +24,7 @@
  * operator-visible instead of silent.
  */
 
+import type { RunRow } from "../../db/schema.ts";
 import { rescueBranchFor, salvageBundlePath } from "../../runtime/salvage.ts";
 import type { GitSpawnCredential } from "../../workspace/git/credential-env.ts";
 import { gitCredentialGitEnv } from "../../workspace/git/credential-env.ts";
@@ -109,4 +110,71 @@ export async function salvageWorkspace(
 	}
 
 	return { rescueRef, bundlePath, errors };
+}
+
+/* ----------------------------------------------------------------------- */
+/* Pod-side salvage surfacing (K8s)                                         */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * warren-5ea1 (k8s): the control plane cannot reach the pod's emptyDir, so
+ * reap cannot capture anything itself — but the pod may have POSTed a
+ * self-salvage (`/runs/:id/salvage` intake stamps the run row) before
+ * exiting. Surface whatever landed so the terminal record names the
+ * recovery path at a glance, and let the destroy proceed when the work is
+ * already durable elsewhere (the intake's `reap.workspace_salvaged` event
+ * carries the operator-visible detail; the row is re-fetched since the
+ * stamp can land after reap's initial read).
+ *
+ * warren-985e: the arm also covers a provider_error failure — that run's
+ * finalize SUCCEEDED (it pushed the branch), so `finalizeFailed` never
+ * fires, but the pod's `empty_push_dirty` salvage window may still have
+ * captured uncommitted work and stamped the row before posting its result.
+ *
+ * warren-cbd3: a provider-error run whose finalize already pushed real
+ * commits has its work on origin — nothing to salvage, and claiming
+ * "unrecoverable" over a branch that carries the work is wrong. Stay
+ * silent; reap's `reap.branch_pushed` emit (branch / baseBranch /
+ * commitsAhead payload) is the operator-visible record of where the work
+ * lives.
+ */
+export interface PodSalvageSurfaceInput {
+	readonly runId: string;
+	/** The run failed on a terminal provider error (warren-edc3). */
+	readonly failedFromProviderError: boolean;
+	/** Finalize never completed its push (warren-495d). */
+	readonly finalizeFailed: boolean;
+	/** Finalize pushed the run branch. */
+	readonly branchPushed: boolean;
+	/** Commits the pushed branch is ahead of its base; null = unmeasured. */
+	readonly commitsAhead: number | null;
+	/** Re-fetch the run row — a pod salvage POST can stamp it late. */
+	readonly requireRun: (runId: string) => Promise<RunRow>;
+	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
+}
+
+/** Surface the pod-side salvage on the terminal record; null = nothing landed. */
+export async function surfacePodSalvage(
+	input: PodSalvageSurfaceInput,
+): Promise<WorkspaceSalvageOutcome | null> {
+	const fresh = await input.requireRun(input.runId);
+	if (fresh.salvageRef !== null || fresh.salvagePath !== null) {
+		await input.emit("reap.workspace_salvage_recorded", {
+			source: "pod",
+			rescueRef: fresh.salvageRef,
+			bundlePath: fresh.salvagePath,
+		});
+		return { rescueRef: fresh.salvageRef, bundlePath: fresh.salvagePath, errors: [] };
+	}
+	if (input.failedFromProviderError && input.branchPushed && (input.commitsAhead ?? 0) > 0) {
+		return null;
+	}
+	await input.emit("reap.workspace_salvage_failed", {
+		errors: [
+			input.failedFromProviderError && !input.finalizeFailed
+				? "run failed with provider_error and the pod posted no salvage bundle; any uncommitted work is unrecoverable"
+				: "pod reached a terminal phase without posting a finalize result or a salvage bundle; committed work is unrecoverable",
+		],
+	});
+	return null;
 }

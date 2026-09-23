@@ -134,6 +134,60 @@ export function piTurnEnd(
 }
 
 /**
+ * Pi `turn_start` lifecycle envelope (a kept kind — the bridge persists
+ * it; the TurnMonitor keys its per-turn state off it, #1242).
+ */
+export function piTurnStart(sandboxRunId: string, seq: number): StreamEventView {
+	return evt(sandboxRunId, seq, {
+		kind: "state_change",
+		stream: "system",
+		payload: { type: "turn_start" },
+	});
+}
+
+/**
+ * Pi `message_update` streaming delta (#1242) as it lands after burrow's pi
+ * parser (kind="telemetry" — the per-delta noise class the bridge drops
+ * without persisting; the TurnMonitor inspects it first). Carries the delta
+ * text in `assistantMessageEvent.delta` and the cumulative message usage in
+ * `partial.usage.cost.total`, mirroring burrow's
+ * `src/runtime/parsers/__golden__/pi-v0.74.0-anthropic-*.jsonl`.
+ */
+export function piMessageDelta(
+	sandboxRunId: string,
+	seq: number,
+	opts: {
+		deltaType?: "thinking_delta" | "text_delta";
+		delta: string;
+		costTotal?: number;
+	},
+): StreamEventView {
+	return evt(sandboxRunId, seq, {
+		kind: "telemetry",
+		stream: "system",
+		payload: {
+			type: "message_update",
+			assistantMessageEvent: {
+				type: opts.deltaType ?? "thinking_delta",
+				contentIndex: 0,
+				delta: opts.delta,
+			},
+			partial: {
+				role: "assistant",
+				content: [],
+				usage: {
+					input: 10,
+					output: 5,
+					cacheRead: 0,
+					cacheWrite: 0,
+					cost: { total: opts.costTotal ?? 0 },
+				},
+			},
+		},
+	});
+}
+
+/**
  * Claude-code single-shot `result` envelope (warren-87f9). Burrow's
  * jsonl-claude parser maps it to state_change/system; the bridge
  * sniffs the payload shape to extract cost.

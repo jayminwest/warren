@@ -157,7 +157,11 @@ export interface SpawnRunInput {
 	 * unchanged. `replicate` flips the base-ref resolution to the caller's
 	 * explicit `ref` (or the project default branch) instead of the parent's
 	 * pushed branch — a fresh re-dispatch of the parent's config that is
-	 * independent of whatever the parent did. Persisted to `runs.clone_kind`.
+	 * independent of whatever the parent did. `rescue` (warren-1db0, #1241)
+	 * pairs with `existingBranch` set to the parent's `salvageRef` rescue
+	 * branch: the base ref is that branch and the parent link is lineage
+	 * only — the ONLY kind allowed to combine `parentRunId` with
+	 * `existingBranch`. Persisted to `runs.clone_kind`.
 	 * Ignored when `parentRunId` is unset (root run → null clone_kind).
 	 */
 	readonly cloneKind?: CloneKind;

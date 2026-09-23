@@ -117,4 +117,13 @@ jobs:
           git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
           git add scripts/bundle-size-budgets.json
           git commit -m "ci: auto-heal bundle-size budgets (measured re-baseline)"
-          git push origin "HEAD:${HEAD_BRANCH}"
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:${HEAD_BRANCH}"; then
+              echo "Budget re-baseline pushed (attempt $attempt)."
+              exit 0
+            fi
+            echo "::warning::push attempt $attempt failed — GitHub 5xx/transient error; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::budget re-baseline could not be pushed after 5 attempts."
+          exit 1

@@ -111,6 +111,13 @@ export interface PrFragmentContext {
 	 * whitespace-only / undefined → the fragment is omitted entirely.
 	 */
 	readonly agentNotes?: string;
+	/**
+	 * warren-cbd3: the terminal provider-error message when the run ended in
+	 * one after committing and pushing. Renders an `Outcome` bullet in the
+	 * `run` fragment so a reviewer knows the run itself did not finish
+	 * cleanly; absent = normal run.
+	 */
+	readonly providerError?: string | null;
 }
 
 /**
@@ -340,6 +347,13 @@ function defaultRun(ctx: PrFragmentContext): string {
 			: `\`${ctx.runId}\``;
 	lines.push(`- **Warren run:** ${link}`);
 	lines.push(`- **Agent:** ${ctx.agentName}`);
+	if (ctx.providerError !== undefined) {
+		lines.push(
+			ctx.providerError !== null && ctx.providerError !== ""
+				? `- **Outcome:** run ended in a provider error — ${ctx.providerError}`
+				: "- **Outcome:** run ended in a provider error",
+		);
+	}
 	const duration = formatDuration(ctx.startedAt, ctx.endedAt);
 	if (duration !== null) lines.push(`- **Duration:** ${duration}`);
 	const cost = formatCostLine(ctx);
