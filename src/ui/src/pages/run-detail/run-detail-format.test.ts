@@ -3,6 +3,7 @@ import type { RunEvent, RunRow } from "@/api/types.ts";
 import {
 	deriveStageDurations,
 	formatRunElapsed,
+	formatTrigger,
 	readRescueFacts,
 	rescueRedispatchCommand,
 } from "./run-detail-format.ts";
@@ -143,5 +144,18 @@ describe("deriveStageDurations", () => {
 	test("formatRunElapsed reads created -> ended", () => {
 		const run = makeRun();
 		expect(formatRunElapsed(run, Date.now())).toBe("20:00");
+	});
+});
+
+describe("formatTrigger", () => {
+	test("names the known trigger kinds for an operator", () => {
+		expect(formatTrigger("cli")).toBe("CLI");
+		expect(formatTrigger("plan-run")).toBe("Plan run");
+		expect(formatTrigger("manual-trigger")).toBe("Run now");
+	});
+
+	test("humanizes an unknown trigger", () => {
+		expect(formatTrigger("github_issue")).toBe("Github issue");
+		expect(formatTrigger("")).toBe("");
 	});
 });
