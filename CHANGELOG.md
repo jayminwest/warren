@@ -42,6 +42,11 @@ Releases **0.9.10 and earlier** live in
   project `runBranchPrefix`, it read `burrow/<new run>`. Runs push
   `warren/<run id>` (`DEFAULT_RUN_BRANCH_PREFIX`), and the preview now says so.
 
+- **Sign-in no longer bounces back to the login page (warren-9937).** The
+  login page polls `/instance` and `/whoami` before a token exists. When one
+  of those 401s arrived after sign-in, the client cleared the fresh token.
+  A 401 now clears the stored token only when that request sent it.
+
 ## [0.19.2] — 2026-09-19
 
 The auto-merge release. A project can now let warren arm GitHub

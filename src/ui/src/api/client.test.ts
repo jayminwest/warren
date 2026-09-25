@@ -131,6 +131,17 @@ describe("request error mapping", () => {
 		expect(getApiToken()).toBeNull();
 	});
 
+	test("a 401 for an older token keeps the token stored since (login race)", async () => {
+		const { getApiToken, setApiToken, runsApi, UnauthorizedError } = await import("./client.ts");
+		// The login form stores a fresh token while this request is in flight.
+		nextResponse = () => {
+			setApiToken("fresh-login-token");
+			return new Response("", { status: 401 });
+		};
+		await expect(runsApi.previewLogin("run_abc")).rejects.toBeInstanceOf(UnauthorizedError);
+		expect(getApiToken()).toBe("fresh-login-token");
+	});
+
 	test("a structured error envelope becomes an ApiError carrying code + hint", async () => {
 		const { ApiError, runsApi } = await import("./client.ts");
 		nextResponse = () =>

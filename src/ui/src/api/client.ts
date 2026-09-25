@@ -91,6 +91,16 @@ export function setApiToken(token: string | null): void {
 	}
 }
 
+/**
+ * Drop the cached token after a 401, but only when it is the token the
+ * rejected request carried. A request sent before sign-in (no token)
+ * can land its 401 after the login form stores a fresh token; clearing
+ * then would bounce a valid login back to the sign-in page.
+ */
+function clearRejectedToken(sent: string | null): void {
+	if (sent !== null && getApiToken() === sent) setApiToken(null);
+}
+
 interface RequestOptions {
 	method?: string;
 	body?: unknown;
@@ -111,7 +121,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
 	const res = await fetch(path, init);
 	if (res.status === 401) {
-		setApiToken(null);
+		clearRejectedToken(token);
 		throw new UnauthorizedError("API token rejected; please re-authenticate");
 	}
 	const text = await res.text();
@@ -506,18 +516,18 @@ async function* streamNdjsonEvents<T = RunEvent>(
 	if (opts.signal) init.signal = opts.signal;
 
 	yield* readNdjsonStream<T>(() => fetch(url, init), {
-		errorFactory: streamErrorFromResponse,
+		errorFactory: (res) => streamErrorFromResponse(res, token),
 	});
 }
 
 /**
  * Map a non-OK NDJSON response to the UI's error vocabulary. A 401 clears
- * the cached token so the router redirects back to login; anything else
+ * the cached token it was sent with so the router redirects back to login; anything else
  * becomes an {@link ApiError} carrying the server's error envelope.
  */
-async function streamErrorFromResponse(res: Response): Promise<Error> {
+async function streamErrorFromResponse(res: Response, sent: string | null): Promise<Error> {
 	if (res.status === 401) {
-		setApiToken(null);
+		clearRejectedToken(sent);
 		return new UnauthorizedError("API token rejected; please re-authenticate");
 	}
 	const text = await res.text();

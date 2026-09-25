@@ -184,6 +184,19 @@ describe("NDJSON event streams", () => {
 		expect(getApiToken()).toBeNull();
 	});
 
+	test("a 401 for an older token keeps the token stored since (login race)", async () => {
+		const { getApiToken, setApiToken, streamRunEvents, UnauthorizedError } = await import(
+			"./client.ts"
+		);
+		// The login form stores a fresh token while this request is in flight.
+		nextResponse = () => {
+			setApiToken("fresh-login-token");
+			return new Response("", { status: 401 });
+		};
+		await expect(streamRunEvents("run_abc").next()).rejects.toBeInstanceOf(UnauthorizedError);
+		expect(getApiToken()).toBe("fresh-login-token");
+	});
+
 	test("a structured error envelope becomes an ApiError carrying the server code", async () => {
 		const { ApiError, streamRunEvents } = await import("./client.ts");
 		nextResponse = () =>
