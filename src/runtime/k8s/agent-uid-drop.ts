@@ -35,9 +35,11 @@
  * effect on exec (file caps ∩ bounding — which is why SETUID/SETGID stay in
  * the `capabilities.add` list). The agent side of the split CANNOT climb
  * back the same way: setpriv runs it under `--no-new-privs` (inherited,
- * irrevocable — file caps are inert) with `--bounding-set=-all` (SETUID gone
- * from bounding regardless). Verified live on GKE Autopilot / containerd
- * 2.1.7 (warren-950d).
+ * irrevocable — file caps are inert). Verified live on GKE Autopilot /
+ * containerd 2.1.7 (warren-950d). `--bounding-set=-all` does NOT take
+ * effect (the agent's CapBnd still reads 0xe0 on runc and gVisor, probes
+ * 2026-09-25), most likely because the entrypoint lacks CAP_SETPCAP.
+ * no_new_privs is the boundary that holds.
  *
  * The same file-caps binary rides the shared agent image into
  * DockerProvider runs, where no split applies and the agent is the

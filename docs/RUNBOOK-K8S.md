@@ -736,9 +736,14 @@ The fix has two halves:
   because file caps only grant what the bounding set contains.
 
 The agent side cannot climb back with the same binary. setpriv runs it
-under `--no-new-privs` (inherited and irrevocable — file caps are inert)
-with `--bounding-set=-all` (SETUID gone from bounding regardless). Live
-canary pods on GKE Autopilot / containerd 2.1.7 proved both halves.
+under `--no-new-privs`, which is inherited and irrevocable, so file caps
+are inert. Live canary pods on GKE Autopilot / containerd 2.1.7 proved both
+halves.
+
+The `--bounding-set=-all` flag does not take effect: the agent's
+`CapBnd` still reads `0xe0` on runc and on gVisor (probes on 2026-09-25).
+The likely cause is that the entrypoint does not hold CAP_SETPCAP, which a
+bounding-set drop needs. no_new_privs is the boundary that holds.
 
 The stdin-hold watchdog's force-kill is a cross-uid signal the entrypoint
 can no longer deliver directly. It routes through the same setpriv drop
@@ -839,7 +844,7 @@ The agent still cannot read the entrypoint's environ or write its stdout.
 The init container stays uid 1000 with no caps.
 The root entrypoint writes the workspace through group 1000, like the agent.
 
-gVisor ignores the `--bounding-set=-all` drop, so the agent's `CapBnd` still reads `0xe0`.
+The agent's `CapBnd` still reads `0xe0`, as it does on runc (§4.2).
 That grants nothing: with no_new_privs on, no exec can raise caps.
 A live check on 2026-09-25 as uid 1001 confirmed it: `setresuid(0)` fails with EPERM, and the sandbox denies `/proc/1/environ` and `kill -0 1`.
 
