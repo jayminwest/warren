@@ -326,7 +326,7 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 });
 
 describe("demo polish (warren-f53e)", () => {
-	test("the steer form is reachable beside the event tail, not below it", () => {
+	test("the steer form is reachable beside the event log, not below it", () => {
 		// warren-f53e's original fix stacked SteerForm above the 480px
 		// tail because steering meant scrolling past the whole log.
 		// The Direction C workload inspector (warren-8c85) solves the same
@@ -335,7 +335,7 @@ describe("demo polish (warren-f53e)", () => {
 		const runDetail = read("pages", "run-detail", "index.tsx");
 		const aside = runDetail.indexOf("<aside");
 		const steer = runDetail.indexOf("<SteerForm");
-		const tail = runDetail.indexOf("<EventTail");
+		const tail = runDetail.indexOf("<EventLog");
 		expect(steer).toBeGreaterThan(-1);
 		expect(tail).toBeGreaterThan(-1);
 		expect(aside).toBeGreaterThan(-1);

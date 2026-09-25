@@ -1,279 +1,92 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { ChevronRight, RefreshCw } from "lucide-react";
+import { type ReactNode, useMemo } from "react";
+import { useParams } from "react-router-dom";
 import { projectsApi, runsApi } from "@/api/client.ts";
-import type { RunEvent, RunRow } from "@/api/types.ts";
 import { isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
-import { PrChip, StatusBadge } from "@/components/ui/status.tsx";
-import { Tag } from "@/components/ui/tag.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useEventStream } from "@/hooks/use-event-stream.ts";
+import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
-import { formatPullRequestLifecycle } from "@/lib/labels.ts";
-import { cn } from "@/lib/utils.ts";
-import type { DispatchRouteState } from "@/pages/dispatch/dispatch-draft.ts";
-import { EventTail } from "@/pages/run-detail/event-tail.tsx";
-import { PhaseRail, PhaseRailStrip } from "@/pages/run-detail/phase-rail.tsx";
-import { PreviewPanel } from "@/pages/run-detail/preview-panel.tsx";
-import {
-	PromptPanel,
-	RunDefinitionPanel,
-	RuntimePanel,
-	SpendPanel,
-} from "@/pages/run-detail/side-panels.tsx";
-import { CancelRunButton, SteerForm } from "@/pages/run-detail/steering-panel.tsx";
 import { extractReapSummary, isBridgeStalled } from "@/pages/run-detail-format.ts";
 import { projectLabel } from "@/pages/runs/runs-format.ts";
-import { formatRunElapsed } from "./run-detail-format.ts";
+import { EventLog } from "./event-log.tsx";
+import { PreviewPanel } from "./preview-panel.tsx";
+import { RunHeader } from "./run-header.tsx";
+import { useRunRefreshOnEvents } from "./run-refresh.ts";
+import { PromptPanel, RunDefinitionPanel, RuntimePanel, SpendPanel } from "./side-panels.tsx";
+import { StageTimeline } from "./stage-timeline.tsx";
+import { SteerForm } from "./steering-panel.tsx";
 
 /**
- * Run detail — the Direction C workload inspector (warren-8c85 /
- * pl-7e38 step 4), translated from docs/ui-revamp/screens/run-detail.jsx:
- * breadcrumb + identity header, the five-cell lifecycle phase rail, the
- * structured event tail (main column), and the side column's Runtime /
- * Spend / Preview / Run definition / Prompt / Steering panels. Live
- * tailing rides the existing NDJSON stream reader (useEventStream);
- * operator affordances (cancel, re-run, steer, preview login/teardown)
- * ride OperatorOnly so the WARREN_AUTH=public spectator projection stays
+ * Run detail (warren-8c85, polished in warren-7d17 / warren-4a47): the
+ * header with status and outcome, the stage timeline, the event log as
+ * the main column, and the side column's Runtime / Spend / Preview / Run
+ * definition / Prompt / Steering cards. Operator affordances ride
+ * OperatorOnly so the WARREN_AUTH=public spectator projection stays
  * read-only.
+ *
+ * The row refreshes from the run's own event stream (run-refresh.ts)
+ * rather than a 3s poll; a slow fallback poll covers a dropped stream.
  */
 
-/**
- * Event kinds whose arrival means the warren run row may have advanced
- * (state transition, cancel forwarded, reap finalized, preview flips).
- */
-const REFETCH_TRIGGER_KINDS: ReadonlySet<string> = new Set([
-	"state_change",
-	"cancel.requested",
-	"reap.completed",
-	"reap_failed",
-	"preview_launched",
-	"preview_evicted",
-	"preview_torn_down",
-]);
+/** Fallback re-read of an active run when the stream goes quiet. */
+const ACTIVE_FALLBACK_POLL_MS = 20_000;
 
-/**
- * Invalidate the ["runs"] query family when an event with a
- * state-changing kind arrives. Tracked via index, not seq, so events
- * appended out of observed order would still be considered.
- */
-function useRefetchOnTriggerEvents(events: RunEvent[], qc: QueryClientLike) {
-	const processedEventCountRef = useRef(0);
-	useEffect(() => {
-		const len = events.length;
-		if (len <= processedEventCountRef.current) {
-			processedEventCountRef.current = len;
-			return;
-		}
-		let trigger = false;
-		for (let i = processedEventCountRef.current; i < len; i++) {
-			const evt = events[i];
-			if (evt !== undefined && REFETCH_TRIGGER_KINDS.has(evt.kind)) {
-				trigger = true;
-				break;
-			}
-		}
-		processedEventCountRef.current = len;
-		if (trigger) {
-			void qc.invalidateQueries({ queryKey: ["runs"] });
-		}
-	}, [events, qc]);
-}
-
-interface QueryClientLike {
-	invalidateQueries: (opts: { queryKey: string[] }) => Promise<unknown>;
-}
-
-function stateColor(state: string): string {
-	switch (state) {
-		case "running":
-			return "text-(--color-info)";
-		case "queued":
-			return "text-(--color-warning)";
-		case "succeeded":
-			return "text-(--color-success)";
-		case "failed":
-			return "text-(--color-danger)";
-		default:
-			return "text-(--color-text-3)";
-	}
-}
-
-function stateDotClass(state: RunRow["state"]): string {
-	switch (state) {
-		case "running":
-			return "bg-(--color-info)";
-		case "queued":
-			return "bg-(--color-warning)";
-		case "succeeded":
-			return "bg-(--color-success)";
-		case "failed":
-			return "bg-(--color-danger)";
-		default:
-			return "bg-(--color-text-3)";
-	}
-}
-
-/** Re-run / continue dispatch navigation (terminal runs only). */
-function DispatchFromRunButtons({ run }: { run: RunRow }) {
-	const navigate = useNavigate();
-	const base = {
-		agent: run.agentName,
-		project: run.projectId ?? undefined,
-		prompt: run.prompt,
-	} as const;
-	const btn =
-		"inline-flex h-[31px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-sm  font-medium text-(--color-text) hover:bg-(--color-surface-hover)";
+function Disclosure({ title, children }: { title: string; children: ReactNode }) {
 	return (
-		<div className="flex flex-wrap gap-[7px]">
-			<button
-				type="button"
-				className={btn}
-				onClick={() =>
-					navigate("/dispatch", {
-						state: { cloneFromRunId: run.id, ...base } satisfies DispatchRouteState,
-					})
-				}
-			>
-				Re-run from scratch
-			</button>
-			<button
-				type="button"
-				className={btn}
-				onClick={() =>
-					navigate("/dispatch", {
-						state: { continueFromRunId: run.id, ...base } satisfies DispatchRouteState,
-					})
-				}
-			>
-				Continue with follow-up
-			</button>
+		<details className="group">
+			<summary className="flex min-h-11 cursor-pointer list-none items-center rounded-md border border-(--color-border) bg-(--color-surface) px-4 text-sm font-medium text-(--color-text) [&::-webkit-details-marker]:hidden">
+				{title}
+				<ChevronRight
+					aria-hidden
+					className="ml-auto size-4 text-(--color-text-3) transition-transform group-open:rotate-90"
+				/>
+			</summary>
+			<div className="pt-3">{children}</div>
+		</details>
+	);
+}
+
+function RunDetailSkeleton() {
+	return (
+		<div role="status" aria-label="Loading run" className="flex flex-col gap-4 px-4 pt-6 md:px-6">
+			<Skeleton className="h-3 w-40" />
+			<Skeleton className="h-6 w-72" />
+			<div className="flex gap-2">
+				<Skeleton className="h-5.5 w-24 rounded-full" />
+				<Skeleton className="h-5.5 w-20" />
+				<Skeleton className="h-5.5 w-44" />
+			</div>
+			<Skeleton className="h-3.5 w-2/3" />
+			<Skeleton className="h-16 w-full rounded-md" />
+			<div className="flex flex-col gap-4 xl:flex-row">
+				<Skeleton className="h-96 flex-1 rounded-md" />
+				<div className="flex flex-col gap-4 xl:w-80">
+					<Skeleton className="h-40 rounded-md" />
+					<Skeleton className="h-40 rounded-md" />
+				</div>
+			</div>
 		</div>
 	);
 }
 
-function HeaderBadges({ run, reap }: { run: RunRow; reap: ReturnType<typeof extractReapSummary> }) {
-	const emptyPush = reap !== null && reap.branchPushed === true && reap.commitsAhead === 0;
-	const hasCommits = run.commitsAhead !== null && run.commitsAhead > 0;
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
 	return (
-		<>
-			{emptyPush ? (
-				<Tag title="Push succeeded but the branch has no new commits — the agent didn't commit">
-					Empty push
-				</Tag>
-			) : null}
-			{hasCommits ? (
-				<Tag>
-					+{run.commitsAhead} commit{run.commitsAhead === 1 ? "" : "s"}
-				</Tag>
-			) : null}
-			{run.prUrl !== null ? (
-				<PrChip url={run.prUrl} lifecycle={run.prState} />
-			) : run.prState !== null ? (
-				<StatusBadge state={run.prState} label={formatPullRequestLifecycle(run.prState)} />
-			) : null}
-		</>
-	);
-}
-
-function RunHeader({
-	run,
-	projectName,
-	isTerminal,
-	reap,
-	onCancelSettled,
-}: {
-	run: RunRow;
-	projectName: string;
-	isTerminal: boolean;
-	reap: ReturnType<typeof extractReapSummary>;
-	onCancelSettled: () => void;
-}) {
-	return (
-		<>
-			{/*
-			 * Mobile header (warren-ecd8): "← Runs" back affordance instead of
-			 * the RUNS / <ID> breadcrumb, an id + bordered state pill +
-			 * Cancel-as-text row, and a one-line agent · project · seed ·
-			 * elapsed subline — per mock mobile/run-detail.jsx:57-79. The
-			 * dispatch-from-run buttons wrap below md (~340px pair in a
-			 * ~347px row); md+ keeps the desktop breadcrumb header verbatim.
-			 */}
-			<header className="flex shrink-0 flex-col gap-1.5 md:hidden">
-				<nav className="shrink-0 font-mono text-sm font-medium text-(--color-text-3)">
-					<Link to="/runs" className="hover:text-(--color-text)">
-						← Runs
-					</Link>
-				</nav>
-				<div className="flex items-center gap-2">
-					<h1 className="font-mono text-base font-semibold tracking-tight text-(--color-text)">
-						{run.id}
-					</h1>
-					<span className="flex shrink-0 items-center gap-[5px] rounded-(--radius-sm) border border-(--color-border-strong) px-[7px] py-[3px]">
-						<span
-							className={cn("h-[5px] w-[5px] rounded-full", stateDotClass(run.state))}
-							aria-hidden
-						/>
-						<span className={cn("font-mono text-2xs ", stateColor(run.state))}>{run.state}</span>
-					</span>
-					<span className="flex-1" />
-					<OperatorOnly>
-						{!isTerminal ? (
-							<CancelRunButton
-								runId={run.id}
-								disabled={isTerminal}
-								onSettled={onCancelSettled}
-								mobile
-							/>
-						) : null}
-					</OperatorOnly>
+		<div className="px-4 pt-6 md:px-6">
+			<Alert variant="danger" title="Couldn't load this run">
+				<div className="flex flex-col items-start gap-2">
+					<span>{message}</span>
+					<Button variant="outline" size="sm" onClick={onRetry}>
+						<RefreshCw aria-hidden />
+						Try again
+					</Button>
 				</div>
-				<p className="line-clamp-1 font-mono text-xs text-(--color-text-3)">
-					{[
-						run.agentName,
-						projectName,
-						run.seedId !== null ? `seed ${run.seedId}` : null,
-						formatRunElapsed(run, Date.now()),
-					]
-						.filter(Boolean)
-						.join(" · ")}
-				</p>
-				<div className="flex flex-wrap items-center gap-2">
-					{run.state === "failed" && run.failureReason !== null ? (
-						<StatusBadge state="failed" reason={run.failureReason} />
-					) : null}
-					<HeaderBadges run={run} reap={reap} />
-				</div>
-				<OperatorOnly>{isTerminal ? <DispatchFromRunButtons run={run} /> : null}</OperatorOnly>
-			</header>
-			<header className="hidden shrink-0 flex-wrap items-center gap-2.5 md:flex">
-				<h1 className="font-mono text-lg font-medium tracking-tight text-(--color-text)">
-					{run.id}
-				</h1>
-				<span className="flex items-center gap-[7px]">
-					<span className={cn("h-1.5 w-1.5 rounded-full", stateDotClass(run.state))} aria-hidden />
-					<span className={cn("font-mono text-xs ", stateColor(run.state))}>{run.state}</span>
-				</span>
-				{run.state === "failed" && run.failureReason !== null ? (
-					<StatusBadge state="failed" reason={run.failureReason} />
-				) : null}
-				<HeaderBadges run={run} reap={reap} />
-				<span className="font-mono text-xs text-(--color-text-3)">
-					{run.agentName} · {projectName}
-					{run.provider !== null ? ` · ${run.provider}` : ""}
-				</span>
-				<span className="flex-1" />
-				<OperatorOnly>
-					{isTerminal ? (
-						<DispatchFromRunButtons run={run} />
-					) : (
-						<CancelRunButton runId={run.id} disabled={isTerminal} onSettled={onCancelSettled} />
-					)}
-				</OperatorOnly>
-			</header>
-		</>
+			</Alert>
+		</div>
 	);
 }
 
@@ -286,8 +99,9 @@ export function RunDetailPage() {
 		queryFn: ({ signal }) => runsApi.get(id, signal),
 		refetchInterval: (q) => {
 			const data = q.state.data;
-			if (!data) return 5000;
-			return isTerminalRunState(data.state) ? false : 3000;
+			return data !== undefined && !isTerminalRunState(data.state)
+				? ACTIVE_FALLBACK_POLL_MS
+				: false;
 		},
 	});
 
@@ -299,132 +113,106 @@ export function RunDetailPage() {
 	});
 
 	const isTerminal = run.data !== undefined && isTerminalRunState(run.data.state);
-	const stream = useEventStream(id, !isTerminal);
+	// Open the stream once the row says whether to tail or replay.
+	const stream = useEventStream(id, !isTerminal, run.data !== undefined);
+	useRunRefreshOnEvents(id, stream.events);
+	const now = useNow(1000, run.data !== undefined && !isTerminal);
 
-	useRefetchOnTriggerEvents(stream.events, qc);
+	const reap = useMemo(() => extractReapSummary(stream.events), [stream.events]);
+	const bridgeStalled = useMemo(
+		() => !isTerminal && isBridgeStalled(stream.events),
+		[isTerminal, stream.events],
+	);
 
-	if (run.isLoading) {
-		return <Spinner label="Loading run" />;
-	}
-	if (run.isError) {
+	if (run.isLoading) return <RunDetailSkeleton />;
+	if (run.isError || !run.data) {
 		return (
-			<Alert variant="danger" title="Failed to load run">
-				{formatError(run.error)}
-			</Alert>
+			<LoadError
+				message={run.isError ? formatError(run.error) : "The run was not found."}
+				onRetry={() => void run.refetch()}
+			/>
 		);
 	}
-	if (!run.data) return null;
 	const r = run.data;
-	const reap = extractReapSummary(stream.events);
-	const bridgeStalled = !isTerminal && isBridgeStalled(stream.events);
 	const projectName =
 		r.projectId === null
-			? "deleted project"
+			? "a deleted project"
 			: projectLabel(
 					projects.data?.projects.find((p) => p.id === r.projectId)?.gitUrl,
 					r.projectId,
 				);
 
 	return (
-		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6 xl:h-full">
-			<nav className="hidden shrink-0 font-mono text-xs text-(--color-text-3) md:block">
-				RUNS / {r.id.toUpperCase()}
-			</nav>
-
+		<div className="flex min-h-full flex-col gap-4 px-4 pt-6 pb-12 md:px-6 xl:h-full xl:pb-6">
 			<RunHeader
 				run={r}
 				projectName={projectName}
 				isTerminal={isTerminal}
 				reap={reap}
+				now={now}
 				onCancelSettled={() => void qc.invalidateQueries({ queryKey: ["runs"] })}
 			/>
 
 			{bridgeStalled ? (
-				<Alert variant="warning" title="Agent infrastructure unreachable">
-					Can't reach the sandbox; reconnects keep timing out. Retrying.
+				<Alert variant="warning" title="Can't reach the sandbox">
+					Reconnects keep timing out. Warren keeps retrying; the log resumes when it reconnects.
 				</Alert>
 			) : null}
 
-			<div className="hidden md:block">
-				<PhaseRail run={r} events={stream.events} />
-			</div>
-			<div className="md:hidden">
-				<PhaseRailStrip run={r} events={stream.events} />
-			</div>
+			<StageTimeline run={r} events={stream.events} now={now} />
 
 			{/*
-			 * Mobile section order (warren-3399): below md the stack reads
-			 * Runtime → Spend → Event stream → Steering, with Prompt / Run
-			 * definition / Preview collapsed into details disclosures — the
-			 * 375px mock omits them entirely; collapsing keeps the data
-			 * reachable. Breakpoint decision: the two-column row still cuts
-			 * over at xl (the side column needs the width), but the mobile
-			 * treatments apply below md only, so 768–1279 keeps the
-			 * desktop-weight stacked layout. `max-xl:contents` promotes the
-			 * aside's children into this flex container below xl so the
-			 * order-* utilities can interleave panels with the event column.
-			 * At xl the row is height-bound (xl:h-full up top, this wrapper
-			 * xl:h-full + xl:overflow-hidden) so the Event Stream scrolls
-			 * internally instead of stretching the page (warren-57fb); the
-			 * stacked layout below xl keeps growing.
+			 * Mobile section order (warren-3399, mx-a07322): below md the stack
+			 * reads Runtime → Spend → Event log → Steering, with Preview / Run
+			 * definition / Prompt collapsed into disclosures. The two-column
+			 * row cuts over at xl; `max-xl:contents` promotes the aside's
+			 * children into this flex container below xl so order-* can
+			 * interleave them with the log. At xl the row is height-bound so
+			 * the log scrolls internally (warren-57fb).
 			 */}
-			<div className="flex min-h-0 flex-1 flex-col gap-3 xl:h-full xl:min-h-0 xl:flex-row xl:overflow-hidden">
-				<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 order-3 md:order-none">
-					<EventTail
+			<div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:overflow-hidden">
+				<div className="order-3 flex min-h-0 min-w-0 flex-1 flex-col md:order-none">
+					<EventLog
 						events={stream.events}
+						trimmed={stream.trimmed}
 						status={stream.status}
 						error={stream.error}
 						terminal={isTerminal}
+						className="xl:min-h-0 xl:flex-1"
 					/>
 				</div>
-				<aside className="flex w-full shrink-0 flex-col gap-3 max-xl:contents xl:min-h-0 xl:w-[326px] xl:overflow-y-auto">
+				<aside className="flex w-full shrink-0 flex-col gap-4 max-xl:contents xl:min-h-0 xl:w-80 xl:overflow-y-auto">
 					<div className="order-1 md:order-none">
 						<RuntimePanel run={r} />
 					</div>
 					<div className="order-2 md:order-none">
 						<SpendPanel run={r} />
 					</div>
+					<OperatorOnly>
+						{!isTerminal ? (
+							<div className="order-4 md:order-none">
+								<SteerForm runId={r.id} disabled={isTerminal} />
+							</div>
+						) : null}
+					</OperatorOnly>
 					<div className="hidden md:contents">
 						{r.previewState !== null ? <PreviewPanel run={r} /> : null}
 						<RunDefinitionPanel run={r} projectName={projectName} />
 						<PromptPanel run={r} />
 					</div>
-					<OperatorOnly>
-						<div className="order-4 md:order-none">
-							<SteerForm runId={r.id} disabled={isTerminal} />
-						</div>
-					</OperatorOnly>
-					<details className="order-5 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-sm font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
-							Prompt
-							<span className="ml-auto font-mono text-2xs text-(--color-text-3) transition group-open:rotate-90">
-								&#9656;
-							</span>
-						</summary>
-						<div className="pt-3">
-							<PromptPanel run={r} />
-						</div>
-					</details>
-					<details className="order-6 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-sm font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
-							Run definition
-							<span className="ml-auto font-mono text-2xs text-(--color-text-3) transition group-open:rotate-90">
-								&#9656;
-							</span>
-						</summary>
-						<div className="pt-3">
+					<div className="order-5 flex flex-col gap-3 md:hidden">
+						{r.previewState !== null ? (
+							<Disclosure title="Preview">
+								<PreviewPanel run={r} />
+							</Disclosure>
+						) : null}
+						<Disclosure title="Run definition">
 							<RunDefinitionPanel run={r} projectName={projectName} />
-						</div>
-					</details>
-					<details className="order-7 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-sm font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
-							Preview
-							<span className="ml-auto font-mono text-2xs text-(--color-text-3) transition group-open:rotate-90">
-								&#9656;
-							</span>
-						</summary>
-						<div className="pt-3">{r.previewState !== null ? <PreviewPanel run={r} /> : null}</div>
-					</details>
+						</Disclosure>
+						<Disclosure title="Prompt">
+							<PromptPanel run={r} />
+						</Disclosure>
+					</div>
 				</aside>
 			</div>
 		</div>
