@@ -11,6 +11,13 @@
  * retry-safe, so a 25 s-notice preemption is an infra-lost retry, not data
  * loss; the aborted attempt's model spend (bounded by `maxCostUsd`) is the
  * whole cost of the trade. See RUNBOOK-K8S.md §3, "Spot run pods".
+ *
+ * `buildRunPod` sets NO explicit `terminationGracePeriodSeconds`, so K8s
+ * applies its 30 s pod default. That is deliberate against Autopilot's 25 s
+ * preemption notice: preemption ends the pod as infra-lost regardless, so a
+ * longer grace buys nothing on Spot. The 30 s default only matters for an
+ * explicit `cancel()`, whose delete grace comes from
+ * `cancelGracePeriodSeconds`, not this field.
  */
 
 /** Truthy spellings for `WARREN_K8S_SPOT`. Deliberately narrow: a typo

@@ -55,6 +55,7 @@ import {
 	resolveMemoryMiB,
 	resourceRequirements,
 } from "./pod-resources.ts";
+import { applyRuntimeClass } from "./pod-runtime-class.ts";
 
 // Re-exported so `./pod-spec.ts` stays the single import surface for the pod
 // shape; the env builders + ENV name constants live in `./pod-env.ts`.
@@ -255,6 +256,8 @@ export interface K8sPodConfig {
 	serviceAccountName?: string;
 	/** Spot placement (warren-2e2e, `./pod-spot.ts`): run pods only, never the control plane. */
 	spot?: boolean;
+	/** Sandboxed RuntimeClass, e.g. `gvisor` (warren-9bd3, `./pod-runtime-class.ts`). */
+	runtimeClass?: string;
 	/**
 	 * `imagePullPolicy` for BOTH run-pod containers (`WARREN_K8S_IMAGE_PULL_POLICY`).
 	 * Absent ⇒ omit ⇒ K8s default (`Always` for `:latest`). On kind/k3d the images
@@ -357,6 +360,7 @@ export function resolveK8sPodConfig(
 	const repoCache = resolveRepoCacheConfig(env);
 	if (repoCache !== undefined) config.repoCache = repoCache;
 	if (resolveSpot(env)) config.spot = true;
+	if (resources?.runtimeClass !== undefined) config.runtimeClass = resources.runtimeClass;
 	return config;
 }
 
@@ -462,15 +466,8 @@ export function podLabelsForRun(spec: RunSpec, config: K8sPodConfig): Record<str
  * manifest into the init container. The agent's callback env is expected to be
  * folded into `spec.env` by the caller (`create()` owns the provider plumbing).
  *
- * Spot (warren-2e2e, `./pod-spot.ts`): when `config.spot` is set, the pod gains
- * the `cloud.google.com/gke-spot=true` nodeSelector plus the matching NoSchedule
- * toleration, pinning it to Autopilot Spot nodes. The builder sets NO explicit
- * `terminationGracePeriodSeconds`, so K8s applies its 30 s pod default —
- * deliberate against Autopilot's 25 s preemption notice: preemption ends the
- * pod as infra-lost regardless (preemption is a retryable failure and the run
- * re-dispatches from scratch), so a longer grace buys nothing on Spot; the
- * 30 s default only matters for explicit `cancel()`, whose delete grace comes
- * from `cancelGracePeriodSeconds`, not this field.
+ * Spot placement (`./pod-spot.ts`, which also explains the default grace) and
+ * a sandboxed RuntimeClass (`./pod-runtime-class.ts`) apply last.
  */
 export function buildRunPod(
 	spec: RunSpec,
@@ -507,6 +504,9 @@ export function buildRunPod(
 		const spot = spotPlacement();
 		pod.spec.nodeSelector = spot.nodeSelector;
 		pod.spec.tolerations = spot.tolerations;
+	}
+	if (config.runtimeClass !== undefined) {
+		applyRuntimeClass(pod, config.runtimeClass, config.agentUidDrop !== undefined);
 	}
 	return pod;
 }

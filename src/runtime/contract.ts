@@ -78,15 +78,14 @@ export interface RunSpec {
 	network: "none" | "restricted" | "open";
 	resources?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
 	/**
-	 * OPTIONAL per-project pod resource defaults from `.warren/config.yaml`
-	 * `resources` (warren-aedd) — same boot-time pattern as
-	 * `maxProjectConcurrency`. Precedence: per-run `resources` limit >
-	 * `projectResources` > env defaults. K8s only.
+	 * OPTIONAL per-project pod defaults from `.warren/config.yaml` `resources`
+	 * (warren-aedd). Precedence: per-run `resources` > this > env. K8s only.
 	 */
 	projectResources?: {
 		requests?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
 		limits?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
 		network?: "none" | "restricted" | "open";
+		runtimeClass?: string;
 	};
 	timeoutMs?: number;
 
