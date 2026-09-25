@@ -24,9 +24,7 @@ import { cn } from "@/lib/utils.ts";
 /** Mono right-aligned count, "—" while unknown (never a fabricated number). */
 function NavCount({ value }: { value: number | null }) {
 	return (
-		<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
-			{value === null ? "—" : value}
-		</span>
+		<span className="font-mono text-xs text-(--color-text-3)">{value === null ? "—" : value}</span>
 	);
 }
 
@@ -56,17 +54,14 @@ function NavRow({
 				<>
 					<span
 						className={cn(
-							"w-max shrink-0 text-center font-mono text-[11px] leading-[14px]",
+							"w-max shrink-0 text-center font-mono text-sm ",
 							isActive ? "text-(--color-primary)" : "text-(--color-text-3)",
 						)}
 					>
 						{item.index}
 					</span>
 					<span
-						className={cn(
-							"text-[12px] leading-4",
-							isActive ? "text-(--color-text)" : "text-(--color-text-2)",
-						)}
+						className={cn("text-sm ", isActive ? "text-(--color-text)" : "text-(--color-text-2)")}
 					>
 						{item.label}
 					</span>
@@ -81,9 +76,7 @@ function NavRow({
 function SectionHeading({ label }: { label: string }) {
 	return (
 		<div className="px-[9px] pb-1.5 pt-4">
-			<span className="text-[10px] font-semibold leading-3 tracking-[0.08em] text-(--color-text-3)">
-				{label}
-			</span>
+			<span className="text-xs font-semibold tracking-wide text-(--color-text-3)">{label}</span>
 		</div>
 	);
 }
@@ -115,10 +108,10 @@ function InstanceCard({ stats }: { stats: ConsoleStats }) {
 				<HealthDot health={stats.health} />
 			</span>
 			<div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-				<span className="text-[12px] leading-4 font-medium text-(--color-text)">
+				<span className="text-sm font-medium text-(--color-text)">
 					{isOperator ? "operator" : "read-only"}
 				</span>
-				<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="truncate font-mono text-xs text-(--color-text-3)">
 					{isOperator ? "read-write session" : "spectator projection"}
 				</span>
 			</div>
@@ -143,15 +136,11 @@ function BrandRow({ onNavigate }: { onNavigate?: () => void }) {
 				className="flex items-center gap-2.5 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
 			>
 				<WarrenLogo className="h-[22px] w-[22px] shrink-0" />
-				<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
-					warren
-				</span>
+				<span className="text-sm font-semibold tracking-tight text-(--color-text)">warren</span>
 			</Link>
 			<span className="flex-1" />
 			{version.data ? (
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
-					v{version.data.version}
-				</span>
+				<span className="font-mono text-xs text-(--color-text-3)">v{version.data.version}</span>
 			) : null}
 		</div>
 	);
@@ -182,16 +171,16 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
 				target="_blank"
 				rel="noreferrer"
 				onClick={onNavigate}
-				className="flex h-8 items-center gap-2.5 rounded-(--radius-sm) px-[9px] text-[11px] leading-[14px] text-(--color-text-3) hover:text-(--color-text-2)"
+				className="flex h-8 items-center gap-2.5 rounded-(--radius-sm) px-[9px] text-sm text-(--color-text-3) hover:text-(--color-text-2)"
 			>
-				<span className="w-max shrink-0 text-center font-mono text-[11px] leading-[14px]">↗</span>
+				<span className="w-max shrink-0 text-center font-mono text-sm">↗</span>
 				Documentation
 			</a>
 			<div className="flex h-8 items-center gap-2.5 px-[9px]">
-				<span className="w-max shrink-0 text-center font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="w-max shrink-0 text-center font-mono text-xs text-(--color-text-3)">
 					··
 				</span>
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-xs text-(--color-text-3)">
 					{identity === "operator" ? "operator@warren" : "spectator"}
 				</span>
 			</div>
@@ -202,7 +191,7 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
 					<button
 						type="button"
 						onClick={handleLogout}
-						className="flex h-8 items-center gap-2 px-1 text-[11px] text-(--color-text-3) hover:text-(--color-text-2)"
+						className="flex h-8 items-center gap-2 px-1 text-sm text-(--color-text-3) hover:text-(--color-text-2)"
 					>
 						<LogOut className="h-3.5 w-3.5" />
 						Log out
@@ -211,7 +200,7 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
 					<NavLink
 						to="/login"
 						onClick={onNavigate}
-						className="flex h-8 items-center gap-2 px-1 text-[11px] text-(--color-text-3) hover:text-(--color-text-2)"
+						className="flex h-8 items-center gap-2 px-1 text-sm text-(--color-text-3) hover:text-(--color-text-2)"
 					>
 						<LogIn className="h-3.5 w-3.5" />
 						Log in

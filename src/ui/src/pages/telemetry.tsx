@@ -71,7 +71,7 @@ function ProjectSelector() {
 			value={projectId ?? ""}
 			onChange={(e) => setProjectId(e.target.value === "" ? null : e.target.value)}
 			aria-label="Filter by project"
-			className="hidden h-8 rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 font-mono text-[11px] leading-[14px] text-(--color-text-2) md:block"
+			className="hidden h-8 rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 font-mono text-sm text-(--color-text-2) md:block"
 		>
 			<option value="">all projects</option>
 			{rows.map((p) => (
@@ -88,7 +88,7 @@ function RangeSelector() {
 	const { days, setDays } = useTelemetryWindow();
 	return (
 		<div className="hidden items-center gap-3 md:flex">
-			<span className="hidden font-mono text-[11px] tracking-[0.04em] leading-[14px] text-(--color-text-3) sm:inline">
+			<span className="hidden font-mono text-sm tracking-wide text-(--color-text-3) sm:inline">
 				{endsTodayLabel()}
 			</span>
 			<section
@@ -104,7 +104,7 @@ function RangeSelector() {
 							onClick={() => setDays(d)}
 							aria-pressed={active}
 							className={cn(
-								"px-2.5 py-1.5 font-mono text-[11px] leading-[14px]",
+								"px-2.5 py-1.5 font-mono text-sm ",
 								active
 									? "bg-(--color-primary) font-medium text-(--color-primary-ink)"
 									: "text-(--color-text-3) hover:text-(--color-text-2)",
@@ -133,7 +133,7 @@ function TabNav() {
 					to={`/telemetry/${path}`}
 					className={({ isActive }) =>
 						cn(
-							"flex shrink-0 flex-col gap-2 pb-0 font-mono text-[11px] leading-[14px] tracking-[0.08em]",
+							"flex shrink-0 flex-col gap-2 pb-0 font-mono text-sm  tracking-wide",
 							isActive
 								? "font-semibold text-(--color-text)"
 								: "text-(--color-text-3) hover:text-(--color-text-2)",
@@ -182,10 +182,10 @@ export function TelemetryPage() {
 			<div className="flex min-h-full flex-col gap-5 px-3.5 py-6 md:px-6">
 				<header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
 					<div className="flex flex-col gap-1.5">
-						<h1 className="text-[22px] font-semibold leading-7 tracking-[-0.025em] text-(--color-text)">
+						<h1 className="text-2xl font-semibold leading-7 tracking-tight text-(--color-text)">
 							Telemetry
 						</h1>
-						<p className="text-[13px] leading-[18px] text-(--color-text-2)">
+						<p className="text-sm text-(--color-text-2)">
 							Cost, behavior, and delivery across runs.
 						</p>
 					</div>

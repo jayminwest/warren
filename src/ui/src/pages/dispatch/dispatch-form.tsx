@@ -21,12 +21,12 @@ import { cn } from "@/lib/utils.ts";
 
 const controlClass = cn(
 	responsiveFormControl,
-	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 leading-[17px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)",
-	"sm:h-8 sm:text-[11px] sm:leading-[14px]",
+	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5  text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)",
+	"sm:h-8 sm:text-sm ",
 );
 
-const labelClass = "text-[10px] font-medium leading-3 text-(--color-text-2)";
-const hintClass = "font-mono text-[9px] leading-3 text-(--color-text-3)";
+const labelClass = "text-xs font-medium  text-(--color-text-2)";
+const hintClass = "font-mono text-2xs  text-(--color-text-3)";
 
 function Section({
 	title,
@@ -50,10 +50,8 @@ function Section({
 		>
 			{/* Desktop header — below md the card's --color-thead bar replaces it. */}
 			<div className="hidden md:flex md:flex-col md:gap-[3px] md:px-[15px] md:pt-[15px] md:pb-[13px]">
-				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">{title}</h2>
-				{description && (
-					<p className="text-[10px] leading-3 text-(--color-text-3)">{description}</p>
-				)}
+				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
+				{description && <p className="text-xs text-(--color-text-3)">{description}</p>}
 			</div>
 			<div className="flex flex-col px-3 py-3 md:px-[15px] md:py-0 md:pb-[15px]">{children}</div>
 		</section>
@@ -70,7 +68,7 @@ function MobileCard({ title, children }: { title: string; children: ReactNode })
 	return (
 		<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:contents">
 			<div className="flex items-center border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:hidden">
-				<h2 className="text-[12px] font-semibold leading-[15px] text-(--color-text)">{title}</h2>
+				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
 			</div>
 			{children}
 		</div>
@@ -278,7 +276,7 @@ export function DispatchForm(props: DispatchFormProps) {
 					<div className="flex flex-col gap-[5px]">
 						<span className={labelClass}>Prompt</span>
 						<textarea
-							className={cn(controlClass, "min-h-[104px] resize-y py-2 sm:leading-[17px]")}
+							className={cn(controlClass, "min-h-[104px] resize-y py-2 ")}
 							value={props.prompt}
 							onChange={(e) => props.onPrompt(e.target.value)}
 							placeholder="What should the agent do?"
@@ -328,7 +326,7 @@ export function DispatchForm(props: DispatchFormProps) {
 					disabled={props.pending}
 					className={cn(
 						responsiveFooterButton,
-						"hidden h-11 items-center justify-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50 sm:h-[31px] sm:justify-start md:flex",
+						"hidden h-11 items-center justify-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-sm font-medium  text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50 sm:h-[31px] sm:justify-start md:flex",
 					)}
 				>
 					Cancel
@@ -338,7 +336,7 @@ export function DispatchForm(props: DispatchFormProps) {
 					disabled={!canSubmit}
 					className={cn(
 						responsiveFooterButton,
-						"flex h-11 items-center justify-center rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-primary-ink) disabled:opacity-50 sm:h-[31px] sm:justify-start",
+						"flex h-11 items-center justify-center rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-sm font-medium  text-(--color-primary-ink) disabled:opacity-50 sm:h-[31px] sm:justify-start",
 					)}
 				>
 					{props.pending ? "Dispatching…" : "Dispatch workload"}
@@ -346,7 +344,7 @@ export function DispatchForm(props: DispatchFormProps) {
 			</div>
 
 			{props.submitError ? (
-				<p className="px-3.5 py-2 font-mono text-[10px] leading-3 text-(--color-danger) md:border-t md:border-(--color-border) md:px-[15px]">
+				<p className="px-3.5 py-2 font-mono text-xs text-(--color-danger) md:border-t md:border-(--color-border) md:px-[15px]">
 					{props.submitError}
 				</p>
 			) : null}

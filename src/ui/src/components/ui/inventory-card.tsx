@@ -70,16 +70,11 @@ export function InventoryRowCard({
 	const toneClass = TONE_CLASS[tone];
 	const titleNode =
 		titleTo !== undefined ? (
-			<Link
-				to={titleTo}
-				className="truncate font-mono text-[11px] leading-[13px] text-(--color-text) hover:underline"
-			>
+			<Link to={titleTo} className="truncate font-mono text-sm text-(--color-text) hover:underline">
 				{title}
 			</Link>
 		) : (
-			<span className="truncate font-mono text-[11px] leading-[13px] text-(--color-text)">
-				{title}
-			</span>
+			<span className="truncate font-mono text-sm text-(--color-text)">{title}</span>
 		);
 
 	return (
@@ -96,9 +91,7 @@ export function InventoryRowCard({
 							className={cn("h-[5px] w-[5px] shrink-0 rounded-full", toneClass.dot)}
 							aria-hidden
 						/>
-						<span className={cn("truncate font-mono text-[9px] leading-[11px]", toneClass.text)}>
-							{stateLabel}
-						</span>
+						<span className={cn("truncate font-mono text-2xs ", toneClass.text)}>{stateLabel}</span>
 					</span>
 				) : (
 					<span className="flex w-[6px] shrink-0 items-center" aria-hidden>
@@ -108,9 +101,7 @@ export function InventoryRowCard({
 				<span className="flex min-w-0 flex-1 flex-col gap-[2px]">
 					{titleNode}
 					{subline !== undefined ? (
-						<span className="truncate font-mono text-[9px] leading-[11px] text-(--color-text-3)">
-							{subline}
-						</span>
+						<span className="truncate font-mono text-2xs text-(--color-text-3)">{subline}</span>
 					) : null}
 				</span>
 				{figures !== undefined ? (
@@ -120,7 +111,7 @@ export function InventoryRowCard({
 			{meta !== undefined || children !== undefined ? (
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					{meta !== undefined ? (
-						<span className="min-w-0 flex-1 truncate font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+						<span className="min-w-0 flex-1 truncate font-mono text-2xs text-(--color-text-3)">
 							{meta}
 						</span>
 					) : (
@@ -135,11 +126,7 @@ export function InventoryRowCard({
 
 /** A quiet figure line inside the card's trailing column. */
 export function CardFigure({ value, className }: { value: ReactNode; className?: string }) {
-	return (
-		<span className={cn("font-mono text-[10px] leading-[12px] text-(--color-text-2)", className)}>
-			{value}
-		</span>
-	);
+	return <span className={cn("font-mono text-xs  text-(--color-text-2)", className)}>{value}</span>;
 }
 
 /** Small mono figure note (cost line under elapsed, etc.). Pass
@@ -156,7 +143,7 @@ export function CardFigureNote({
 	return (
 		<span
 			className={cn(
-				"font-mono text-[9px] leading-[11px]",
+				"font-mono text-2xs ",
 				tone === "warning" ? "text-(--color-warning)" : "text-(--color-text-3)",
 				className,
 			)}

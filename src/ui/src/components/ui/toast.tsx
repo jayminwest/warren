@@ -30,14 +30,11 @@ const toastVariants = cva(
 	{
 		variants: {
 			variant: {
-				info: "border-(--color-info)/30 bg-(--color-info)/10 text-(--color-info-foreground)",
-				success:
-					"border-(--color-success)/30 bg-(--color-success)/10 text-(--color-success-foreground)",
-				warning:
-					"border-(--color-warning)/30 bg-(--color-warning)/10 text-(--color-warning-foreground)",
-				danger:
-					"border-(--color-danger)/30 bg-(--color-danger)/10 text-(--color-danger-foreground)",
-				neutral: "border-(--color-border) bg-(--color-card) text-(--color-fg)",
+				info: "border-(--color-info)/30 bg-(--color-info)/10 text-(--color-info-ink)",
+				success: "border-(--color-success)/30 bg-(--color-success)/10 text-(--color-success-ink)",
+				warning: "border-(--color-warning)/30 bg-(--color-warning)/10 text-(--color-warning-ink)",
+				danger: "border-(--color-danger)/30 bg-(--color-danger)/10 text-(--color-danger-ink)",
+				neutral: "border-(--color-border) bg-(--color-surface) text-(--color-text)",
 			},
 		},
 		defaultVariants: { variant: "neutral" },
@@ -104,7 +101,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 							}}
 							className={cn(toastVariants({ variant: v }))}
 						>
-							<Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-(--color-fg)" />
+							<Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-(--color-text)" />
 							<div className="min-w-0 flex-1 space-y-0.5">
 								{it.title ? (
 									<ToastPrimitive.Title className="font-medium leading-tight">
@@ -119,7 +116,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 							</div>
 							<ToastPrimitive.Close
 								aria-label="Close"
-								className="absolute right-2 top-2 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-(--color-ring)"
+								className="absolute right-2 top-2 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-(--color-border-strong)"
 							>
 								<X className="h-3.5 w-3.5" />
 							</ToastPrimitive.Close>

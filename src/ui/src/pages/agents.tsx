@@ -27,7 +27,7 @@ import { formatTimestamp } from "@/lib/utils.ts";
  * cost-cap cell reads from — it degrades to "—" rather than guessing.
  */
 
-const CELL_MONO = "font-mono text-[10px] leading-3";
+const CELL_MONO = "font-mono text-xs ";
 const CELL_MONO_MUTED = `${CELL_MONO} text-(--color-text-3)`;
 
 export function AgentsPage() {
@@ -40,12 +40,10 @@ export function AgentsPage() {
 		<div className="flex min-h-full flex-col gap-5 px-3.5 pt-[22px] pb-12 md:px-6">
 			<div className="flex items-start gap-4 pb-1">
 				<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
-					<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+					<h1 className="text-xl leading-6 font-semibold tracking-tight text-(--color-text)">
 						Agents
 					</h1>
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
-						Agents warren can dispatch runs with.
-					</p>
+					<p className="text-sm text-(--color-text-2)">Agents warren can dispatch runs with.</p>
 				</div>
 			</div>
 
@@ -80,7 +78,7 @@ function AgentRegistryTable({ agents }: { agents: readonly AgentRow[] }) {
 					<ColumnHeader width="w-[110px]">PROVIDER</ColumnHeader>
 					<ColumnHeader width="w-[170px]">DEFAULT MODEL</ColumnHeader>
 					<ColumnHeader width="w-[110px]">COST CAP</ColumnHeader>
-					<div className="min-w-0 flex-1 font-sans text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3)">
+					<div className="min-w-0 flex-1 font-sans text-2xs font-semibold tracking-wide text-(--color-text-3)">
 						LAST REFRESHED
 					</div>
 				</div>
@@ -116,7 +114,7 @@ function AgentCard({ agent }: { agent: AgentRow }) {
 function ColumnHeader({ width, children }: { width: string; children: string }) {
 	return (
 		<div
-			className={`${width} shrink-0 font-sans text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3)`}
+			className={`${width} shrink-0 font-sans text-2xs font-semibold tracking-wide text-(--color-text-3)`}
 		>
 			{children}
 		</div>
@@ -134,14 +132,12 @@ function AgentRegistryRow({ agent, last }: { agent: AgentRow; last: boolean }) {
 			<div className="flex w-[220px] shrink-0 flex-col gap-0.5 sm:w-[280px]">
 				<span className={CELL_MONO}>{agent.name}</span>
 				{agent.description ? (
-					<span className="font-sans text-[9px] leading-3 text-(--color-text-3)">
-						{agent.description}
-					</span>
+					<span className="font-sans text-2xs text-(--color-text-3)">{agent.description}</span>
 				) : null}
 			</div>
 			<div className="flex w-[80px] shrink-0">
 				<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5">
-					<span className="font-mono text-[9px] leading-3 text-(--color-text-2)">
+					<span className="font-mono text-2xs text-(--color-text-2)">
 						{agent.source ?? "builtin"}
 					</span>
 				</span>

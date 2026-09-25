@@ -146,11 +146,9 @@ export function LoginPage() {
 				{/* Mark + wordmark + instance line. */}
 				<div className="flex flex-col items-center gap-2.5 px-7 pt-8 pb-5">
 					<LoginMark />
-					<div className="text-[16px] leading-5 font-semibold tracking-[-0.025em]">warren</div>
+					<div className="text-lg font-semibold tracking-tight">warren</div>
 					{instanceLine !== null ? (
-						<div className="font-mono text-[10px] leading-3 text-(--color-text-3)">
-							{instanceLine}
-						</div>
+						<div className="font-mono text-xs text-(--color-text-3)">{instanceLine}</div>
 					) : null}
 				</div>
 
@@ -159,7 +157,7 @@ export function LoginPage() {
 					<div className="flex flex-col gap-1.5">
 						<label
 							htmlFor="token"
-							className="text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3)"
+							className="text-2xs font-semibold tracking-wide text-(--color-text-3)"
 						>
 							API TOKEN
 						</label>
@@ -173,21 +171,21 @@ export function LoginPage() {
 								setToken(e.target.value);
 							}}
 							placeholder="wrn_…"
-							className="h-[34px] rounded-[var(--radius-sm)] border border-(--color-border-strong) bg-(--color-bg) px-2.5 font-mono text-[11px] leading-[14px] text-(--color-text-2) outline-none placeholder:text-(--color-text-3) focus:border-(--color-primary)"
+							className="h-[34px] rounded-[var(--radius-sm)] border border-(--color-border-strong) bg-(--color-bg) px-2.5 font-mono text-sm text-(--color-text-2) outline-none placeholder:text-(--color-text-3) focus:border-(--color-primary)"
 						/>
-						<p className="text-[10px] leading-[14px] text-(--color-text-3)">
+						<p className="text-xs text-(--color-text-3)">
 							Verified against <code>/whoami</code>. Stored in this browser only.
 						</p>
 					</div>
 					{error !== null ? (
-						<p role="alert" className="text-[10px] leading-[14px] text-(--color-danger)">
+						<p role="alert" className="text-xs text-(--color-danger)">
 							{error}
 						</p>
 					) : null}
 					<button
 						type="submit"
 						disabled={pending}
-						className="h-[34px] shrink-0 rounded-[var(--radius-sm)] bg-(--color-primary) text-[11px] leading-[14px] font-medium text-(--color-primary-ink) disabled:opacity-60"
+						className="h-[34px] shrink-0 rounded-[var(--radius-sm)] bg-(--color-primary) text-sm font-medium text-(--color-primary-ink) disabled:opacity-60"
 					>
 						{pending ? "Verifying…" : "Sign in"}
 					</button>
@@ -198,24 +196,22 @@ export function LoginPage() {
 					<div className="flex h-11 shrink-0 items-center justify-center gap-1.5 border-t border-(--color-border)">
 						{admitted ? (
 							<>
-								<span className="text-[10px] leading-3 text-(--color-text-3)">
-									Already signed in —
-								</span>
+								<span className="text-xs text-(--color-text-3)">Already signed in —</span>
 								<Link
 									to="/operations"
-									className="text-[10px] leading-3 font-medium text-(--color-primary) hover:underline"
+									className="text-xs font-medium text-(--color-primary) hover:underline"
 								>
 									return to the console →
 								</Link>
 							</>
 						) : (
 							<>
-								<span className="text-[10px] leading-3 text-(--color-text-3)">
+								<span className="text-xs text-(--color-text-3)">
 									This instance allows read-only spectators —
 								</span>
 								<Link
 									to="/operations"
-									className="text-[10px] leading-3 font-medium text-(--color-primary) hover:underline"
+									className="text-xs font-medium text-(--color-primary) hover:underline"
 								>
 									continue without a token →
 								</Link>
@@ -227,7 +223,7 @@ export function LoginPage() {
 
 			{/* Version / auth strip under the card (mono 9px, artboard copy). */}
 			<div className="pt-[18px]">
-				<span className="font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)">
+				<span className="font-mono text-2xs tracking-wide text-(--color-text-3)">
 					{footerLine} · A STALE TOKEN RETURNS 401, NEVER THE PUBLIC VIEW
 				</span>
 			</div>

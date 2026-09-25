@@ -63,7 +63,7 @@ export function DetailRail({
 
 			{planRun.promptTemplate !== undefined ? (
 				<RailCard title="Prompt template" meta={`${children.length} CHILDREN`}>
-					<pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-(--color-text-2)">
+					<pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-(--color-text-2)">
 						{planRun.promptTemplate}
 					</pre>
 				</RailCard>
@@ -74,7 +74,7 @@ export function DetailRail({
 				meta={`${delivered.length} ${delivered.length === 1 ? "PR" : "PRS"}`}
 			>
 				{delivered.length === 0 ? (
-					<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+					<p className="font-mono text-xs text-(--color-text-3)">
 						No PRs yet — nothing has cleared reap.
 					</p>
 				) : (
@@ -85,15 +85,12 @@ export function DetailRail({
 									href={pr.url}
 									target="_blank"
 									rel="noreferrer noopener"
-									className="min-w-0 truncate font-mono text-[10px] leading-3 text-(--color-primary) underline-offset-2 hover:underline"
+									className="min-w-0 truncate font-mono text-xs text-(--color-primary) underline-offset-2 hover:underline"
 								>
 									{pr.label}
 								</a>
 								<div className="min-w-0 flex-1" />
-								<span
-									className="shrink-0 font-mono text-[9px] leading-3"
-									style={{ color: pr.color }}
-								>
+								<span className="shrink-0 font-mono text-2xs " style={{ color: pr.color }}>
 									{pr.stateLabel}
 								</span>
 							</div>
@@ -115,13 +112,11 @@ function RailCard({
 	children: React.ReactNode;
 }) {
 	return (
-		<section className="flex flex-col rounded border border-(--color-border) bg-(--color-surface)">
+		<section className="flex flex-col rounded-sm border border-(--color-border) bg-(--color-surface)">
 			<header className="flex h-[41px] shrink-0 items-center border-b border-(--color-border) px-3.5">
-				<h2 className="text-[12px] leading-4 font-semibold text-(--color-text)">{title}</h2>
+				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
 				<div className="min-w-0 flex-1" />
-				<span className="font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)">
-					{meta}
-				</span>
+				<span className="font-mono text-2xs tracking-wide text-(--color-text-3)">{meta}</span>
 			</header>
 			<div className="flex flex-col gap-2.5 px-3.5 py-3">{children}</div>
 		</section>
@@ -142,11 +137,9 @@ function Facts({
 		<div className="flex flex-col gap-2.5">
 			{rows.map((r) => (
 				<div key={r.label} className="flex items-baseline gap-2.5">
-					<span className="w-[88px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
-						{r.label}
-					</span>
+					<span className="w-[88px] shrink-0 text-sm text-(--color-text-3)">{r.label}</span>
 					<span
-						className={`min-w-0 truncate font-mono text-[10px] leading-3 ${
+						className={`min-w-0 truncate font-mono text-xs ${
 							r.accent ? "text-(--color-primary)" : "text-(--color-text-2)"
 						}`}
 						title={r.hint ?? (r.value === "—" ? undefined : r.value)}
@@ -154,9 +147,7 @@ function Facts({
 						{r.value}
 					</span>
 					{r.hint !== undefined ? (
-						<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
-							{r.hint}
-						</span>
+						<span className="truncate font-mono text-2xs text-(--color-text-3)">{r.hint}</span>
 					) : null}
 				</div>
 			))}

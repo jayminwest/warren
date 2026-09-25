@@ -22,31 +22,31 @@ export function DispatchPage() {
 
 	return (
 		<div className="flex min-h-full flex-col gap-1.5 px-3.5 pt-5 pb-12 md:px-6">
-			<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">RUNS / NEW</p>
+			<p className="font-mono text-xs text-(--color-text-3)">RUNS / NEW</p>
 			<div className="flex flex-col gap-[5px] pb-[20px]">
-				<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+				<h1 className="text-xl leading-6 font-semibold tracking-tight text-(--color-text)">
 					Dispatch run
 				</h1>
-				<p className="max-w-prose text-[12px] leading-4 text-(--color-text-2)">Start a run.</p>
+				<p className="max-w-prose text-sm text-(--color-text-2)">Start a run.</p>
 				{s.initialState.continueFromRunId !== undefined ? (
-					<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+					<p className="font-mono text-xs text-(--color-text-3)">
 						↪ CONTINUATION FROM {s.initialState.continueFromRunId}
 					</p>
 				) : null}
 				{s.initialState.cloneFromRunId !== undefined ? (
-					<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+					<p className="font-mono text-xs text-(--color-text-3)">
 						⟳ RE-RUN OF {s.initialState.cloneFromRunId}
 					</p>
 				) : null}
 			</div>
 
 			{s.noProjects ? (
-				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
+				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-sm text-(--color-danger)">
 					No projects added. Visit Projects to clone one from GitHub.
 				</p>
 			) : null}
 			{s.noAgents ? (
-				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
+				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-sm text-(--color-danger)">
 					No agents registered. Visit Agents and click Refresh registry.
 				</p>
 			) : null}

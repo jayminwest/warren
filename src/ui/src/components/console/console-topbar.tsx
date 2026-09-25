@@ -32,7 +32,7 @@ function Stat({
 	return (
 		<span
 			className={cn(
-				"flex items-center gap-[7px] font-mono text-[10px] leading-3",
+				"flex items-center gap-[7px] font-mono text-xs ",
 				hideOnNarrow && "hidden sm:flex",
 			)}
 			{...(title ? { title } : {})}
@@ -65,7 +65,7 @@ function HealthStat({ health }: { health: ConsoleStats["health"] }) {
 			/>
 			<span
 				className={cn(
-					"font-mono text-[10px] leading-3",
+					"font-mono text-xs ",
 					health === "ok" ? "text-(--color-text-2)" : "text-(--color-text-3)",
 				)}
 			>

@@ -27,7 +27,7 @@ export function StatePill({ state }: { state: RunState }) {
 	return (
 		<span className="flex min-w-0 items-center gap-[7px]">
 			<span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", STATE_DOT[state])} aria-hidden />
-			<span className={cn("font-mono text-[10px] leading-3", STATE_TONE[state])}>{state}</span>
+			<span className={cn("font-mono text-xs ", STATE_TONE[state])}>{state}</span>
 		</span>
 	);
 }

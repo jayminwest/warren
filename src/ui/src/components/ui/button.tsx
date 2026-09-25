@@ -16,18 +16,18 @@ import { cn } from "@/lib/utils.ts";
  * affordance as buttons.
  */
 const buttonVariants = cva(
-	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:pointer-events-none disabled:opacity-50",
+	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-border-strong) disabled:pointer-events-none disabled:opacity-50",
 	{
 		variants: {
 			variant: {
 				default:
-					"bg-(--color-primary) text-(--color-primary-foreground) hover:opacity-90 active:opacity-80",
+					"bg-(--color-primary) text-(--color-primary-ink) hover:opacity-90 active:opacity-80",
 				destructive:
-					"bg-(--color-destructive) text-(--color-destructive-foreground) hover:opacity-90 active:opacity-80",
+					"bg-(--color-danger) text-(--color-danger-ink) hover:opacity-90 active:opacity-80",
 				outline:
-					"border bg-(--color-card) text-(--color-fg) hover:bg-(--color-accent) hover:text-(--color-fg) active:opacity-80",
-				ghost: "text-(--color-fg) hover:bg-(--color-accent) active:opacity-80",
-				link: "text-(--color-fg) underline-offset-4 hover:underline",
+					"border bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover) hover:text-(--color-text) active:opacity-80",
+				ghost: "text-(--color-text) hover:bg-(--color-surface-hover) active:opacity-80",
+				link: "text-(--color-text) underline-offset-4 hover:underline",
 			},
 			size: {
 				default: "h-9 px-4 py-2",

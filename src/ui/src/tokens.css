@@ -15,10 +15,12 @@
  * full fallback stacks rather than the bare family names, per the issue
  * spec. The @font-face payloads themselves are self-hosted in index.css.
  *
- * Below the verbatim block sit two additions of ours, each fenced off with
- * comments: a compatibility layer that keeps the legacy token names
- * (pre-Direction-C vocabulary used across the existing pages) resolving to
- * Direction C base names, and the Tailwind `@theme` wiring.
+ * Below the verbatim block sit our additions: the status inks, the type
+ * scale, and the Tailwind `@theme` wiring. The 2026-09 polish pass
+ * (warren-34be) softened the radii (3/5/7/10px), retired the legacy
+ * shadcn alias layer, and added the named type scale below: 11px is the
+ * floor, 13px the body. Pages use the scale utilities (text-2xs … text-2xl),
+ * never pixel literals.
  */
 
 :root {
@@ -63,9 +65,10 @@
 	--font-mono:
 		"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
 		Consolas, monospace;
-	--radius-xs: 2px;
-	--radius-sm: 3px;
-	--radius-md: 4px;
+	--radius-xs: 3px;
+	--radius-sm: 5px;
+	--radius-md: 7px;
+	--radius-lg: 10px;
 }
 
 /*
@@ -94,12 +97,12 @@
 	--color-info: var(--color-lt-info);
 	--color-neutral: var(--color-lt-neutral);
 
-	/* Compatibility ink flips — see the compatibility layer below. */
-	--color-success-foreground: var(--color-lt-primary-ink);
-	--color-warning-foreground: oklch(99% 0.01 75);
-	--color-info-foreground: oklch(99% 0.01 240);
-	--color-danger-foreground: oklch(99% 0.01 27);
-	--color-neutral-foreground: var(--color-lt-bg);
+	/* Status ink flips — see the status inks block below. */
+	--color-success-ink: var(--color-lt-primary-ink);
+	--color-warning-ink: oklch(99% 0.01 75);
+	--color-info-ink: oklch(99% 0.01 240);
+	--color-danger-ink: oklch(99% 0.01 27);
+	--color-neutral-ink: var(--color-lt-bg);
 }
 
 /*
@@ -128,44 +131,25 @@
 		--color-info: var(--color-lt-info);
 		--color-neutral: var(--color-lt-neutral);
 
-		--color-success-foreground: var(--color-lt-primary-ink);
-		--color-warning-foreground: oklch(99% 0.01 75);
-		--color-info-foreground: oklch(99% 0.01 240);
-		--color-danger-foreground: oklch(99% 0.01 27);
-		--color-neutral-foreground: var(--color-lt-bg);
+		--color-success-ink: var(--color-lt-primary-ink);
+		--color-warning-ink: oklch(99% 0.01 75);
+		--color-info-ink: oklch(99% 0.01 240);
+		--color-danger-ink: oklch(99% 0.01 27);
+		--color-neutral-ink: var(--color-lt-bg);
 	}
 }
 
 /*
- * ---------------------------------------------------------------------------
- * Compatibility layer (legacy token names -> Direction C base names).
- * ---------------------------------------------------------------------------
- *
- * The pre-Direction-C pages and shared components reference the legacy
- * vocabulary below (e.g. `bg-(--color-card)`, `var(--color-fg)`). Those
- * pages are rebuilt one issue at a time later in pl-7e38; until then these
- * aliases keep them rendering against the Direction C palette. New
- * Direction C code must use the base names only — never these aliases.
- * The legacy *-foreground inks flip per theme alongside the light remap
- * above (dark theme: dark ink on bright status fills; light theme: light
- * ink on the darker light-theme status fills).
+ * Status inks — the text colour that sits on a solid status fill
+ * (a filled danger button, a solid success chip). Dark theme: dark ink on
+ * bright fills; the light remap above flips them to light ink.
  */
 :root {
-	--color-fg: var(--color-text);
-	--color-foreground: var(--color-text);
-	--color-muted: var(--color-surface);
-	--color-muted-foreground: var(--color-text-2);
-	--color-card: var(--color-surface);
-	--color-accent: var(--color-surface-hover);
-	--color-ring: var(--color-border-strong);
-	--color-primary-foreground: var(--color-primary-ink);
-	--color-destructive: var(--color-danger);
-	--color-destructive-foreground: var(--color-danger-foreground);
-	--color-success-foreground: var(--color-bg);
-	--color-warning-foreground: oklch(20% 0.06 75);
-	--color-info-foreground: oklch(18% 0.06 240);
-	--color-danger-foreground: oklch(18% 0.09 27);
-	--color-neutral-foreground: var(--color-bg);
+	--color-success-ink: var(--color-bg);
+	--color-warning-ink: oklch(20% 0.06 75);
+	--color-info-ink: oklch(18% 0.06 240);
+	--color-danger-ink: oklch(18% 0.09 27);
+	--color-neutral-ink: var(--color-bg);
 }
 
 /*
@@ -186,9 +170,29 @@
 	--radius-xs: var(--radius-xs);
 	--radius-sm: var(--radius-sm);
 	--radius-md: var(--radius-md);
+	--radius-lg: var(--radius-lg);
 }
 
 @theme {
+	/* Type scale (warren-34be): each step carries its own line height, so
+	 * pages never pair a size with a leading literal. 11px is the floor. */
+	--text-2xs: 11px;
+	--text-2xs--line-height: 15px;
+	--text-xs: 12px;
+	--text-xs--line-height: 16px;
+	--text-sm: 13px;
+	--text-sm--line-height: 18px;
+	--text-base: 14px;
+	--text-base--line-height: 20px;
+	--text-lg: 17px;
+	--text-lg--line-height: 24px;
+	--text-xl: 20px;
+	--text-xl--line-height: 28px;
+	--text-2xl: 24px;
+	--text-2xl--line-height: 30px;
+	--tracking-tight: -0.015em;
+	--tracking-wide: 0.02em;
+
 	/* Tinted shadows — neutral-264 hue so elevation reads as part of the
    * gray ramp rather than pure black on tinted surfaces. */
 	--shadow-sm: 0 1px 2px 0 oklch(20% 0.01 264 / 0.06);

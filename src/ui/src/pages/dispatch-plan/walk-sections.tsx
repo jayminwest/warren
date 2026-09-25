@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils.ts";
  * section descriptions stay untouched.
  */
 
-export const labelClass = "text-[10px] font-medium leading-3 text-(--color-text-2)";
-export const hintClass = "font-mono text-[9px] leading-3 text-(--color-text-3)";
+export const labelClass = "text-xs font-medium  text-(--color-text-2)";
+export const hintClass = "font-mono text-2xs  text-(--color-text-3)";
 
 export function Section({
 	title,
@@ -37,8 +37,8 @@ export function Section({
 		>
 			{/* Desktop header — below md the card's --color-thead bar replaces it. */}
 			<div className="hidden md:flex md:flex-col md:gap-[3px] md:px-[15px] md:pt-[15px] md:pb-[13px]">
-				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">{title}</h2>
-				<p className="text-[10px] leading-3 text-(--color-text-3)">{description}</p>
+				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
+				<p className="text-xs text-(--color-text-3)">{description}</p>
 			</div>
 			<div className="flex flex-col px-3 py-3 md:px-[15px] md:py-0 md:pb-[15px]">{children}</div>
 		</section>
@@ -49,7 +49,7 @@ export function MobileCard({ title, children }: { title: string; children: React
 	return (
 		<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:contents">
 			<div className="flex items-center border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:hidden">
-				<h2 className="text-[12px] font-semibold leading-[15px] text-(--color-text)">{title}</h2>
+				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
 			</div>
 			{children}
 		</div>

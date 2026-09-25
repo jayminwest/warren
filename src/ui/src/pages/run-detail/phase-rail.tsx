@@ -26,16 +26,14 @@ function PhaseCell({ cell, first, last }: { cell: PhaseCellData; first: boolean;
 				/>
 				<span
 					className={cn(
-						"text-[10px] leading-3 font-medium",
+						"text-xs  font-medium",
 						cell.state === "active" ? "text-(--color-text)" : "text-(--color-text-2)",
 					)}
 				>
 					{cell.label}
 				</span>
 			</span>
-			<span className="pl-[13px] font-mono text-[9px] leading-3 text-(--color-text-3)">
-				{cellSub(cell)}
-			</span>
+			<span className="pl-[13px] font-mono text-2xs text-(--color-text-3)">{cellSub(cell)}</span>
 		</div>
 	);
 }
@@ -72,7 +70,7 @@ function StripNode({ cell }: { cell: PhaseCellData }) {
 			/>
 			<span
 				className={cn(
-					"font-mono text-[9px] leading-[11px]",
+					"font-mono text-2xs ",
 					cell.state === "pending" ? "text-(--color-text-3)" : "text-(--color-text-2)",
 				)}
 			>

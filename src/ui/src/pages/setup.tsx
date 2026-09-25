@@ -53,7 +53,7 @@ function SetupStepRow({ step, index }: { step: SetupStep; index: number }) {
 		<>
 			<span
 				className={cn(
-					"flex h-7 w-7 shrink-0 items-center justify-center rounded-(--radius-sm) border font-mono text-[11px]",
+					"flex h-7 w-7 shrink-0 items-center justify-center rounded-(--radius-sm) border font-mono text-sm",
 					step.state === "done"
 						? "border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
 						: "border-(--color-border) text-(--color-text-3)",
@@ -63,14 +63,12 @@ function SetupStepRow({ step, index }: { step: SetupStep; index: number }) {
 			</span>
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex flex-wrap items-center gap-2">
-					<span className="text-[13px] leading-4 font-medium text-(--color-text)">
-						{step.title}
-					</span>
+					<span className="text-sm font-medium text-(--color-text)">{step.title}</span>
 					<Badge variant={step.state === "done" ? "done" : "secondary"}>
 						{STATE_LABEL[step.state]}
 					</Badge>
 				</div>
-				<p className="text-[12px] leading-[16px] text-(--color-text-2)">{step.blurb}</p>
+				<p className="text-sm text-(--color-text-2)">{step.blurb}</p>
 			</div>
 		</>
 	);
@@ -148,10 +146,10 @@ export function SetupPage() {
 	return (
 		<div className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-6">
 			<div className="flex flex-col gap-2">
-				<h1 className="text-[18px] leading-6 font-semibold tracking-[-0.01em] text-(--color-text)">
+				<h1 className="text-lg leading-6 font-semibold tracking-tight text-(--color-text)">
 					Welcome to warren
 				</h1>
-				<p className="text-[13px] leading-[18px] text-(--color-text-2)">
+				<p className="text-sm text-(--color-text-2)">
 					Three quick steps to your first finished run. Your progress is saved — come back any time.
 				</p>
 			</div>
@@ -160,7 +158,7 @@ export function SetupPage() {
 					<SetupStepRow key={step.id} step={step} index={i} />
 				))}
 			</div>
-			<p className="text-[11px] leading-[14px] text-(--color-text-3)">
+			<p className="text-sm text-(--color-text-3)">
 				{doneCount > 0
 					? `${doneCount} of ${steps.length} steps complete.`
 					: "Nothing set up yet — start with Connect GitHub above."}

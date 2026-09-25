@@ -23,10 +23,8 @@ import { formatPreviewStateLabel } from "@/pages/run-detail/preview-labels.ts";
 function FactRow({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="flex gap-2.5">
-			<span className="w-[82px] shrink-0 text-[10px] leading-3 text-(--color-text-3) md:w-[104px]">
-				{label}
-			</span>
-			<span className="min-w-0 flex-1 font-mono text-[10px] leading-3 break-words text-(--color-text-2) md:text-[9px]">
+			<span className="w-[82px] shrink-0 text-xs text-(--color-text-3) md:w-[104px]">{label}</span>
+			<span className="min-w-0 flex-1 font-mono text-xs break-words text-(--color-text-2) md:text-2xs">
 				{children}
 			</span>
 		</div>
@@ -46,10 +44,8 @@ function PreviewFacts({
 		<>
 			{canonicalUrl !== null ? (
 				<div className="flex gap-2.5">
-					<span className="w-[82px] shrink-0 text-[10px] leading-3 text-(--color-text-3) md:w-[104px]">
-						url
-					</span>
-					<span className="min-w-0 flex-1 font-mono text-[10px] leading-3 break-all text-(--color-primary) md:text-[9px]">
+					<span className="w-[82px] shrink-0 text-xs text-(--color-text-3) md:w-[104px]">url</span>
+					<span className="min-w-0 flex-1 font-mono text-xs break-all text-(--color-primary) md:text-2xs">
 						{canonicalUrl}
 					</span>
 				</div>
@@ -96,9 +92,9 @@ export function PreviewPanel({ run }: { run: RunRow }) {
 	return (
 		<section className="flex shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
 			<header className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
-				<h2 className="text-[11px] leading-[14px] font-semibold text-(--color-text)">Preview</h2>
+				<h2 className="text-sm font-semibold text-(--color-text)">Preview</h2>
 				<span className="flex-1" />
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-2xs text-(--color-text-3)">
 					{formatPreviewStateLabel(state).toUpperCase()}
 				</span>
 			</header>
@@ -107,7 +103,7 @@ export function PreviewPanel({ run }: { run: RunRow }) {
 				<PreviewFacts run={run} canonicalUrl={canonicalUrl} mode={mode} />
 				{state === "failed" && run.previewFailureMessage ? (
 					<pre
-						className="max-h-40 overflow-auto rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) p-2 font-mono text-[9px] leading-[13px] break-words whitespace-pre-wrap text-(--color-danger)"
+						className="max-h-40 overflow-auto rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) p-2 font-mono text-2xs break-words whitespace-pre-wrap text-(--color-danger)"
 						title="Sidecar stderr / readiness-probe failure tail"
 					>
 						{run.previewFailureMessage}
@@ -158,14 +154,12 @@ function PreviewLoginButton({ runId }: { runId: string }) {
 				onClick={openPreview}
 				disabled={login.isPending}
 				title="Sign a preview session cookie and open the live preview"
-				className="inline-flex h-[26px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface-raised) px-2.5 text-[11px] leading-[14px] font-medium text-(--color-text) hover:bg-(--color-surface-hover)"
+				className="inline-flex h-[26px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface-raised) px-2.5 text-sm font-medium text-(--color-text) hover:bg-(--color-surface-hover)"
 			>
 				{login.isPending ? "Opening…" : "Log in to preview"}
 			</button>
 			{login.isError ? (
-				<p className="font-mono text-[9px] leading-3 text-(--color-danger)">
-					{formatError(login.error)}
-				</p>
+				<p className="font-mono text-2xs text-(--color-danger)">{formatError(login.error)}</p>
 			) : null}
 		</div>
 	);
@@ -202,19 +196,17 @@ function PreviewTeardownButton({
 				onClick={() => teardown.mutate()}
 				disabled={teardown.isPending}
 				title={title}
-				className="inline-flex h-[26px] items-center rounded-(--radius-sm) border border-(--color-border-strong) px-2.5 text-[11px] leading-[14px] font-medium text-(--color-danger) hover:bg-(--color-surface-hover)"
+				className="inline-flex h-[26px] items-center rounded-(--radius-sm) border border-(--color-border-strong) px-2.5 text-sm font-medium text-(--color-danger) hover:bg-(--color-surface-hover)"
 			>
 				{teardown.isPending ? "Tearing down…" : "Tear down"}
 			</button>
 			{teardown.isError ? (
-				<p className="font-mono text-[9px] leading-3 text-(--color-danger)">
+				<p className="font-mono text-2xs text-(--color-danger)">
 					{teardown.error instanceof Error ? teardown.error.message : String(teardown.error)}
 				</p>
 			) : null}
 			{teardown.isSuccess && teardown.data !== undefined ? (
-				<p className="font-mono text-[9px] leading-3 text-(--color-muted-foreground)">
-					{teardown.data.status}
-				</p>
+				<p className="font-mono text-2xs text-(--color-text-2)">{teardown.data.status}</p>
 			) : null}
 		</div>
 	);

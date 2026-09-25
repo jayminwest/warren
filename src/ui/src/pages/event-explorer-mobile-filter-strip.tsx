@@ -38,7 +38,7 @@ export function MobileFilterStrip({
 					active={open}
 					aria-expanded={open}
 					onClick={() => setOpen((prev) => !prev)}
-					className="shrink-0 rounded-sm font-mono text-[10px] leading-3"
+					className="shrink-0 rounded-sm font-mono text-xs "
 				/>
 				{STREAM_FILTERS.map((f) => (
 					<FilterPill
@@ -46,7 +46,7 @@ export function MobileFilterStrip({
 						label={f.label}
 						active={state.stream === f.id}
 						onClick={() => patch({ stream: f.id })}
-						className="shrink-0 rounded-sm font-mono text-[10px] leading-3"
+						className="shrink-0 rounded-sm font-mono text-xs "
 					/>
 				))}
 				{TIME_RANGES.map((r) => (
@@ -55,7 +55,7 @@ export function MobileFilterStrip({
 						label={r.label}
 						active={state.rangeId === r.id}
 						onClick={() => patch({ rangeId: r.id })}
-						className="shrink-0 rounded-sm font-mono text-[10px] leading-3"
+						className="shrink-0 rounded-sm font-mono text-xs "
 					/>
 				))}
 			</div>

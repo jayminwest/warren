@@ -23,18 +23,16 @@ export function LifecycleTable({
 	return (
 		<div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
 			<div className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
-				<span className="text-[11px] leading-3.5 font-semibold text-(--color-text)">
-					Lifecycle snapshot
-				</span>
+				<span className="text-sm font-semibold text-(--color-text)">Lifecycle snapshot</span>
 			</div>
 			<div className="flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2">
-				<span className="flex-1 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
+				<span className="flex-1 font-mono text-2xs font-semibold tracking-wide text-(--color-text-3)">
 					PHASE
 				</span>
-				<span className="w-[60px] shrink-0 text-right font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
+				<span className="w-[60px] shrink-0 text-right font-mono text-2xs font-semibold tracking-wide text-(--color-text-3)">
 					COUNT
 				</span>
-				<span className="w-[80px] shrink-0 text-right font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
+				<span className="w-[80px] shrink-0 text-right font-mono text-2xs font-semibold tracking-wide text-(--color-text-3)">
 					OLDEST
 				</span>
 			</div>
@@ -54,10 +52,10 @@ export function LifecycleTable({
 						<span className="flex-1">
 							<StatePill state={state} />
 						</span>
-						<span className="w-[60px] shrink-0 text-right font-mono text-[11px] leading-3.5 text-(--color-text-2)">
+						<span className="w-[60px] shrink-0 text-right font-mono text-sm text-(--color-text-2)">
 							{count === undefined ? "—" : count}
 						</span>
-						<span className="w-[80px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-3)">
+						<span className="w-[80px] shrink-0 text-right font-mono text-xs text-(--color-text-3)">
 							{oldest === null ? "—" : formatDurationMs(now - oldest)}
 						</span>
 					</div>

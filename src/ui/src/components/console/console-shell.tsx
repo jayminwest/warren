@@ -42,10 +42,10 @@ function MobileIdentityChip({ stats }: { stats: ConsoleStats }) {
 				)}
 				aria-hidden
 			/>
-			<span className="text-[11px] leading-[14px] font-medium text-(--color-text)">
+			<span className="text-sm font-medium text-(--color-text)">
 				{isOperator ? "operator" : "read-only"}
 			</span>
-			<span className="text-[10px] leading-3 text-(--color-text-3)" aria-hidden>
+			<span className="text-xs text-(--color-text-3)" aria-hidden>
 				⌄
 			</span>
 		</span>
@@ -79,9 +79,7 @@ export function ConsoleShell() {
 						className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
 					>
 						<WarrenLogo className="h-5 w-5 shrink-0" />
-						<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
-							warren
-						</span>
+						<span className="text-sm font-semibold tracking-tight text-(--color-text)">warren</span>
 					</Link>
 					<span className="flex-1" />
 					<MobileIdentityChip stats={stats} />

@@ -50,10 +50,10 @@ export function RefreshProjectsCTA() {
 				Refresh all
 			</Button>
 			{refreshAll.isError ? (
-				<span className="text-xs text-(--color-destructive)">{formatError(refreshAll.error)}</span>
+				<span className="text-xs text-(--color-danger)">{formatError(refreshAll.error)}</span>
 			) : null}
 			{refreshAll.isSuccess ? (
-				<span className="text-xs text-(--color-muted-foreground)">
+				<span className="text-xs text-(--color-text-2)">
 					Refreshed {projectCount} project{projectCount === 1 ? "" : "s"}.
 				</span>
 			) : null}

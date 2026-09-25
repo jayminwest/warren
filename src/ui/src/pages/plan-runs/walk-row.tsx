@@ -55,48 +55,40 @@ export function WalkRow({
 			<div className="flex w-[150px] shrink-0 flex-col gap-0.5">
 				<Link
 					to={`/plan-runs/${encodeURIComponent(planRun.id)}`}
-					className="font-mono text-[10px] leading-3 text-(--color-text) hover:underline"
+					className="font-mono text-xs text-(--color-text) hover:underline"
 				>
 					{planRun.id}
 				</Link>
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-2xs text-(--color-text-3)">
 					by {planRun.dispatcherHandle ?? "—"}
 				</span>
 			</div>
-			<div className="w-[90px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<div className="w-[90px] shrink-0 font-mono text-xs text-(--color-text-2)">
 				<PlanCell planRun={planRun} childCount={children?.length ?? null} />
 			</div>
 			<div className="flex w-[128px] shrink-0 flex-col gap-0.5">
-				<span className="truncate text-[11px] leading-3.5 text-(--color-text-2)">
-					{projectLabel}
-				</span>
+				<span className="truncate text-sm text-(--color-text-2)">{projectLabel}</span>
 				{planRun.ref !== null ? (
-					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
-						{planRun.ref}
-					</span>
+					<span className="font-mono text-2xs text-(--color-text-3)">{planRun.ref}</span>
 				) : null}
 			</div>
 			<div className="flex w-[118px] shrink-0 flex-col gap-0.5">
-				<span className="truncate text-[11px] leading-3.5 text-(--color-text-2)">
-					{planRun.agentName}
-				</span>
+				<span className="truncate text-sm text-(--color-text-2)">{planRun.agentName}</span>
 				{planRun.modelOverride != null ? (
-					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
-						{planRun.modelOverride}
-					</span>
+					<span className="font-mono text-2xs text-(--color-text-3)">{planRun.modelOverride}</span>
 				) : null}
 			</div>
-			<div className="w-[62px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<div className="w-[62px] shrink-0 font-mono text-xs text-(--color-text-3)">
 				{planRun.trigger}
 			</div>
-			<div className="w-[56px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<div className="w-[56px] shrink-0 font-mono text-xs text-(--color-text-3)">
 				{relativeTime(planRun.startedAt)}
 			</div>
-			<div className="w-[62px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<div className="w-[62px] shrink-0 text-right font-mono text-xs text-(--color-text-2)">
 				{planRunElapsed(planRun, now)}
 			</div>
 			<div
-				className="w-[54px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)"
+				className="w-[54px] shrink-0 text-right font-mono text-xs text-(--color-text-2)"
 				title={capTitle}
 			>
 				{cap == null ? "—" : formatCostUsd(cap)}
@@ -115,7 +107,7 @@ function StateCell({ state }: { state: PlanRunRow["state"] }) {
 				style={{ backgroundColor: color }}
 				aria-hidden
 			/>
-			<span className="font-mono text-[10px] leading-3" style={{ color }}>
+			<span className="font-mono text-xs " style={{ color }}>
 				{state}
 			</span>
 		</div>
@@ -138,9 +130,7 @@ function ChildrenCell({
 	counts: { text: string; title: string };
 }) {
 	if (childRows === null) {
-		return (
-			<div className="min-w-0 flex-1 font-mono text-[9px] leading-3 text-(--color-text-3)">…</div>
-		);
+		return <div className="min-w-0 flex-1 font-mono text-2xs text-(--color-text-3)">…</div>;
 	}
 	return (
 		<div className="flex min-w-0 flex-1 items-center gap-2" title={counts.title}>
@@ -153,7 +143,7 @@ function ChildrenCell({
 					/>
 				))}
 			</span>
-			<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
+			<span className="truncate font-mono text-2xs text-(--color-text-3)">
 				{childSummary(state, childRows)}
 			</span>
 		</div>

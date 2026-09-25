@@ -48,7 +48,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 	return (
 		<span className="flex items-center gap-1.5">
 			<span className={cn("h-2 w-2 shrink-0 rounded-[1px]", color)} aria-hidden />
-			<span className="font-mono text-[11px] leading-[14px] text-(--color-text-2)">{label}</span>
+			<span className="font-mono text-sm text-(--color-text-2)">{label}</span>
 		</span>
 	);
 }
@@ -109,7 +109,7 @@ function StageRow({
 			title={known ? formatDuration(medianMs) : "no API surface for this stage yet"}
 			value={formatDuration(medianMs)}
 			valueClass={cn(
-				"max-md:w-[26px] max-md:flex max-md:flex-wrap max-md:justify-end max-md:text-right max-md:text-[10px] max-md:leading-3",
+				"max-md:w-[26px] max-md:flex max-md:flex-wrap max-md:justify-end max-md:text-right max-md:text-xs ",
 				highlight && known ? "font-semibold text-(--color-primary)" : undefined,
 			)}
 		/>
@@ -163,8 +163,8 @@ function OutcomesChart({ totals, series }: OutcomesData) {
 				))}
 			</div>
 			<div className="flex w-full items-center justify-between">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">{axis(first)}</span>
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">{axis(last)}</span>
+				<span className="font-mono text-xs text-(--color-text-3)">{axis(first)}</span>
+				<span className="font-mono text-xs text-(--color-text-3)">{axis(last)}</span>
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<Legend
@@ -237,7 +237,7 @@ function OutcomesPanel({
 					Failed to load run analytics. {(runs.error as Error | null)?.message ?? ""}
 				</p>
 			) : series.length === 0 && !runs.isLoading ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">No runs ended in this window.</p>
+				<p className="text-sm text-(--color-text-3)">No runs ended in this window.</p>
 			) : (
 				<OutcomesChart totals={totals} series={series} />
 			)}

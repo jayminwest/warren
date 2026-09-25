@@ -125,7 +125,7 @@ function DispatchFromRunButtons({ run }: { run: RunRow }) {
 		prompt: run.prompt,
 	} as const;
 	const btn =
-		"inline-flex h-[31px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-text) hover:bg-(--color-surface-hover)";
+		"inline-flex h-[31px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-sm  font-medium text-(--color-text) hover:bg-(--color-surface-hover)";
 	return (
 		<div className="flex flex-wrap gap-[7px]">
 			<button
@@ -211,7 +211,7 @@ function HeaderBadges({ run, reap }: { run: RunRow; reap: ReturnType<typeof extr
 					href={run.prUrl}
 					target="_blank"
 					rel="noreferrer noopener"
-					className="font-mono text-[10px] leading-3 underline underline-offset-2 hover:text-(--color-primary)"
+					className="font-mono text-xs underline underline-offset-2 hover:text-(--color-primary)"
 					title="Open the auto-opened pull request on GitHub"
 				>
 					PR ↗
@@ -245,13 +245,13 @@ function RunHeader({
 			 * ~347px row); md+ keeps the desktop breadcrumb header verbatim.
 			 */}
 			<header className="flex shrink-0 flex-col gap-1.5 md:hidden">
-				<nav className="shrink-0 font-mono text-[11px] leading-[14px] font-medium text-(--color-text-3)">
+				<nav className="shrink-0 font-mono text-sm font-medium text-(--color-text-3)">
 					<Link to="/runs" className="hover:text-(--color-text)">
 						← Runs
 					</Link>
 				</nav>
 				<div className="flex items-center gap-2">
-					<h1 className="font-mono text-[14px] leading-[18px] font-semibold tracking-[-0.02em] text-(--color-text)">
+					<h1 className="font-mono text-base font-semibold tracking-tight text-(--color-text)">
 						{run.id}
 					</h1>
 					<span className="flex shrink-0 items-center gap-[5px] rounded-(--radius-sm) border border-(--color-border-strong) px-[7px] py-[3px]">
@@ -259,9 +259,7 @@ function RunHeader({
 							className={cn("h-[5px] w-[5px] rounded-full", stateDotClass(run.state))}
 							aria-hidden
 						/>
-						<span className={cn("font-mono text-[9px] leading-[11px]", stateColor(run.state))}>
-							{run.state}
-						</span>
+						<span className={cn("font-mono text-2xs ", stateColor(run.state))}>{run.state}</span>
 					</span>
 					<span className="flex-1" />
 					<OperatorOnly>
@@ -275,7 +273,7 @@ function RunHeader({
 						) : null}
 					</OperatorOnly>
 				</div>
-				<p className="line-clamp-1 font-mono text-[10px] leading-[12px] text-(--color-text-3)">
+				<p className="line-clamp-1 font-mono text-xs text-(--color-text-3)">
 					{[
 						run.agentName,
 						projectName,
@@ -294,20 +292,18 @@ function RunHeader({
 				<OperatorOnly>{isTerminal ? <DispatchFromRunButtons run={run} /> : null}</OperatorOnly>
 			</header>
 			<header className="hidden shrink-0 flex-wrap items-center gap-2.5 md:flex">
-				<h1 className="font-mono text-[16px] leading-5 font-medium tracking-[-0.02em] text-(--color-text)">
+				<h1 className="font-mono text-lg font-medium tracking-tight text-(--color-text)">
 					{run.id}
 				</h1>
 				<span className="flex items-center gap-[7px]">
 					<span className={cn("h-1.5 w-1.5 rounded-full", stateDotClass(run.state))} aria-hidden />
-					<span className={cn("font-mono text-[10px] leading-3", stateColor(run.state))}>
-						{run.state}
-					</span>
+					<span className={cn("font-mono text-xs ", stateColor(run.state))}>{run.state}</span>
 				</span>
 				{run.state === "failed" && run.failureReason !== null ? (
 					<RunFailureBadge reason={run.failureReason} />
 				) : null}
 				<HeaderBadges run={run} reap={reap} />
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-xs text-(--color-text-3)">
 					{run.agentName} · {projectName}
 					{run.provider !== null ? ` · ${run.provider}` : ""}
 				</span>
@@ -374,7 +370,7 @@ export function RunDetailPage() {
 
 	return (
 		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6 xl:h-full">
-			<nav className="hidden shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:block">
+			<nav className="hidden shrink-0 font-mono text-xs text-(--color-text-3) md:block">
 				RUNS / {r.id.toUpperCase()}
 			</nav>
 
@@ -442,9 +438,9 @@ export function RunDetailPage() {
 						</div>
 					</OperatorOnly>
 					<details className="order-5 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-sm font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
 							Prompt
-							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+							<span className="ml-auto font-mono text-2xs text-(--color-text-3) transition group-open:rotate-90">
 								&#9656;
 							</span>
 						</summary>
@@ -453,9 +449,9 @@ export function RunDetailPage() {
 						</div>
 					</details>
 					<details className="order-6 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-sm font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
 							Run definition
-							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+							<span className="ml-auto font-mono text-2xs text-(--color-text-3) transition group-open:rotate-90">
 								&#9656;
 							</span>
 						</summary>
@@ -464,9 +460,9 @@ export function RunDetailPage() {
 						</div>
 					</details>
 					<details className="order-7 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-sm font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
 							Preview
-							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+							<span className="ml-auto font-mono text-2xs text-(--color-text-3) transition group-open:rotate-90">
 								&#9656;
 							</span>
 						</summary>

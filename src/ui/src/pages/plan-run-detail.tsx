@@ -80,16 +80,16 @@ export function PlanRunDetailPage() {
 	return (
 		<div className="flex min-h-full flex-col px-3.5 pb-12 pt-[22px] md:px-6">
 			<div className="shrink-0 pb-2.5">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-xs text-(--color-text-3)">
 					PLAN RUNS / {id.toUpperCase()}
 				</span>
 			</div>
 
 			<header className="flex shrink-0 flex-wrap items-center gap-3 pb-5">
-				<h1 className="font-mono text-[16px] leading-5 font-medium text-(--color-text)">{id}</h1>
+				<h1 className="font-mono text-lg font-medium text-(--color-text)">{id}</h1>
 				<StateLabel state={planRun.state} />
 				{planRun.planId !== null ? <PlanChip planId={planRun.planId} /> : null}
-				<span className="text-[11px] leading-[14px] text-(--color-text-2)">
+				<span className="text-sm text-(--color-text-2)">
 					{projectLabel} · {planRun.agentName} · {planRun.trigger}
 				</span>
 				<div className="min-w-0 flex-1" />
@@ -100,7 +100,7 @@ export function PlanRunDetailPage() {
 								type="button"
 								onClick={() => cancel.mutate()}
 								disabled={cancel.isPending}
-								className="flex h-[31px] items-center justify-center gap-[7px] rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-text) disabled:opacity-60"
+								className="flex h-[31px] items-center justify-center gap-[7px] rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-sm font-medium text-(--color-text) disabled:opacity-60"
 							>
 								<CircleStop className="h-2 w-2 text-(--color-danger)" aria-hidden />
 								{cancel.isPending ? "Cancelling…" : "Cancel plan run"}
@@ -139,7 +139,7 @@ function StateLabel({ state }: { state: PlanRunDetailResponse["planRun"]["state"
 				style={{ backgroundColor: color }}
 				aria-hidden
 			/>
-			<span className="font-mono text-[10px] leading-3" style={{ color }}>
+			<span className="font-mono text-xs " style={{ color }}>
 				{state}
 			</span>
 		</span>
@@ -148,7 +148,7 @@ function StateLabel({ state }: { state: PlanRunDetailResponse["planRun"]["state"
 
 function PlanChip({ planId }: { planId: string }) {
 	return (
-		<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-primary-border, var(--color-border-strong)) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
+		<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-primary-border, var(--color-border-strong)) px-1.5 font-mono text-2xs text-(--color-primary)">
 			{planId}
 		</span>
 	);
@@ -160,13 +160,11 @@ function CancelStatus({
 	mutation: ReturnType<typeof useMutation<CancelPlanRunResponse, Error, void>>;
 }) {
 	if (mutation.isError) {
-		return (
-			<p className="text-[10px] leading-3 text-(--color-danger)">{formatError(mutation.error)}</p>
-		);
+		return <p className="text-xs text-(--color-danger)">{formatError(mutation.error)}</p>;
 	}
 	if (mutation.isSuccess && mutation.data !== undefined) {
 		return (
-			<p className="text-[10px] leading-3 text-(--color-success)">
+			<p className="text-xs text-(--color-success)">
 				{mutation.data.alreadyTerminal
 					? "Walk was already terminal."
 					: `Cancel forwarded${mutation.data.cancelledChild !== null ? ` (child ${mutation.data.cancelledChild.childSeq})` : ""}.`}

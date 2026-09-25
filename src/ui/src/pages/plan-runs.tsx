@@ -112,17 +112,17 @@ export function PlanRunsPage() {
 		<div className="flex min-h-full flex-col px-3.5 pb-12 pt-[22px] md:px-6">
 			<div className="flex shrink-0 items-start gap-4 pb-5">
 				<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
-					<h1 className="text-[20px] font-semibold leading-6 tracking-[-0.025em] text-(--color-text)">
+					<h1 className="text-xl font-semibold leading-6 tracking-tight text-(--color-text)">
 						Plan runs
 					</h1>
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-sm text-(--color-text-2)">
 						Plans dispatched as sequential runs, one child at a time.
 					</p>
 				</div>
 				<OperatorOnly>
 					<Link
 						to="/dispatch/plan"
-						className="flex h-[31px] shrink-0 items-center justify-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-3.5 font-medium text-(--color-primary-ink)"
+						className="flex h-[31px] shrink-0 items-center justify-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-sm font-medium text-(--color-primary-ink)"
 					>
 						＋ Dispatch plan
 					</Link>
@@ -163,7 +163,7 @@ export function PlanRunsPage() {
 							setProjectFilter("");
 							setSearch("");
 						}}
-						className="h-[25px] px-2 text-[10px] leading-3 font-medium text-(--color-text-2) hover:text-(--color-text)"
+						className="h-[25px] px-2 text-xs font-medium text-(--color-text-2) hover:text-(--color-text)"
 					>
 						Clear
 					</button>
@@ -174,7 +174,7 @@ export function PlanRunsPage() {
 					value={search}
 					onChange={(e) => setSearch(e.target.value)}
 					placeholder="Filter by plan or plan-run ID"
-					className="h-[27px] w-[220px] shrink-0 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-[9px] text-[10px] leading-3 text-(--color-text-2) placeholder:text-(--color-text-3) focus:outline-none"
+					className="h-[27px] w-[220px] shrink-0 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-[9px] text-xs text-(--color-text-2) placeholder:text-(--color-text-3) focus:outline-none"
 				/>
 			</div>
 
@@ -215,7 +215,7 @@ function HeaderRow({
 	const head = (label: string, width: string, sortKey?: PlanRunSortKey, right = false) => (
 		<div
 			key={label}
-			className={`${width} shrink-0 ${right ? "text-right" : ""} text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3) uppercase`}
+			className={`${width} shrink-0 ${right ? "text-right" : ""} text-2xs  font-semibold tracking-wide text-(--color-text-3) uppercase`}
 		>
 			{sortKey === undefined ? (
 				label
@@ -244,7 +244,7 @@ function HeaderRow({
 			{head("Started", COLUMN_WIDTHS.started, "startedAt")}
 			{head("Elapsed", COLUMN_WIDTHS.elapsed, undefined, true)}
 			{head("Cap", COLUMN_WIDTHS.cap, undefined, true)}
-			<div className="min-w-0 flex-1 text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3) uppercase">
+			<div className="min-w-0 flex-1 text-2xs font-semibold tracking-wide text-(--color-text-3) uppercase">
 				Children
 			</div>
 		</div>
@@ -270,7 +270,7 @@ function FilterSelect({
 			aria-label={name}
 			value={value}
 			onChange={(e) => onChange(e.target.value)}
-			className={`h-[27px] cursor-pointer rounded-(--radius-sm) border bg-(--color-bg) px-2 text-[10px] leading-3 text-(--color-text-2) focus:outline-none ${
+			className={`h-[27px] cursor-pointer rounded-(--radius-sm) border bg-(--color-bg) px-2 text-xs text-(--color-text-2) focus:outline-none ${
 				active
 					? "border-(--color-primary) text-(--color-primary)"
 					: "border-(--color-border) text-(--color-text-3)"
@@ -284,7 +284,7 @@ function FilterSelect({
 function StatusLine({ children, danger = false }: { children: React.ReactNode; danger?: boolean }) {
 	return (
 		<div
-			className={`px-2.5 py-6 text-[11px] leading-4 ${
+			className={`px-2.5 py-6 text-sm ${
 				danger ? "text-(--color-danger)" : "text-(--color-text-3)"
 			}`}
 		>

@@ -36,17 +36,15 @@ export function TelemetryPanel({
 			)}
 		>
 			<header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:bg-transparent md:px-4 md:py-3">
-				<h2 className="font-mono text-[10px] leading-3 tracking-[0.08em] uppercase text-(--color-text) md:font-sans md:text-[13px] md:font-semibold md:leading-4 md:normal-case md:tracking-normal">
+				<h2 className="font-mono text-xs tracking-wide uppercase text-(--color-text) md:font-sans md:text-sm md:font-semibold md:normal-case md:tracking-normal">
 					{title}
 				</h2>
 				{meta !== undefined ? (
-					<span className="hidden font-mono text-[10px] tracking-[0.06em] leading-3 text-(--color-text-3) md:inline">
+					<span className="hidden font-mono text-xs tracking-wide text-(--color-text-3) md:inline">
 						{meta}
 					</span>
 				) : null}
-				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3) md:hidden">
-					{mobileMeta}
-				</span>
+				<span className="font-mono text-2xs text-(--color-text-3) md:hidden">{mobileMeta}</span>
 			</header>
 			<div className="flex w-full flex-col gap-[9px] p-3 md:gap-3 md:p-4">{children}</div>
 		</section>
@@ -61,10 +59,10 @@ export function TelemetryPanel({
 export function QuietFigure({ note, title }: { note?: string; title?: string }) {
 	return (
 		<span
-			className="font-mono text-[24px] font-medium leading-7 text-(--color-text-3)"
+			className="font-mono text-2xl font-medium leading-7 text-(--color-text-3)"
 			{...(title ? { title } : {})}
 		>
-			—{note !== undefined ? <span className="ml-1 text-[10px] leading-3">{note}</span> : null}
+			—{note !== undefined ? <span className="ml-1 text-xs">{note}</span> : null}
 		</span>
 	);
 }

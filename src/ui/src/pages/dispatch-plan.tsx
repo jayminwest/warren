@@ -32,28 +32,28 @@ export function DispatchPlanPage() {
 
 	return (
 		<div className="flex min-h-full flex-col gap-1.5 px-3.5 pt-5 pb-12 md:px-6">
-			<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">PLAN RUNS / NEW</p>
+			<p className="font-mono text-xs text-(--color-text-3)">PLAN RUNS / NEW</p>
 			<div className="flex flex-col gap-[5px] pb-[20px]">
-				<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+				<h1 className="text-xl leading-6 font-semibold tracking-tight text-(--color-text)">
 					Dispatch plan
 				</h1>
-				<p className="max-w-prose text-[12px] leading-4 text-(--color-text-2)">
+				<p className="max-w-prose text-sm text-(--color-text-2)">
 					Dispatch each child issue of a plan as its own run, in order.
 				</p>
 			</div>
 
 			{s.noProjects ? (
-				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
+				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-sm text-(--color-danger)">
 					No projects added. Visit Projects to clone one from GitHub.
 				</p>
 			) : null}
 			{s.noAgents && hasSeeds ? (
-				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
+				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-sm text-(--color-danger)">
 					No agents registered. Visit Agents and click Refresh registry.
 				</p>
 			) : null}
 			{s.draft.project.length > 0 && !hasSeeds ? (
-				<div className="flex max-w-[760px] flex-col gap-3 rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
+				<div className="flex max-w-[760px] flex-col gap-3 rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-sm text-(--color-danger)">
 					<p>
 						Plan runs require <code className="font-mono">.seeds/</code>. The selected project has
 						no <code className="font-mono">.seeds/</code> directory at the clone root. Add one and
@@ -68,7 +68,7 @@ export function DispatchPlanPage() {
 								type="button"
 								onClick={() => refreshProject.mutate(s.draft.project)}
 								disabled={refreshProject.isPending}
-								className="flex h-[31px] items-center gap-2 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50"
+								className="flex h-[31px] items-center gap-2 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-sm font-medium text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50"
 							>
 								<RefreshCw
 									className={`h-3.5 w-3.5 ${refreshProject.isPending ? "animate-spin" : ""}`}
@@ -77,7 +77,7 @@ export function DispatchPlanPage() {
 							</button>
 						</OperatorOnly>
 						{refreshProject.isError ? (
-							<span className="text-[11px]">
+							<span className="text-sm">
 								{refreshProject.error instanceof Error
 									? refreshProject.error.message
 									: String(refreshProject.error)}

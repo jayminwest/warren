@@ -11,7 +11,7 @@ export function CostBasisNote({ run }: { run: RunRow }) {
 	return (
 		<span
 			title="Subscription-authenticated run: cost is an API-priced estimate of the same usage, not a bill"
-			className="rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) px-1 py-px font-mono text-[9px] leading-3 text-(--color-text-3)"
+			className="rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) px-1 py-px font-mono text-2xs text-(--color-text-3)"
 		>
 			est. (subscription)
 		</span>

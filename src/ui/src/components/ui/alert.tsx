@@ -37,14 +37,11 @@ const alertVariants = cva(
 	{
 		variants: {
 			variant: {
-				info: "border-(--color-info)/30 bg-(--color-info)/10 text-(--color-info-foreground)",
-				success:
-					"border-(--color-success)/30 bg-(--color-success)/10 text-(--color-success-foreground)",
-				warning:
-					"border-(--color-warning)/30 bg-(--color-warning)/10 text-(--color-warning-foreground)",
-				danger:
-					"border-(--color-danger)/30 bg-(--color-danger)/10 text-(--color-danger-foreground)",
-				neutral: "border-(--color-border) bg-(--color-muted) text-(--color-fg)",
+				info: "border-(--color-info)/30 bg-(--color-info)/10 text-(--color-info-ink)",
+				success: "border-(--color-success)/30 bg-(--color-success)/10 text-(--color-success-ink)",
+				warning: "border-(--color-warning)/30 bg-(--color-warning)/10 text-(--color-warning-ink)",
+				danger: "border-(--color-danger)/30 bg-(--color-danger)/10 text-(--color-danger-ink)",
+				neutral: "border-(--color-border) bg-(--color-surface) text-(--color-text)",
 			},
 		},
 		defaultVariants: { variant: "info" },
@@ -76,7 +73,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
 		const Auto = VARIANT_ICON[v];
 		const renderIcon =
 			icon === undefined ? (
-				<Auto aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-(--color-fg)" />
+				<Auto aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-(--color-text)" />
 			) : icon === null ? null : (
 				<span className="mt-0.5 shrink-0">{icon}</span>
 			);

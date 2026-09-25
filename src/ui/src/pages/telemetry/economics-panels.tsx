@@ -39,7 +39,7 @@ function PanelError({ error }: { error: Error | null }) {
 }
 
 function PanelEmpty({ text }: { text: string }) {
-	return <p className="text-[12px] leading-4 text-(--color-text-3)">{text}</p>;
+	return <p className="text-sm text-(--color-text-3)">{text}</p>;
 }
 
 /** One name + cost line. `href` turns the name into a router link. */
@@ -54,13 +54,11 @@ export function SpendRow({
 }) {
 	const label =
 		href === undefined ? (
-			<span className="min-w-0 truncate font-mono text-[11px] leading-[14px] text-(--color-text-2)">
-				{name}
-			</span>
+			<span className="min-w-0 truncate font-mono text-sm text-(--color-text-2)">{name}</span>
 		) : (
 			<Link
 				to={href}
-				className="min-w-0 truncate font-mono text-[11px] leading-[14px] text-(--color-text-2) underline-offset-2 hover:underline"
+				className="min-w-0 truncate font-mono text-sm text-(--color-text-2) underline-offset-2 hover:underline"
 			>
 				{name}
 			</Link>
@@ -68,9 +66,7 @@ export function SpendRow({
 	return (
 		<div className="flex w-full items-center justify-between gap-3">
 			{label}
-			<span className="shrink-0 font-mono text-[11px] leading-[14px] text-(--color-text)">
-				{costUsd}
-			</span>
+			<span className="shrink-0 font-mono text-sm text-(--color-text)">{costUsd}</span>
 		</div>
 	);
 }
@@ -141,7 +137,7 @@ function SpendOverTimePanel({ from, to }: { from: string; to: string }) {
 			) : (
 				series.map((b, i) => (
 					<div key={b.key} className="flex w-full min-w-0 items-center justify-between gap-2.5">
-						<span className="w-[46px] shrink-0 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+						<span className="w-[46px] shrink-0 font-mono text-sm text-(--color-text-2)">
 							{dateBucketLabel(b.key)}
 						</span>
 						<div className="min-w-0 flex-1">
@@ -153,7 +149,7 @@ function SpendOverTimePanel({ from, to }: { from: string; to: string }) {
 								title={dateBucketLabel(b.key)}
 							/>
 						</div>
-						<span className="w-[52px] shrink-0 text-right font-mono text-[11px] leading-[14px] text-(--color-text)">
+						<span className="w-[52px] shrink-0 text-right font-mono text-sm text-(--color-text)">
 							{formatCostUsd(b.costUsd)}
 						</span>
 					</div>
@@ -258,7 +254,7 @@ function TokenTotalsPanel() {
 					<SpendRow name="Cache read" costUsd={String(totals.cacheRead)} />
 					<SpendRow name="Cache write" costUsd={String(totals.cacheWrite)} />
 					<SpendRow name="Total" costUsd={String(totals.total)} />
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-sm text-(--color-text-2)">
 						{cacheHitShare(totals) === null
 							? "No prompt tokens recorded, so no cache-hit share."
 							: `Cache-hit share: ${Math.round((cacheHitShare(totals) ?? 0) * 100)}% of prompt tokens served from cache.`}
@@ -283,7 +279,7 @@ function CostPerRunContent({ costUsd }: { costUsd: RunStatSummary | undefined })
 		<>
 			<SpendRow name="Median" costUsd={formatCostUsd(costUsd.median ?? 0)} />
 			<SpendRow name="p95" costUsd={formatCostUsd(costUsd.p95 ?? 0)} />
-			<p className="text-[12px] leading-4 text-(--color-text-2)">
+			<p className="text-sm text-(--color-text-2)">
 				{`${String(costUsd.count)} priced ${costUsd.count === 1 ? "run" : "runs"} in this window.`}
 			</p>
 		</>
@@ -316,13 +312,13 @@ function CapHitsContent({ capHits }: { capHits: number }) {
 		<>
 			<div
 				className={cn(
-					"font-mono text-[22px] leading-[26px]",
+					"font-mono text-2xl ",
 					capHits === 0 ? "text-(--color-text-3)" : "text-(--color-text)",
 				)}
 			>
 				{String(capHits)}
 			</div>
-			<p className="text-[12px] leading-4 text-(--color-text-2)">
+			<p className="text-sm text-(--color-text-2)">
 				{capHits === 0
 					? "No run stopped on its spend cap in this window's history."
 					: `${String(capHits)} ${capHits === 1 ? "run" : "runs"} stopped on their spend cap.`}

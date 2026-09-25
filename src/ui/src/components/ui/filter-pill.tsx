@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils.ts";
 /*
  * Phase 6 layout primitive (warren-e6b3 / pl-55a3 step 7):
  *
- * FilterPill — the canonical "rounded chip toggle" surface. Extracted
+ * FilterPill — the canonical "rounded-sm chip toggle" surface. Extracted
  * from runs.tsx's inline FilterPill (the original implementation) so
  * every filter strip can share the active / hover / focus treatment.
  *
@@ -32,10 +32,10 @@ export const FilterPill = React.forwardRef<HTMLButtonElement, FilterPillProps>(
 			aria-pressed={active}
 			className={cn(
 				"rounded-full border px-3 py-1 text-xs transition-colors",
-				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)",
+				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-border-strong)",
 				active
-					? "bg-(--color-primary) text-(--color-primary-foreground)"
-					: "bg-(--color-card) hover:bg-(--color-accent)",
+					? "bg-(--color-primary) text-(--color-primary-ink)"
+					: "bg-(--color-surface) hover:bg-(--color-surface-hover)",
 				className,
 			)}
 			{...props}

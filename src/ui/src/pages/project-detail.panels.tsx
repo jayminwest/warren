@@ -33,9 +33,9 @@ const PANEL =
 	"flex min-w-0 flex-col rounded-[4px] border border-(--color-border) bg-(--color-surface)";
 const PANEL_HEAD =
 	"flex h-[41px] shrink-0 items-center gap-2.5 border-b border-b-(--color-border) px-3.5";
-const PANEL_TITLE = "text-[12px] leading-4 font-semibold text-(--color-text)";
-const PANEL_META = "font-mono text-[9px] leading-3 text-(--color-text-3)";
-const HEAD_NOTE = "font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)";
+const PANEL_TITLE = "text-sm  font-semibold text-(--color-text)";
+const PANEL_META = "font-mono text-2xs  text-(--color-text-3)";
+const HEAD_NOTE = "font-mono text-2xs  tracking-wide text-(--color-text-3)";
 
 /* --------------------------------------------------------------------- */
 /* Dispatch defaults                                                      */
@@ -143,10 +143,10 @@ function DefaultsColumn({ entries }: { entries: Array<[string, string]> }) {
 		<dl className="flex min-w-0 flex-1 flex-col gap-2.5">
 			{entries.map(([key, value]) => (
 				<div key={key} className="flex items-center gap-2.5">
-					<dt className="max-md:w-[110px] md:w-[120px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
+					<dt className="max-md:w-[110px] md:w-[120px] shrink-0 text-sm text-(--color-text-3)">
 						{key}
 					</dt>
-					<dd className="min-w-0 truncate font-mono text-[10px] leading-3 max-md:flex-1 max-md:text-right text-(--color-text-2)">
+					<dd className="min-w-0 truncate font-mono text-xs max-md:flex-1 max-md:text-right text-(--color-text-2)">
 						{value}
 					</dd>
 				</div>
@@ -274,7 +274,7 @@ function TriggerCard({
 				<Button
 					variant="outline"
 					size="sm"
-					className="h-6 px-2.5 text-[10px]"
+					className="h-6 px-2.5 text-xs"
 					onClick={onRunNow}
 					disabled={isRunning}
 				>
@@ -305,24 +305,24 @@ function TriggerRow({
 			}`}
 		>
 			<div className="flex w-[180px] shrink-0 flex-col gap-0.5">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text)">{trigger.id}</span>
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-xs text-(--color-text)">{trigger.id}</span>
+				<span className="font-mono text-2xs text-(--color-text-3)">
 					{trigger.cron} {trigger.timezone ?? "UTC"}
 				</span>
 			</div>
-			<span className="w-[110px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<span className="w-[110px] shrink-0 font-mono text-xs text-(--color-text-2)">
 				{trigger.role}
 			</span>
 			{trigger.seed !== undefined ? (
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">{trigger.seed}</span>
+				<span className="font-mono text-2xs text-(--color-text-3)">{trigger.seed}</span>
 			) : null}
-			<span className="min-w-0 flex-1 truncate text-[10px] leading-[14px] text-(--color-text-3)">
+			<span className="min-w-0 flex-1 truncate text-xs text-(--color-text-3)">
 				{trigger.parseError !== null
 					? `cron parse error: ${trigger.parseError}`
 					: (trigger.prompt ?? "—")}
 			</span>
 			<span
-				className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)"
+				className="shrink-0 font-mono text-2xs text-(--color-text-3)"
 				title={trigger.lastFiredAt ?? "never fired"}
 			>
 				{trigger.lastRunId !== null ? (
@@ -343,7 +343,7 @@ function TriggerRow({
 				<Button
 					variant="outline"
 					size="sm"
-					className="h-6 px-2.5 text-[10px]"
+					className="h-6 px-2.5 text-xs"
 					onClick={onRunNow}
 					disabled={isRunning}
 				>
@@ -351,9 +351,7 @@ function TriggerRow({
 				</Button>
 			</OperatorOnly>
 			{runError !== null ? (
-				<span className="w-full font-mono text-[9px] leading-3 text-(--color-danger)">
-					{runError}
-				</span>
+				<span className="w-full font-mono text-2xs text-(--color-danger)">{runError}</span>
 			) : null}
 		</div>
 	);
@@ -429,13 +427,13 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 									i === plans.length - 1 ? "" : "border-b border-b-(--color-border)"
 								}`}
 							>
-								<span className="w-[70px] shrink-0 font-mono text-[10px] leading-3 text-(--color-primary)">
+								<span className="w-[70px] shrink-0 font-mono text-xs text-(--color-primary)">
 									{plan.id}
 								</span>
-								<span className="min-w-0 flex-1 truncate text-[11px] leading-[14px] text-(--color-text-2)">
+								<span className="min-w-0 flex-1 truncate text-sm text-(--color-text-2)">
 									{plan.name ?? plan.status}
 								</span>
-								<span className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
+								<span className="shrink-0 font-mono text-2xs text-(--color-text-3)">
 									{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
 								</span>
 								<OperatorOnly>
@@ -453,5 +451,5 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 }
 
 export function EmptyRow({ text }: { text: string }) {
-	return <p className="px-3.5 py-3 text-[11px] leading-4 text-(--color-text-3)">{text}</p>;
+	return <p className="px-3.5 py-3 text-sm text-(--color-text-3)">{text}</p>;
 }

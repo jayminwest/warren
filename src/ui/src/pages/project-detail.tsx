@@ -61,7 +61,7 @@ export function ProjectDetailPage() {
 	return (
 		<div className="flex min-h-full flex-col px-3.5 pt-[22px] pb-12 md:px-6">
 			<div className="pb-2.5">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-xs text-(--color-text-3)">
 					PROJECTS / {project.data ? repoName(project.data).toUpperCase() : "…"}
 				</span>
 			</div>
@@ -127,17 +127,13 @@ function HeaderRow({ project, loading }: { project?: ProjectRow; loading: boolea
 
 	return (
 		<div className="flex flex-wrap items-center gap-3 pb-5">
-			<h1 className="font-mono text-base leading-5 font-medium text-(--color-text)">
-				{repoName(project)}
-			</h1>
+			<h1 className="font-mono text-base font-medium text-(--color-text)">{repoName(project)}</h1>
 			{project.hasSeeds ? (
-				<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
+				<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-primary)">
 					.seeds
 				</span>
 			) : null}
-			<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-3)">
-				{project.gitUrl}
-			</span>
+			<span className="truncate font-mono text-xs text-(--color-text-3)">{project.gitUrl}</span>
 			<div className="min-w-0 flex-1" />
 			{/* Refresh / delete are `admin` routes (warren-b875): the row
 			    actions disappear, not disable, for a spectator. */}
@@ -145,7 +141,7 @@ function HeaderRow({ project, loading }: { project?: ProjectRow; loading: boolea
 				<Button
 					variant="outline"
 					size="sm"
-					className="h-[31px] text-[11px]"
+					className="h-[31px] text-sm"
 					onClick={() => refresh.mutate(project.id)}
 					disabled={refresh.isPending}
 					title="git fetch + reset --hard origin/<branch>"
@@ -155,7 +151,7 @@ function HeaderRow({ project, loading }: { project?: ProjectRow; loading: boolea
 				<Button
 					variant="outline"
 					size="sm"
-					className="h-[31px] text-[11px] text-(--color-danger)"
+					className="h-[31px] text-sm text-(--color-danger)"
 					onClick={() => setConfirmDelete(true)}
 				>
 					<Trash2 className="h-3 w-3" />
@@ -173,7 +169,7 @@ function HeaderRow({ project, loading }: { project?: ProjectRow; loading: boolea
 						</DialogDescription>
 					</DialogHeader>
 					{del.isError ? (
-						<p className="text-sm text-(--color-destructive)">{formatError(del.error)}</p>
+						<p className="text-sm text-(--color-danger)">{formatError(del.error)}</p>
 					) : null}
 					<DialogFooter>
 						<Button

@@ -6,34 +6,7 @@
 		<meta name="color-scheme" content="light dark" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>warren</title>
-		<script>
-			// FOUC guard: resolve persisted theme (or OS preference for "system")
-			// to a concrete data-theme=light|dark on <html> before React paints.
-			// Keep in sync with src/hooks/useTheme.ts (key: warren.theme).
-			// Resolving "system" here — rather than leaving the attribute unset —
-			// is what lets the single `:root[data-theme="dark"]` block in
-			// index.css (warren-23fe) replace the old duplicated OS-pref @media
-			// block, and what makes the `dark:` Tailwind variant
-			// (@custom-variant dark) track the toggle.
-			(() => {
-				try {
-					const stored = localStorage.getItem("warren.theme");
-					const choice =
-						stored === "light" || stored === "dark" || stored === "system"
-							? stored
-							: "system";
-					const resolved =
-						choice === "system"
-							? window.matchMedia?.("(prefers-color-scheme: dark)").matches
-								? "dark"
-								: "light"
-							: choice;
-					document.documentElement.dataset.theme = resolved;
-				} catch (_) {
-					document.documentElement.dataset.theme = "light";
-				}
-			})();
-		</script>
+		<script src="/theme-init.js"></script>
 	</head>
 	<body>
 		<div id="root"></div>

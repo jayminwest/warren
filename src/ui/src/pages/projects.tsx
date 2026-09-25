@@ -79,10 +79,10 @@ export function ProjectsPage() {
 			    (canvas layout: 20px semibold title, quiet description). */}
 			<div className="flex flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-1.5">
-					<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+					<h1 className="text-xl leading-6 font-semibold tracking-tight text-(--color-text)">
 						Projects
 					</h1>
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-sm text-(--color-text-2)">
 						Repositories warren can dispatch runs against.
 					</p>
 				</div>
@@ -181,7 +181,7 @@ export function ProjectsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					{del.isError ? (
-						<p className="text-sm text-(--color-destructive)">{formatError(del.error)}</p>
+						<p className="text-sm text-(--color-danger)">{formatError(del.error)}</p>
 					) : null}
 					<DialogFooter>
 						<Button
@@ -210,7 +210,7 @@ export function ProjectsPage() {
 function Th({ className, children }: { className?: string; children: React.ReactNode }) {
 	return (
 		<th
-			className={`border-b border-(--color-border-strong) px-2.5 text-[9px] font-semibold tracking-[0.05em] uppercase text-(--color-text-3) ${className ?? ""}`}
+			className={`border-b border-(--color-border-strong) px-2.5 text-2xs font-semibold tracking-wide uppercase text-(--color-text-3) ${className ?? ""}`}
 		>
 			{children}
 		</th>
@@ -246,40 +246,40 @@ function RegistryRow({
 				<div className="flex flex-col gap-0.5">
 					<Link
 						to={`/projects/${encodeURIComponent(project.id)}`}
-						className="font-mono text-[10px] leading-3 text-(--color-text) underline-offset-4 hover:underline"
+						className="font-mono text-xs text-(--color-text) underline-offset-4 hover:underline"
 					>
 						{repoName(project)}
 					</Link>
-					<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
+					<span className="truncate font-mono text-2xs text-(--color-text-3)">
 						{project.gitUrl}
 					</span>
 				</div>
 			</td>
-			<td className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<td className="px-2.5 py-1.5 font-mono text-xs text-(--color-text-2)">
 				{project.defaultBranch}
 			</td>
 			<td
-				className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-2)"
+				className="px-2.5 py-1.5 font-mono text-xs text-(--color-text-2)"
 				title={project.lastHeadSha ?? "never fetched"}
 			>
 				{project.lastHeadSha !== null ? project.lastHeadSha.slice(0, 7) : "—"}
 			</td>
 			<td
-				className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3)"
+				className="px-2.5 py-1.5 font-mono text-xs text-(--color-text-3)"
 				title={project.lastFetchedAt ?? "never fetched"}
 			>
 				{project.lastFetchedAt !== null ? relativeTime(project.lastFetchedAt) : "never"}
 			</td>
 			<td className="px-2.5 py-1.5">
 				{project.hasSeeds ? (
-					<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
+					<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-primary)">
 						.seeds
 					</span>
 				) : (
-					<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">—</span>
+					<span className="font-mono text-xs text-(--color-text-3)">—</span>
 				)}
 			</td>
-			<td className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<td className="px-2.5 py-1.5 font-mono text-xs text-(--color-text-3)">
 				{formatDate(project.addedAt)}
 			</td>
 			<td className="px-2.5 py-1.5 text-right">
@@ -290,7 +290,7 @@ function RegistryRow({
 						<Button
 							variant="outline"
 							size="sm"
-							className="h-6 px-2.5 text-[10px]"
+							className="h-6 px-2.5 text-xs"
 							onClick={onRefresh}
 							disabled={refreshPending}
 							title="git fetch + reset --hard origin/<branch>"
@@ -354,7 +354,7 @@ function ProjectCard({
 					<Button
 						variant="outline"
 						size="sm"
-						className="h-6 px-2.5 text-[10px]"
+						className="h-6 px-2.5 text-xs"
 						onClick={onRefresh}
 						disabled={refreshPending}
 						title="git fetch + reset --hard origin/<branch>"

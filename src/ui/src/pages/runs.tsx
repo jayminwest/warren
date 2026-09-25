@@ -189,22 +189,20 @@ export function RunsPage() {
 			{/* Page header: title + description + operator action (export layout). */}
 			<div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-[5px]">
-					<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.025em] text-(--color-text) md:text-[20px] md:leading-6">
+					<h1 className="text-lg font-semibold tracking-tight text-(--color-text) md:text-xl md:leading-6">
 						Runs
 					</h1>
-					<p className="text-[11px] leading-[14px] text-(--color-text-2) md:text-[12px] md:leading-4">
-						Runs across every project.
-					</p>
+					<p className="text-sm text-(--color-text-2) md:text-sm">Runs across every project.</p>
 				</div>
 				{/* Below md the trailing slot is the mono run count; dispatch
 				    lives in the bottom nav (warren-ffaf, mock :66-68). */}
-				<div className="shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+				<div className="shrink-0 font-mono text-xs text-(--color-text-3) md:hidden">
 					{totalRuns} TOTAL
 				</div>
 				<OperatorOnly>
 					<Link
 						to="/dispatch"
-						className="hidden md:inline-flex h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-primary-ink) hover:opacity-90"
+						className="hidden md:inline-flex h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-sm font-medium text-(--color-primary-ink) hover:opacity-90"
 					>
 						＋ Dispatch run
 					</Link>
@@ -223,7 +221,7 @@ export function RunsPage() {
 			    fully-rounded bordered surface with 14px side margins, capped
 			    by the --color-thead column strip (mock :92-103). */}
 			<div className="mx-[14px] flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:hidden">
-				<div className="flex shrink-0 items-center gap-2 bg-(--color-thead) px-3 py-2 font-mono text-[9px] leading-[11px] tracking-[0.06em] text-(--color-text-3)">
+				<div className="flex shrink-0 items-center gap-2 bg-(--color-thead) px-3 py-2 font-mono text-2xs tracking-wide text-(--color-text-3)">
 					<span className="w-[70px] shrink-0">STATE</span>
 					<span className="grow">RUN</span>
 					<span className="shrink-0">ELAPSED · COST</span>
@@ -233,7 +231,7 @@ export function RunsPage() {
 			{/* Mobile pagination footer (mock :297-305): outside the card,
 			    count on the left, Load-more on the right. */}
 			<div className="flex shrink-0 items-center px-[14px] pt-3 pb-4 md:hidden">
-				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+				<span className="font-mono text-2xs text-(--color-text-3)">
 					{mobileRows.length} OF {totalRuns}
 					{isFiltered ? " · FILTERED" : null}
 				</span>
@@ -242,7 +240,7 @@ export function RunsPage() {
 					<button
 						type="button"
 						onClick={() => setMobileCount((c) => c + MOBILE_PAGE_STEP)}
-						className="text-[11px] leading-[14px] font-medium text-(--color-primary)"
+						className="text-sm font-medium text-(--color-primary)"
 					>
 						Load more →
 					</button>
@@ -265,7 +263,7 @@ export function RunsPage() {
 								id="runs-page-size"
 								value={pageSize}
 								onChange={(e) => setPageSize(Number.parseInt(e.target.value, 10))}
-								className="rounded border border-(--color-border) bg-(--color-bg) px-2 py-1 text-xs"
+								className="rounded-sm border border-(--color-border) bg-(--color-bg) px-2 py-1 text-xs"
 							>
 								{PAGE_SIZE_OPTIONS.map((n) => (
 									<option key={n} value={n}>
@@ -277,7 +275,7 @@ export function RunsPage() {
 						<div className="flex items-center gap-3 text-xs text-(--color-text-3)">
 							{costTotals.total !== undefined && costTotals.priced > 0 ? (
 								<span
-									className="font-mono text-[10px] leading-3 text-(--color-text-3)"
+									className="font-mono text-xs text-(--color-text-3)"
 									title={`${costTotals.priced} of ${totalRuns} runs have a recorded cost (all-time)`}
 								>
 									total: {formatCostUsd(costTotals.total)}

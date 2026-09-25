@@ -68,7 +68,7 @@ function FilterFieldset({
 					type="button"
 					onClick={() => onSelect(f)}
 					className={cn(
-						"h-7 border-r border-(--color-border) px-2.5 text-[10px] leading-3 last:border-r-0",
+						"h-7 border-r border-(--color-border) px-2.5 text-xs  last:border-r-0",
 						filter === f
 							? "bg-(--color-surface-raised) text-(--color-text)"
 							: "text-(--color-text-3) hover:text-(--color-text-2)",
@@ -95,7 +95,7 @@ function TailToggle({
 			type="button"
 			onClick={onToggle}
 			className={cn(
-				"inline-flex h-[25px] items-center rounded-(--radius-sm) border px-2 text-[10px] leading-3 font-medium",
+				"inline-flex h-[25px] items-center rounded-(--radius-sm) border px-2 text-xs  font-medium",
 				className,
 				autoScroll
 					? "border-(--color-border-strong) bg-(--color-surface) text-(--color-text-2)"
@@ -115,28 +115,28 @@ function EventRow({ event }: { event: RunEvent }) {
 	return (
 		<details className="group md:border-b md:border-(--color-border) md:last:border-b-0">
 			<summary className="flex cursor-pointer items-start gap-[7px] px-3 py-[7px] select-none md:px-2.5 md:py-1.5 [&::-webkit-details-marker]:hidden hover:bg-(--color-surface-hover)">
-				<span className="hidden w-[42px] shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3) md:block">
+				<span className="hidden w-[42px] shrink-0 font-mono text-2xs text-(--color-text-3) md:block">
 					{String(event.seq).padStart(6, "0")}
 				</span>
-				<span className="w-[68px] shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="w-[68px] shrink-0 font-mono text-2xs text-(--color-text-3)">
 					{formatWallClock(event.ts)}
 				</span>
 				<span
 					className={cn(
-						"w-[52px] shrink-0 truncate font-mono text-[9px] leading-3 md:w-[168px]",
+						"w-[52px] shrink-0 truncate font-mono text-2xs  md:w-[168px]",
 						kindColor(event),
 					)}
 					title={eventKindLabel(event)}
 				>
 					{eventKindLabel(event)}
 				</span>
-				<span className="min-w-0 flex-1 font-mono text-[9px] leading-[13px] break-words text-(--color-text-2)">
+				<span className="min-w-0 flex-1 font-mono text-2xs break-words text-(--color-text-2)">
 					{summary}
 				</span>
 			</summary>
 			{event.payload !== null ? (
 				<div className="px-3 pb-2 md:px-2.5">
-					<pre className="ml-[75px] max-h-[420px] overflow-auto rounded-(--radius-sm) border-l border-(--color-border-strong) px-2.5 py-1.5 font-mono text-[9px] leading-[13px] break-words whitespace-pre-wrap text-(--color-text-3) md:ml-[117px]">
+					<pre className="ml-[75px] max-h-[420px] overflow-auto rounded-(--radius-sm) border-l border-(--color-border-strong) px-2.5 py-1.5 font-mono text-2xs break-words whitespace-pre-wrap text-(--color-text-3) md:ml-[117px]">
 						{expanded}
 					</pre>
 				</div>
@@ -202,21 +202,19 @@ export function EventTail({
 	return (
 		<section className="flex min-h-0 flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-sidebar) md:bg-(--color-surface) xl:min-h-0">
 			<header className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-2.5">
-				<h2 className="text-[11px] leading-[14px] font-semibold text-(--color-text)">
-					Event stream
-				</h2>
-				<span className="hidden h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-text-2) md:inline-flex">
+				<h2 className="text-sm font-semibold text-(--color-text)">Event stream</h2>
+				<span className="hidden h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-text-2) md:inline-flex">
 					{visible.length} EVENTS
 				</span>
 				{live ? (
 					<span className="flex items-center gap-[7px]">
 						<span className="h-1.5 w-1.5 rounded-full bg-(--color-success)" aria-hidden />
-						<span className="font-mono text-[10px] leading-3 text-(--color-success)">live</span>
+						<span className="font-mono text-xs text-(--color-success)">live</span>
 					</span>
 				) : terminal ? (
-					<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">terminal</span>
+					<span className="font-mono text-xs text-(--color-text-3)">terminal</span>
 				) : (
-					<span className="font-mono text-[10px] leading-3 text-(--color-warning)">{status}</span>
+					<span className="font-mono text-xs text-(--color-warning)">{status}</span>
 				)}
 				<span className="flex-1" />
 				<button
@@ -224,7 +222,7 @@ export function EventTail({
 					onClick={() => setControlsOpen((v) => !v)}
 					aria-expanded={controlsOpen}
 					aria-controls="event-tail-controls"
-					className="inline-flex h-[25px] items-center rounded-(--radius-sm) border border-(--color-border) px-2 text-[10px] leading-3 text-(--color-text-3) md:hidden"
+					className="inline-flex h-[25px] items-center rounded-(--radius-sm) border border-(--color-border) px-2 text-xs text-(--color-text-3) md:hidden"
 					title="Toggle filter and tail controls"
 				>
 					⋯
@@ -246,7 +244,7 @@ export function EventTail({
 				</div>
 			) : null}
 			{error !== null ? (
-				<p className="border-b border-(--color-border) px-2.5 py-1.5 font-mono text-[10px] text-(--color-danger)">
+				<p className="border-b border-(--color-border) px-2.5 py-1.5 font-mono text-xs text-(--color-danger)">
 					{error}
 				</p>
 			) : null}
@@ -258,7 +256,7 @@ export function EventTail({
 				className="min-h-[320px] flex-1 overflow-auto bg-(--color-sidebar) xl:min-h-0"
 			>
 				{visible.length === 0 ? (
-					<p className="p-4 text-[11px] text-(--color-text-3)">
+					<p className="p-4 text-sm text-(--color-text-3)">
 						{sorted.length === 0 ? "No events yet." : "No events match this filter."}
 					</p>
 				) : (
@@ -266,14 +264,9 @@ export function EventTail({
 				)}
 			</div>
 			<footer className="flex shrink-0 items-center border-t border-(--color-border) px-3 py-[9px] md:hidden">
-				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
-					{visible.length} EVENTS
-				</span>
+				<span className="font-mono text-2xs text-(--color-text-3)">{visible.length} EVENTS</span>
 				<span className="flex-1" />
-				<Link
-					to="/events"
-					className="text-[11px] leading-[14px] font-medium text-(--color-primary) hover:underline"
-				>
+				<Link to="/events" className="text-sm font-medium text-(--color-primary) hover:underline">
 					Full stream →
 				</Link>
 			</footer>

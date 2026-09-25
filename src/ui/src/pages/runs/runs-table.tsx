@@ -55,28 +55,22 @@ function stateDotColor(state: RunRow["state"]): string {
 function RunSubLine({ row }: { row: RunRow }) {
 	if (row.parentRunId !== null) {
 		return (
-			<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
+			<span className="truncate font-mono text-2xs text-(--color-text-3)">
 				↪ from {row.parentRunId}
 			</span>
 		);
 	}
 	if (row.retryOf !== null) {
 		return (
-			<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
+			<span className="truncate font-mono text-2xs text-(--color-text-3)">
 				retry of {row.retryOf}
 			</span>
 		);
 	}
 	if (row.seedId !== null) {
-		return (
-			<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
-				{row.seedId}
-			</span>
-		);
+		return <span className="truncate font-mono text-2xs text-(--color-text-3)">{row.seedId}</span>;
 	}
-	return (
-		<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">no tracker item</span>
-	);
+	return <span className="font-mono text-2xs text-(--color-text-3)">no tracker item</span>;
 }
 
 /**
@@ -95,15 +89,13 @@ function RuntimeCell({ row }: { row: RunRow }) {
 		const sub = hasHandle ? (handle as string) : row.state === "queued" ? "not scheduled" : "—";
 		return (
 			<span className="flex min-w-0 flex-col gap-0.5">
-				<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-2)">
-					{sub}
-				</span>
+				<span className="truncate font-mono text-xs text-(--color-text-2)">{sub}</span>
 			</span>
 		);
 	}
 	return (
 		<span className="flex min-w-0 flex-col gap-0.5">
-			<span className="font-mono text-[10px] leading-3 text-(--color-text-2)">{kind}</span>
+			<span className="font-mono text-xs text-(--color-text-2)">{kind}</span>
 			{hasHandle ? <CopyHandle handle={handle as string} /> : null}
 		</span>
 	);
@@ -125,7 +117,7 @@ function CopyHandle({ handle }: { handle: string }) {
 					setTimeout(() => setCopied(false), 1500);
 				});
 			}}
-			className="max-w-full cursor-pointer truncate text-left font-mono text-[9px] leading-3 text-(--color-text-3) hover:text-(--color-text-2)"
+			className="max-w-full cursor-pointer truncate text-left font-mono text-2xs text-(--color-text-3) hover:text-(--color-text-2)"
 		>
 			{copied ? "copied" : short}
 		</button>
@@ -139,10 +131,7 @@ function ProjectSubLine({ row }: { row: RunRow }) {
 	const label =
 		branch !== null && sha !== "" ? `${branch} · ${sha}` : (branch ?? (sha !== "" ? sha : "—"));
 	return (
-		<span
-			title={branch ?? undefined}
-			className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)"
-		>
+		<span title={branch ?? undefined} className="truncate font-mono text-2xs text-(--color-text-3)">
 			{label}
 		</span>
 	);
@@ -156,7 +145,7 @@ function DeliveryCell({ row }: { row: RunRow }) {
 				href={row.prUrl}
 				target="_blank"
 				rel="noreferrer"
-				className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-text-2) hover:text-(--color-text)"
+				className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-text-2) hover:text-(--color-text)"
 			>
 				PR
 			</a>
@@ -164,12 +153,12 @@ function DeliveryCell({ row }: { row: RunRow }) {
 	}
 	if (row.commitsAhead !== null) {
 		return (
-			<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-text-2)">
+			<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-text-2)">
 				{row.commitsAhead} {row.commitsAhead === 1 ? "commit" : "commits"}
 			</span>
 		);
 	}
-	return <span className="font-mono text-[10px] leading-3 text-(--color-text-3)">—</span>;
+	return <span className="font-mono text-xs text-(--color-text-3)">—</span>;
 }
 
 function RunsTableRow({
@@ -196,9 +185,7 @@ function RunsTableRow({
 						className={cn("h-1.5 w-1.5 shrink-0 rounded-full", stateDotColor(row.state))}
 						aria-hidden
 					/>
-					<span className={cn("font-mono text-[10px] leading-3", stateColor(row.state))}>
-						{row.state}
-					</span>
+					<span className={cn("font-mono text-xs ", stateColor(row.state))}>{row.state}</span>
 				</span>
 			</td>
 			<td className="w-[128px] px-2.5 py-1.5 align-middle">
@@ -206,7 +193,7 @@ function RunsTableRow({
 					<a
 						href={`#${runPath}`}
 						onClick={(e) => e.stopPropagation()}
-						className="truncate font-mono text-[10px] leading-3 text-(--color-text) hover:underline"
+						className="truncate font-mono text-xs text-(--color-text) hover:underline"
 					>
 						{row.id}
 					</a>
@@ -215,19 +202,15 @@ function RunsTableRow({
 			</td>
 			<td className="w-[118px] px-2.5 py-1.5 align-middle">
 				<span className="flex min-w-0 flex-col gap-0.5">
-					<span className="truncate text-[11px] leading-[14px] text-(--color-text-2)">
-						{row.agentName}
-					</span>
-					<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
+					<span className="truncate text-sm text-(--color-text-2)">{row.agentName}</span>
+					<span className="truncate font-mono text-2xs text-(--color-text-3)">
 						{row.model ?? "—"}
 					</span>
 				</span>
 			</td>
 			<td className="w-[128px] px-2.5 py-1.5 align-middle">
 				<span className="flex min-w-0 flex-col gap-0.5">
-					<span className="truncate text-[11px] leading-[14px] text-(--color-text-2)">
-						{projectName}
-					</span>
+					<span className="truncate text-sm text-(--color-text-2)">{projectName}</span>
 					<ProjectSubLine row={row} />
 				</span>
 			</td>
@@ -236,16 +219,16 @@ function RunsTableRow({
 					<RuntimeCell row={row} />
 				</td>
 			) : null}
-			<td className="w-[62px] px-2.5 py-1.5 align-middle font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<td className="w-[62px] px-2.5 py-1.5 align-middle font-mono text-xs text-(--color-text-3)">
 				{row.trigger}
 			</td>
-			<td className="w-[56px] px-2.5 py-1.5 align-middle font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<td className="w-[56px] px-2.5 py-1.5 align-middle font-mono text-xs text-(--color-text-3)">
 				{relativeTime(startedAtOf(row))}
 			</td>
-			<td className="w-[54px] px-2.5 py-1.5 text-right align-middle font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<td className="w-[54px] px-2.5 py-1.5 text-right align-middle font-mono text-xs text-(--color-text-2)">
 				{formatDuration(row, now)}
 			</td>
-			<td className="w-[54px] px-2.5 py-1.5 text-right align-middle font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<td className="w-[54px] px-2.5 py-1.5 text-right align-middle font-mono text-xs text-(--color-text-2)">
 				{runCostLabel(row)}
 			</td>
 			<td className="px-2.5 py-1.5 align-middle">
@@ -269,7 +252,7 @@ function Th({
 			scope="col"
 			style={width ? { width } : undefined}
 			className={cn(
-				"px-2.5 text-left text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3) uppercase",
+				"px-2.5 text-left text-2xs font-semibold tracking-wide text-(--color-text-3) uppercase",
 				className,
 			)}
 		>

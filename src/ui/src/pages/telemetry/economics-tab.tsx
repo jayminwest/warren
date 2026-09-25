@@ -69,9 +69,7 @@ function SpendPanel({ from, to }: { from: string; to: string }) {
 					Failed to load cost analytics. {(cost.error as Error | null)?.message ?? ""}
 				</p>
 			) : visible.length === 0 && !cost.isLoading ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">
-					No spend recorded in this window.
-				</p>
+				<p className="text-sm text-(--color-text-3)">No spend recorded in this window.</p>
 			) : (
 				<>
 					{visible.map((b) => (
@@ -89,7 +87,7 @@ function SpendPanel({ from, to }: { from: string; to: string }) {
 					{hidden.length > 0 ? (
 						<SpendRow name={`${String(hidden.length)} more`} costUsd={formatCostUsd(hiddenCost)} />
 					) : null}
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-sm text-(--color-text-2)">
 						{totals !== undefined && totals.runs > totals.priced
 							? `${String(totals.runs - totals.priced)} runs carry no recorded cost. They are counted, not priced.`
 							: "Spend over runs.cost_usd in the selected window."}
@@ -144,26 +142,26 @@ function EconomicsAgentRow({
 			<td className="py-1.5 pr-3">
 				<Link
 					to={`/agents/${encodeURIComponent(row.agent)}`}
-					className="font-mono text-[11px] leading-[14px] text-(--color-text-2) underline-offset-2 hover:underline"
+					className="font-mono text-sm text-(--color-text-2) underline-offset-2 hover:underline"
 				>
 					{row.agent}
 				</Link>
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+			<td className="py-1.5 pr-3 text-right font-mono text-sm text-(--color-text-2)">
 				{String(row.runs)}
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+			<td className="py-1.5 pr-3 text-right font-mono text-sm text-(--color-text-2)">
 				{row.successRate === null ? "—" : `${Math.round(row.successRate * 100)}%`}
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+			<td className="py-1.5 pr-3 text-right font-mono text-sm text-(--color-text-3)">
 				{pass === undefined || pass.total === 0
 					? "—"
 					: `${Math.round((pass.pass / pass.total) * 100)}%`}
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+			<td className="py-1.5 pr-3 text-right font-mono text-sm text-(--color-text-3)">
 				{formatDuration(row.avgDurationMs)}
 			</td>
-			<td className="py-1.5 text-right font-mono text-[11px] leading-[14px] text-(--color-text)">
+			<td className="py-1.5 text-right font-mono text-sm text-(--color-text)">
 				{row.costPerMergedPrUsd === null || row.costPerMergedPrUsd === undefined
 					? "—"
 					: formatCostUsd(row.costPerMergedPrUsd)}
@@ -199,7 +197,7 @@ function AgentEconomicsMeterRow({
 	return (
 		<MeterBar
 			label={row.agent}
-			labelClass="w-[80px] overflow-clip max-md:text-[9px] max-md:leading-[11px] text-(--color-text-2)"
+			labelClass="w-[80px] overflow-clip max-md:text-2xs  text-(--color-text-2)"
 			width={width}
 			markClass={cn("h-2 bg-(--color-success)", ECONOMICS_FILL_RAMP[rank] ?? "opacity-45")}
 			title={`${row.agent} · ${String(row.runs)} runs · ${
@@ -245,7 +243,7 @@ function AgentEconomicsTable() {
 					Failed to load run analytics. {(runs.error as Error | null)?.message ?? ""}
 				</p>
 			) : rows.length === 0 && !runs.isLoading ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">No runs in this window.</p>
+				<p className="text-sm text-(--color-text-3)">No runs in this window.</p>
 			) : (
 				<>
 					{/* Below md: meter-row list (warren-756e, mock :272-315) —
@@ -269,7 +267,7 @@ function AgentEconomicsTable() {
 										(h, i) => (
 											<th
 												key={h}
-												className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i >= 1 ? "text-right" : ""}`}
+												className={`pb-2 pr-3 text-left font-mono text-xs tracking-wide text-(--color-text-3) ${i >= 1 ? "text-right" : ""}`}
 											>
 												{h}
 											</th>

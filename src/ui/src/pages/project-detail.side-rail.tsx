@@ -19,8 +19,8 @@ const PANEL =
 	"flex min-w-0 flex-col rounded-[4px] border border-(--color-border) bg-(--color-surface)";
 const PANEL_HEAD =
 	"flex h-[41px] shrink-0 items-center gap-2.5 border-b border-b-(--color-border) px-3.5";
-const PANEL_TITLE = "text-[12px] leading-4 font-semibold text-(--color-text)";
-const HEAD_NOTE = "font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)";
+const PANEL_TITLE = "text-sm  font-semibold text-(--color-text)";
+const HEAD_NOTE = "font-mono text-2xs  tracking-wide text-(--color-text-3)";
 
 /* --------------------------------------------------------------------- */
 /* Side rail: project facts + recent runs                                 */
@@ -67,12 +67,12 @@ export function ProjectFactsPanel({ project }: { project: ProjectRow }) {
 			<dl className="flex flex-col gap-2.5 px-3.5 py-3">
 				{rows.map((row) => (
 					<div key={row.label} className="flex items-center gap-2.5">
-						<dt className="max-md:w-[110px] md:w-[100px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
+						<dt className="max-md:w-[110px] md:w-[100px] shrink-0 text-sm text-(--color-text-3)">
 							{row.label}
 						</dt>
 						<dd
 							title={row.title}
-							className={`min-w-0 truncate font-mono text-[10px] leading-3 max-md:flex-1 max-md:text-right ${
+							className={`min-w-0 truncate font-mono text-xs max-md:flex-1 max-md:text-right ${
 								row.muted ? "text-(--color-text-3)" : "text-(--color-text-2)"
 							}`}
 						>
@@ -103,7 +103,7 @@ export function RecentRunsPanel({ projectId }: { projectId: string }) {
 				<div className="min-w-0 flex-1" />
 				<Link
 					to="/runs"
-					className="text-[10px] leading-3 font-medium text-(--color-primary) underline-offset-2 hover:underline"
+					className="text-xs font-medium text-(--color-primary) underline-offset-2 hover:underline"
 				>
 					View all →
 				</Link>
@@ -134,13 +134,13 @@ function RecentRunRow({ run }: { run: RunRow }) {
 			/>
 			<Link
 				to={`/runs/${encodeURIComponent(run.id)}`}
-				className="min-w-0 truncate font-mono text-[10px] leading-3 text-(--color-text-2) underline-offset-2 hover:underline"
+				className="min-w-0 truncate font-mono text-xs text-(--color-text-2) underline-offset-2 hover:underline"
 			>
 				{run.id}
 			</Link>
 			<div className="min-w-0 flex-1" />
 			<span
-				className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)"
+				className="shrink-0 font-mono text-2xs text-(--color-text-3)"
 				title={startedAtOf(run) ?? undefined}
 			>
 				{relativeTime(startedAtOf(run))}

@@ -52,20 +52,20 @@ export function ChildWalkPanel({
 	const mergedCount = childRows.filter((c) => c.state === "merged").length;
 
 	return (
-		<section className="flex min-w-0 flex-1 flex-col rounded border border-(--color-border) bg-(--color-surface)">
+		<section className="flex min-w-0 flex-1 flex-col rounded-sm border border-(--color-border) bg-(--color-surface)">
 			<header className="flex h-[41px] shrink-0 items-center gap-2.5 border-b border-(--color-border) px-3.5">
-				<h2 className="text-[12px] leading-4 font-semibold text-(--color-text)">Child walk</h2>
-				<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-text-2)">
+				<h2 className="text-sm font-semibold text-(--color-text)">Child walk</h2>
+				<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-text-2)">
 					{childRows.length} CHILD{childRows.length === 1 ? "" : "REN"}
 				</span>
 				<div className="min-w-0 flex-1" />
-				<span className="font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)">
+				<span className="font-mono text-2xs tracking-wide text-(--color-text-3)">
 					ONE AT A TIME · GATED ON PR MERGE
 				</span>
 			</header>
 
 			{childRows.length === 0 ? (
-				<p className="px-3.5 py-6 text-[11px] leading-4 text-(--color-text-3)">
+				<p className="px-3.5 py-6 text-sm text-(--color-text-3)">
 					No children — the plan had no open child seeds at dispatch.
 				</p>
 			) : (
@@ -102,11 +102,11 @@ export function ChildWalkPanel({
 			)}
 
 			<footer className="flex h-[37px] shrink-0 items-center gap-2.5 px-3.5">
-				<span className="font-mono text-[9px] leading-3 tracking-[0.05em] text-(--color-text-3)">
+				<span className="font-mono text-2xs tracking-wide text-(--color-text-3)">
 					RE-DISPATCHING THIS PLAN RESUMES FROM THE NEXT OPEN CHILD
 				</span>
 				<div className="min-w-0 flex-1" />
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-2xs text-(--color-text-3)">
 					{mergedCount} / {childRows.length} merged
 				</span>
 			</footer>
@@ -237,7 +237,7 @@ function ChildCard({
 					href={prUrl}
 					target="_blank"
 					rel="noreferrer noopener"
-					className="flex h-6 shrink-0 items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[9px] text-[10px] leading-3 font-medium text-(--color-text-2)"
+					className="flex h-6 shrink-0 items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[9px] text-xs font-medium text-(--color-text-2)"
 				>
 					Open PR ↗
 				</a>
@@ -268,15 +268,15 @@ function ChildRow({
 			}`}
 		>
 			<span
-				className={`w-[22px] shrink-0 font-mono text-[10px] leading-3 ${
+				className={`w-[22px] shrink-0 font-mono text-xs ${
 					isGate ? "text-(--color-text-2)" : "text-(--color-text-3)"
 				}`}
 			>
 				{String(child.seq).padStart(2, "0")}
 			</span>
 			<div className="flex w-[150px] shrink-0 flex-col gap-0.5">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text)">{child.seedId}</span>
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-xs text-(--color-text)">{child.seedId}</span>
+				<span className="font-mono text-2xs text-(--color-text-3)">
 					{child.runId !== null ? (
 						<Link
 							to={`/runs/${encodeURIComponent(child.runId)}`}
@@ -295,18 +295,18 @@ function ChildRow({
 					style={{ backgroundColor: color }}
 					aria-hidden
 				/>
-				<span className="font-mono text-[10px] leading-3" style={{ color }}>
+				<span className="font-mono text-xs " style={{ color }}>
 					{child.state}
 				</span>
 			</span>
 			{prLabel !== null ? (
-				<span className="flex h-5 shrink-0 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
+				<span className="flex h-5 shrink-0 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-primary)">
 					{prLabel}
 				</span>
 			) : null}
 			{child.retryCount > 0 ? (
 				<span
-					className="flex h-5 shrink-0 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-text-2)"
+					className="flex h-5 shrink-0 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-2xs text-(--color-text-2)"
 					title={`Automatic re-dispatch used ${child.retryCount} of its budget (warren-6de9)`}
 				>
 					{child.retryCount} retry{child.retryCount === 1 ? "" : "s"}
@@ -334,7 +334,7 @@ function ChildStatus({
 		<>
 			{status !== null ? (
 				<span
-					className={`min-w-0 flex-1 truncate font-mono text-[9px] leading-3 ${
+					className={`min-w-0 flex-1 truncate font-mono text-2xs ${
 						status.danger ? "text-(--color-danger)" : "text-(--color-text-3)"
 					}`}
 					title={child.failureReason ?? undefined}
@@ -349,7 +349,7 @@ function ChildStatus({
 					href={prUrl}
 					target="_blank"
 					rel="noreferrer noopener"
-					className="flex h-6 shrink-0 items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[9px] text-[10px] leading-3 font-medium text-(--color-text-2)"
+					className="flex h-6 shrink-0 items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[9px] text-xs font-medium text-(--color-text-2)"
 				>
 					Open PR ↗
 				</a>

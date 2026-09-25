@@ -38,7 +38,7 @@ export function ConsoleBottomNav({ onOpenMore }: ConsoleBottomNavProps) {
 						<>
 							<span
 								className={cn(
-									"font-mono text-[9px] leading-[11px]",
+									"font-mono text-2xs ",
 									isActive ? "text-(--color-primary)" : "text-(--color-text-3)",
 								)}
 							>
@@ -46,7 +46,7 @@ export function ConsoleBottomNav({ onOpenMore }: ConsoleBottomNavProps) {
 							</span>
 							<span
 								className={cn(
-									"text-[10px] leading-3",
+									"text-xs ",
 									isActive ? "font-medium text-(--color-text)" : "text-(--color-text-3)",
 								)}
 							>
@@ -57,8 +57,8 @@ export function ConsoleBottomNav({ onOpenMore }: ConsoleBottomNavProps) {
 				</NavLink>
 			))}
 			<button type="button" onClick={onOpenMore} className={tabClass(false)}>
-				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">··</span>
-				<span className="text-[10px] leading-3 text-(--color-text-3)">More</span>
+				<span className="font-mono text-2xs text-(--color-text-3)">··</span>
+				<span className="text-xs text-(--color-text-3)">More</span>
 			</button>
 		</nav>
 	);

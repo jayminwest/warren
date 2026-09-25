@@ -24,9 +24,7 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 		maxScore > 0 ? `${Math.max(4, Math.round((dir.difficultyScore / maxScore) * 100))}%` : "4px";
 	return (
 		<tr className="border-b border-(--color-border) last:border-b-0">
-			<td className="py-1.5 pr-3 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
-				{dir.directory}
-			</td>
+			<td className="py-1.5 pr-3 font-mono text-sm text-(--color-text-2)">{dir.directory}</td>
 			<td className="w-full py-1.5 pr-3">
 				<MeterBar
 					width={width}
@@ -35,13 +33,13 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 					value={formatScore(dir.difficultyScore)}
 				/>
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+			<td className="py-1.5 pr-3 text-right font-mono text-sm text-(--color-text-2)">
 				{dir.failureShare === null ? "—" : `${Math.round(dir.failureShare * 100)}%`}
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+			<td className="py-1.5 pr-3 text-right font-mono text-sm text-(--color-text-3)">
 				{String(dir.runsTouching)}
 			</td>
-			<td className="py-1.5 text-right font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+			<td className="py-1.5 text-right font-mono text-sm text-(--color-text-3)">
 				{String(dir.retries)}
 			</td>
 		</tr>
@@ -67,7 +65,7 @@ function DifficultyMeterRow({
 	return (
 		<MeterBar
 			label={dir.directory}
-			labelClass="w-[118px] overflow-clip max-md:text-[9px] max-md:leading-[11px] text-(--color-text-2)"
+			labelClass="w-[118px] overflow-clip max-md:text-2xs  text-(--color-text-2)"
 			width={width}
 			markClass={cn("h-2 bg-(--color-danger)", STRUGGLE_FILL_RAMP[rank] ?? "opacity-45")}
 			title={`difficulty ${formatScore(dir.difficultyScore)} · fail share ${failShare ?? "—"} · touches ${String(dir.runsTouching)} · retries ${String(dir.retries)}`}
@@ -96,7 +94,7 @@ function StruggleTable({ directories }: { directories: readonly DirectoryStat[] 
 								<th
 									key={h}
 									className={cn(
-										"pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)",
+										"pb-2 pr-3 text-left font-mono text-xs tracking-wide text-(--color-text-3)",
 										i >= 2 && "text-right",
 									)}
 								>
@@ -159,11 +157,9 @@ function StrugglePanel() {
 					Failed to load behavior analytics. {(behavior.error as Error | null)?.message ?? ""}
 				</p>
 			) : behavior.isLoading ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">Loading…</p>
+				<p className="text-sm text-(--color-text-3)">Loading…</p>
 			) : directories.length === 0 ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">
-					No directory evidence in this window.
-				</p>
+				<p className="text-sm text-(--color-text-3)">No directory evidence in this window.</p>
 			) : (
 				<StruggleTable directories={directories} />
 			)}
@@ -190,9 +186,7 @@ export function TelemetryBehaviorTab() {
 						Failed to load run analytics. {(runs.error as Error | null)?.message ?? ""}
 					</p>
 				) : causes.length === 0 && !runs.isLoading ? (
-					<p className="text-[12px] leading-4 text-(--color-text-3)">
-						No failed runs in this window.
-					</p>
+					<p className="text-sm text-(--color-text-3)">No failed runs in this window.</p>
 				) : (
 					causes.map((c) => (
 						<FailureCauseRow key={c.key} label={failureLabel(c.key)} runs={c.runs} max={maxCause} />

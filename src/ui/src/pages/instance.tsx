@@ -57,14 +57,14 @@ function FactField({
 }) {
 	return (
 		<div className={cn("flex min-w-0 flex-1 flex-col gap-[5px]", className)}>
-			<span className="text-[10px] leading-3 font-medium text-(--color-text-2)">{label}</span>
+			<span className="text-xs font-medium text-(--color-text-2)">{label}</span>
 			<span
 				className={cn(
-					"flex min-w-0 items-center truncate rounded-(--radius-sm) border px-2.5 py-2 font-mono text-[11px] leading-[14px]",
+					"flex min-w-0 items-center truncate rounded-(--radius-sm) border px-2.5 py-2 font-mono text-sm ",
 					variant === "editable"
 						? "border-(--color-border-strong) bg-(--color-bg)"
 						: "border-(--color-border) bg-(--color-surface-raised)",
-					"md:h-8 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:py-0 md:text-[12px] md:leading-4",
+					"md:h-8 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:py-0 md:text-sm ",
 					mono ? "" : "md:font-sans",
 					value === "—" ? "text-(--color-text-3)" : "text-(--color-text)",
 				)}
@@ -72,7 +72,7 @@ function FactField({
 				{value}
 			</span>
 			{hint ? (
-				<span className="font-mono text-[8px] leading-[10px] tracking-[0.05em] text-(--color-text-3) md:text-[9px] md:leading-3 md:tracking-normal">
+				<span className="font-mono text-2xs tracking-wide text-(--color-text-3) md:text-2xs md:tracking-normal">
 					{hint}
 				</span>
 			) : null}
@@ -105,12 +105,8 @@ function Section({
 			)}
 		>
 			<div className="flex flex-col gap-[2px] border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:gap-[3px] md:border-b-0 md:bg-transparent md:px-0 md:py-0">
-				<h2 className="text-[12px] leading-[15px] font-semibold text-(--color-text) md:leading-4">
-					{title}
-				</h2>
-				<p className="text-[10px] leading-[13px] text-(--color-text-3) md:text-[11px] md:leading-[14px]">
-					{sub}
-				</p>
+				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
+				<p className="text-xs text-(--color-text-3) md:text-sm">{sub}</p>
 			</div>
 			<div className="flex flex-col gap-2.5 px-3 py-[11px] md:gap-3.5 md:px-0 md:py-0">
 				{children}
@@ -130,7 +126,7 @@ function AuthModePills({ mode }: { mode: InstanceFactsResponse["authMode"] }) {
 				<span
 					key={m}
 					className={cn(
-						"px-3 py-1.5 font-mono text-[10px] leading-3 md:py-2",
+						"px-3 py-1.5 font-mono text-xs  md:py-2",
 						m === mode
 							? "bg-(--color-surface-raised) text-(--color-text)"
 							: "text-(--color-text-3)",
@@ -151,13 +147,13 @@ function AuthModePills({ mode }: { mode: InstanceFactsResponse["authMode"] }) {
 function FactRow({ label, value }: { label: string; value: string }) {
 	return (
 		<div className="flex items-center gap-2 px-3 py-[7px] md:gap-3 md:px-0 md:py-0">
-			<span className="w-[110px] shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3) md:w-auto md:font-sans md:text-[11px] md:leading-[14px]">
+			<span className="w-[110px] shrink-0 font-mono text-2xs text-(--color-text-3) md:w-auto md:font-sans md:text-sm">
 				{label}
 			</span>
 			<span
 				className={cn(
-					"flex min-w-0 flex-1 justify-end truncate text-right font-mono text-[10px] leading-3",
-					"md:block md:text-[11px] md:leading-[14px]",
+					"flex min-w-0 flex-1 justify-end truncate text-right font-mono text-xs ",
+					"md:block md:text-sm ",
 					value === "—" ? "text-(--color-text-3)" : "text-(--color-text) md:text-(--color-text-2)",
 				)}
 			>
@@ -202,11 +198,11 @@ function AuthenticationSection({ facts }: { facts: InstanceFactsResponse | undef
 	return (
 		<Section title="Authentication" sub="How access is authenticated.">
 			<div className="flex flex-col gap-[5px]">
-				<span className="text-[10px] leading-3 font-medium text-(--color-text-2)">Auth mode</span>
+				<span className="text-xs font-medium text-(--color-text-2)">Auth mode</span>
 				{authMode ? (
 					<AuthModePills mode={authMode} />
 				) : (
-					<span className="h-8 font-mono text-[12px] leading-4 text-(--color-text-3)">—</span>
+					<span className="h-8 font-mono text-sm text-(--color-text-3)">—</span>
 				)}
 			</div>
 		</Section>
@@ -241,11 +237,11 @@ function AdmissionSection({ facts }: { facts: InstanceFactsResponse | undefined 
 					/>
 				</div>
 			) : (
-				<p className="text-[10px] leading-[14px] text-(--color-text-3)">
+				<p className="text-xs text-(--color-text-3)">
 					{facts ? "Admission caps are K8s-only — not active under this runtime provider." : "—"}
 				</p>
 			)}
-			<p className="text-[10px] leading-[14px] text-(--color-text-3)">
+			<p className="text-xs text-(--color-text-3)">
 				Set in the environment, resolved at boot. The admission gate reports them in admission
 				events.
 			</p>
@@ -271,10 +267,8 @@ function FactsRail({ facts }: { facts: InstanceFactsResponse | undefined }) {
 	return (
 		<aside className="flex w-full shrink-0 flex-col rounded-(--radius-md) border border-(--color-border) bg-(--color-sidebar) md:bg-(--color-surface) lg:w-[380px]">
 			<header className="flex items-center justify-between border-b border-(--color-border) px-3 py-2.5 md:px-4 md:py-3">
-				<h2 className="text-[12px] leading-[15px] font-semibold text-(--color-text) md:text-[13px] md:leading-4">
-					Instance facts
-				</h2>
-				<span className="font-mono text-[9px] leading-[11px] tracking-[0.06em] text-(--color-success) md:text-[10px] md:leading-3 md:text-(--color-text-3)">
+				<h2 className="text-sm font-semibold text-(--color-text) md:text-sm">Instance facts</h2>
+				<span className="font-mono text-2xs tracking-wide text-(--color-success) md:text-xs md:text-(--color-text-3)">
 					LIVE
 				</span>
 			</header>
@@ -322,10 +316,10 @@ export function InstancePage() {
 	return (
 		<div className="flex min-h-full flex-col gap-3.5 px-3.5 pt-6 pb-12 md:gap-5 md:px-6">
 			<header className="flex flex-col gap-1.5">
-				<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.025em] text-(--color-text) md:text-[22px] md:leading-7">
+				<h1 className="text-lg font-semibold tracking-tight text-(--color-text) md:text-2xl md:leading-7">
 					Instance
 				</h1>
-				<p className="max-w-prose text-[11px] leading-[14px] text-(--color-text-2) md:text-[13px] md:leading-[18px]">
+				<p className="max-w-prose text-sm text-(--color-text-2) md:text-sm">
 					Server settings, read-only. Configure via environment or a project&apos;s
 					.warren/config.yaml.
 				</p>

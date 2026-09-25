@@ -92,7 +92,7 @@ export function AddProjectDialog({
 							/>
 							<div className="max-h-44 overflow-y-auto rounded-(--radius-xs) border border-(--color-border)">
 								{filtered.length === 0 ? (
-									<p className="p-2 text-[11px] leading-4 text-(--color-text-3)">
+									<p className="p-2 text-sm text-(--color-text-3)">
 										No match — paste the URL below instead.
 									</p>
 								) : (
@@ -100,7 +100,7 @@ export function AddProjectDialog({
 										<button
 											key={repo.cloneUrl}
 											type="button"
-											className="block w-full px-2.5 py-1.5 text-left font-mono text-[10px] leading-4 text-(--color-text) hover:bg-(--color-thead)"
+											className="block w-full px-2.5 py-1.5 text-left font-mono text-xs text-(--color-text) hover:bg-(--color-thead)"
 											onClick={() => pick(repo)}
 										>
 											{repoLabel(repo)}
@@ -111,7 +111,7 @@ export function AddProjectDialog({
 						</div>
 					) : null}
 					{repos.isLoading && open ? (
-						<div className="text-[11px] text-(--color-text-3)">
+						<div className="text-sm text-(--color-text-3)">
 							<Spinner label="Checking your GitHub connection" />
 						</div>
 					) : null}
@@ -134,7 +134,7 @@ export function AddProjectDialog({
 							onChange={(e) => setDefaultBranch(e.target.value)}
 						/>
 					</div>
-					{error !== null ? <p className="text-sm text-(--color-destructive)">{error}</p> : null}
+					{error !== null ? <p className="text-sm text-(--color-danger)">{error}</p> : null}
 					<DialogFooter>
 						<Button
 							type="button"

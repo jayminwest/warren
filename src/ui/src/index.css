@@ -54,13 +54,17 @@
 html,
 body {
 	background-color: var(--color-bg);
-	color: var(--color-fg);
+	color: var(--color-text);
 	font-family: var(--font-sans);
+	/* Inter's single-storey a + open digits read cleaner at console density. */
+	font-feature-settings: "cv11", "ss01";
 }
 
 body {
 	margin: 0;
 	min-height: 100vh;
+	font-size: 13px;
+	line-height: 18px;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
@@ -80,4 +84,17 @@ pre,
 .font-mono,
 [class*="tabular"] {
 	font-variant-numeric: tabular-nums;
+}
+
+/* Mono never takes Inter's stylistic sets. */
+.font-mono,
+code,
+pre {
+	font-feature-settings: normal;
+}
+
+/* Thin, quiet scrollbars that follow the palette. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border-strong) transparent;
 }

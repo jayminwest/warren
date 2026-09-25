@@ -38,22 +38,18 @@ function CapacityCell({
 				className,
 			)}
 		>
-			<span className="font-mono text-[9px] leading-[11px] tracking-[0.08em] text-(--color-text-3) sm:leading-3 sm:tracking-[0.07em]">
+			<span className="font-mono text-2xs tracking-wide text-(--color-text-3) sm:tracking-wide">
 				{label}
 			</span>
 			<span className="flex items-baseline gap-1 sm:gap-[7px]">
-				<span className="font-mono text-[18px] leading-[22px] font-semibold tracking-[-0.03em] text-(--color-text) sm:text-xl sm:leading-6 sm:font-medium">
+				<span className="font-mono text-lg font-semibold tracking-tight text-(--color-text) sm:text-xl sm:leading-6 sm:font-medium">
 					{value}
 				</span>
 				{unit ? (
-					<span className="w-max shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
-						{unit}
-					</span>
+					<span className="w-max shrink-0 font-mono text-xs text-(--color-text-3)">{unit}</span>
 				) : null}
 			</span>
-			<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3) sm:leading-3">
-				{detail}
-			</span>
+			<span className="font-mono text-2xs text-(--color-text-3)">{detail}</span>
 		</div>
 	);
 }
@@ -72,7 +68,7 @@ export function CapacityStrip({
 }) {
 	if (overview === undefined) {
 		return (
-			<div className="rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3.5 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<div className="rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3.5 py-3 font-mono text-xs text-(--color-text-3)">
 				loading snapshot…
 			</div>
 		);
