@@ -410,9 +410,13 @@ export const planRunsApi = {
 		if (filter.project) params.set("project", filter.project);
 		if (filter.state) params.set("state", filter.state);
 		const qs = params.toString();
+		// An older server omits `childStates`; default it so the list renders.
 		return request<{ planRuns: PlanRunListRow[] }>(`/plan-runs${qs.length > 0 ? `?${qs}` : ""}`, {
 			...(signal ? { signal } : {}),
-		});
+		}).then((res) => ({
+			...res,
+			planRuns: res.planRuns.map((p) => ({ ...p, childStates: p.childStates ?? [] })),
+		}));
 	},
 	get: (id: string, signal?: AbortSignal) =>
 		request<PlanRunDetailResponse>(`/plan-runs/${encodeURIComponent(id)}`, {
