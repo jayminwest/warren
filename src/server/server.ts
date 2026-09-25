@@ -33,7 +33,6 @@ import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers/index.ts";
 import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse, withSecurityHeaders } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";
-import { isSpaDeepLink } from "./spa-navigation.ts";
 import type {
 	Actor,
 	AuthDenied,
@@ -157,37 +156,6 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 }
 
 /**
- * Serve the SPA shell through the `GET /` UI route, or undefined when the
- * request is not a GET or no UI is mounted.
- */
-async function serveUiShell(
-	request: Request,
-	url: URL,
-	routes: readonly Route[],
-	logger: Logger,
-	requestId: string,
-): Promise<Response | undefined> {
-	if (request.method.toUpperCase() !== "GET") return undefined;
-	const uiFallback = routes.find((r) => r.pattern === "/" && r.method === "GET");
-	if (uiFallback === undefined) return undefined;
-	const ctx: RouteContext = { request, url, params: {}, logger, requestId };
-	try {
-		return await uiFallback.handler(ctx);
-	} catch (err) {
-		const rendered = renderError(err, requestId);
-		logger.error(
-			{ ...errorLogFields(err), route: "GET (ui fallback)", status: rendered.status },
-			"server: ui handler threw",
-		);
-		return jsonResponse(
-			rendered.status,
-			rendered.envelope,
-			rendered.headers !== undefined ? { headers: rendered.headers } : undefined,
-		);
-	}
-}
-
-/**
  * Build the full route table: API routes first, then a UI catch-all
  * if `deps.uiDistDir` is set. Order matters — the UI handler returns
  * the SPA `index.html` for unknown GETs, so it MUST come last.
@@ -288,13 +256,6 @@ async function handleRequest(
 	// The admitted caller, threaded onto the RouteContext below (warren-1ff0).
 	// Stays undefined on auth-exempt paths — the gate never ran there, so
 	// there is nobody to speak for.
-	// A browser refresh on a UI page whose path the API also claims
-	// (`/runs/:id`) gets the SPA shell, not a 401 envelope (warren-0a17).
-	if (isSpaDeepLink(request, url.pathname)) {
-		const shell = await serveUiShell(request, url, routes, logger, requestId);
-		if (shell !== undefined) return shell;
-	}
-
 	let actor: Actor | undefined;
 	if (!isAuthExempt(url.pathname)) {
 		const result = auth.authorize(request);
@@ -370,9 +331,35 @@ async function handleRequest(
 
 	// If the route is a GET with a UI handler available, fall
 	// through to the SPA index — that's how the UI's deep-link routes
-	// (`/operations`, `/dispatch`) hit the React shell.
-	const shell = await serveUiShell(request, url, routes, logger, requestId);
-	if (shell !== undefined) return shell;
+	// (`/projects/abc`, `/runs/xyz`) hit the React shell. We model this
+	// by checking whether a `GET /` UI route exists in the table.
+	const uiFallback =
+		request.method.toUpperCase() === "GET"
+			? routes.find((r) => r.pattern === "/" && r.method === "GET")
+			: undefined;
+	if (uiFallback !== undefined) {
+		const ctx: RouteContext = {
+			request,
+			url,
+			params: {},
+			logger,
+			requestId,
+		};
+		try {
+			return await uiFallback.handler(ctx);
+		} catch (err) {
+			const rendered = renderError(err, requestId);
+			logger.error(
+				{ ...errorLogFields(err), route: "GET (ui fallback)", status: rendered.status },
+				"server: ui handler threw",
+			);
+			return jsonResponse(
+				rendered.status,
+				rendered.envelope,
+				rendered.headers !== undefined ? { headers: rendered.headers } : undefined,
+			);
+		}
+	}
 
 	const rendered = pathExists(routes, url.pathname)
 		? methodNotAllowed(request.method, url.pathname)
