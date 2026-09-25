@@ -36,6 +36,7 @@ coverage/
 deploy/k8s/overlays/gke-live/
 deploy/k8s/overlays/gke-live-judge/
 deploy/k8s/overlays/gke-live-campaign-controller/
+deploy/k8s/overlays/gke-film/
 
 # local design-sync working dirs + MCP config (may contain secrets)
 .design-sync/

@@ -10,6 +10,32 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+### Added
+
+- **Per-project sandboxed RuntimeClass (warren-9bd3).** `.warren/config.yaml`
+  `resources.runtimeClass` (for example `gvisor`) puts that project's run
+  pods on a sandboxed runtime such as GKE Sandbox. GKE Sandbox rejects
+  `allowPrivilegeEscalation`, and gVisor does not carry ambient caps across
+  a uid change. So on that arm the entrypoint runs as uid 0 inside the
+  sandbox, with only SETUID/SETGID/KILL, and still drops the agent to uid
+  1001. See `docs/RUNBOOK-K8S.md` §4.3.
+
+### Security
+
+- **The agent no longer holds the run token (warren-ccef).** K8s run pods
+  now scrub `WARREN_API_TOKEN` from the agent's environment. Only the
+  entrypoint needs it. Before this, an agent could call
+  `POST /runs/:id/git-credential` and mint a push credential.
+- **App-mode git credentials are scoped to the run's repository
+  (warren-b425).** The credential handed to a run names only the project's
+  repository, with `contents` + `workflows` write. Before this it was an
+  installation-wide token.
+- **`restricted` egress blocks link-local and private ranges (warren-b275).**
+  The run-pod NetworkPolicy's internet rule now excepts `169.254.0.0/16`
+  (the metadata server), RFC 1918 and `100.64.0.0/10`.
+- **Event scrubber redacts bare run tokens (warren-3f97).** A `wrs1.` run
+  token in agent output is now redacted like other secrets.
+
 ## [0.19.2] — 2026-09-19
 
 The auto-merge release. A project can now let warren arm GitHub
