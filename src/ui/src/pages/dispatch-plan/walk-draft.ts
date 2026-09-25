@@ -1,5 +1,5 @@
 import type { CreatePlanRunInput } from "@/api/types.ts";
-import { parseCostCap } from "../dispatch/dispatch-draft.ts";
+import { parseCostCap, parseTimeLimit } from "../dispatch/dispatch-draft.ts";
 
 /**
  * Walk-definition draft state for the Direction C Dispatch plan page
@@ -50,6 +50,8 @@ export interface WalkDraft {
 	readonly modelOverride: string;
 	/** Per-child cost cap as free text; parsed to `maxCostUsd` at submit. */
 	readonly costCap: string;
+	/** Per-child wall-clock cap in minutes as free text; parsed to `maxDurationMinutes`. */
+	readonly timeLimit: string;
 }
 
 /** Touched flags stop the per-project default auto-fill per field. */
@@ -59,6 +61,7 @@ export interface WalkTouched {
 	readonly provider: boolean;
 	readonly model: boolean;
 	readonly costCap: boolean;
+	readonly timeLimit: boolean;
 }
 
 export interface WalkDraftPatch {
@@ -79,6 +82,7 @@ export function initialWalkDraft(state: WalkRouteState): WalkDraft {
 		providerOverride: "",
 		modelOverride: "",
 		costCap: "",
+		timeLimit: "",
 	};
 }
 
@@ -89,6 +93,7 @@ export function initialWalkTouched(state: WalkRouteState): WalkTouched {
 		provider: false,
 		model: false,
 		costCap: false,
+		timeLimit: false,
 	};
 }
 
@@ -109,11 +114,17 @@ export function parseIssueIds(text: string): string[] {
 
 export type CostCapResult = { value: number } | { error: string } | null;
 
-export { parseCostCap };
+export { parseCostCap, parseTimeLimit };
 
 /** Cost cap error text, or null when unset or valid. */
 export function costCapErrorOf(costCap: string): string | null {
 	const parsed = parseCostCap(costCap);
+	return parsed !== null && "error" in parsed ? parsed.error : null;
+}
+
+/** Time limit error text, or null when unset or valid (warren-a112). */
+export function timeLimitErrorOf(timeLimit: string): string | null {
+	const parsed = parseTimeLimit(timeLimit);
 	return parsed !== null && "error" in parsed ? parsed.error : null;
 }
 
@@ -124,6 +135,7 @@ export function costCapErrorOf(costCap: string): string | null {
 export function buildCreatePlanRunInput(args: {
 	readonly draft: WalkDraft;
 	readonly maxCostUsd: number | undefined;
+	readonly maxDurationMinutes?: number | undefined;
 }): CreatePlanRunInput {
 	const { draft } = args;
 	const trimmedRef = draft.ref.trim();
@@ -137,6 +149,9 @@ export function buildCreatePlanRunInput(args: {
 		...(trimmedProvider.length > 0 ? { providerOverride: trimmedProvider } : {}),
 		...(trimmedModel.length > 0 ? { modelOverride: trimmedModel } : {}),
 		...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
+		...(args.maxDurationMinutes !== undefined
+			? { maxDurationMinutes: args.maxDurationMinutes }
+			: {}),
 	};
 	if (draft.sourceMode === "issues") {
 		return { ...base, issues: parseIssueIds(draft.issuesText) };

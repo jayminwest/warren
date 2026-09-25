@@ -38,7 +38,7 @@ export function RefreshProjectsCTA() {
 	const disabled = refreshAll.isPending || projects.isLoading || projectCount === 0;
 
 	return (
-		<div className="flex flex-wrap items-center gap-3">
+		<div className="flex flex-wrap items-center gap-2">
 			<Button
 				type="button"
 				variant="outline"
@@ -46,14 +46,14 @@ export function RefreshProjectsCTA() {
 				onClick={() => refreshAll.mutate()}
 				disabled={disabled}
 			>
-				<RefreshCw className={`mr-2 h-4 w-4 ${refreshAll.isPending ? "animate-spin" : ""}`} />
-				Refresh all
+				<RefreshCw aria-hidden className={refreshAll.isPending ? "animate-spin" : undefined} />
+				{refreshAll.isPending ? "Refreshing…" : "Refresh all"}
 			</Button>
 			{refreshAll.isError ? (
-				<span className="text-xs text-(--color-destructive)">{formatError(refreshAll.error)}</span>
+				<span className="text-xs text-(--color-danger)">{formatError(refreshAll.error)}</span>
 			) : null}
 			{refreshAll.isSuccess ? (
-				<span className="text-xs text-(--color-muted-foreground)">
+				<span className="text-xs text-(--color-text-2)">
 					Refreshed {projectCount} project{projectCount === 1 ? "" : "s"}.
 				</span>
 			) : null}

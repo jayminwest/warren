@@ -57,7 +57,8 @@
 			"filesChanged": null,
 			"insertions": null,
 			"deletions": null,
-			"maxCostUsd": null
+			"maxCostUsd": null,
+			"maxDurationMinutes": null
 		}
 	}
 }

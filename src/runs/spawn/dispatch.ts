@@ -22,6 +22,7 @@ import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
 import { resolveCapOverride } from "../cost-cap.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
+import { resolveDurationOverride, withMaxDurationMinutesOverride } from "../run-timeout.ts";
 import { buildSeedFiles } from "../seed.ts";
 import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
@@ -150,13 +151,22 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	});
 	// warren-cb46: gate tracker/mulch prompt fragments on the project's real
 	// capabilities before anything freezes the agent (prompt-capabilities.ts).
+	// warren-a112: the wall-clock cap folds the same way (run-timeout.ts).
+	const durationOverride = resolveDurationOverride({
+		overrideMinutes: input.maxDurationMinutesOverride,
+		frontmatter: baseAgent.frontmatter,
+		projectDefaultMinutes: projectDefaults?.maxDurationMinutes,
+	});
 	const agent = gateAgentPrompts(
-		withMaxCostUsdOverride(
-			withProviderOverrides(baseAgent, {
-				...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
-				...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
-			}),
-			capOverride,
+		withMaxDurationMinutesOverride(
+			withMaxCostUsdOverride(
+				withProviderOverrides(baseAgent, {
+					...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
+					...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
+				}),
+				capOverride,
+			),
+			durationOverride,
 		),
 		projectAfterRefresh,
 		input.issueTracker,

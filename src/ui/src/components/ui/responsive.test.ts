@@ -48,8 +48,8 @@ describe("layout tokens", () => {
 
 	test("form controls meet the 44px touch target and 16px font floor", () => {
 		expect(responsiveFormControl).toContain("h-11");
-		expect(responsiveFormControl).toContain("text-base");
-		expect(responsiveFormControl).toContain("sm:h-9");
+		expect(responsiveFormControl).toContain("text-input");
+		expect(responsiveFormControl).toContain("sm:h-8");
 		expect(responsiveFormControl).toContain("sm:text-sm");
 	});
 

@@ -47,6 +47,12 @@ A cost cap can come from three levels, in strongest-first order:
 
 Warren enforces the resolved cap during the run. A malformed agent cap fails open rather than overriding a valid project default silently.
 
+## Run duration cap
+
+A wall-clock cap in whole minutes uses the same three levels: the `maxDurationMinutes` dispatch field (`warren run --max-duration-minutes`), the agent's `frontmatter.maxDurationMinutes`, and the project `maxDurationMinutes` default in `.warren/config.yaml`.
+
+The run watchdog enforces the cap on each tick. When a running run passes `started_at` plus the cap, the watchdog emits a `duration.exceeded` event, cancels the workload, and reaps the run `failed` with `failureReason: timed_out`. The deadline comes from persisted columns, so it survives a restart. `WARREN_WATCHDOG_DISABLED=1` also turns off this cap.
+
 ## Run events
 
 `GET /runs/:id/events` returns the persisted NDJSON stream. A request follows a non-terminal run by default. Use `?follow=0` for replay, `?since=<seq>` for cursor paging, or `?limit=N` for a bounded read.

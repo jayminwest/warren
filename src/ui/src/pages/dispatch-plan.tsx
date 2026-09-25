@@ -1,90 +1,128 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { WalkForm } from "./dispatch-plan/walk-form.tsx";
-import { WalkManifest } from "./dispatch-plan/walk-manifest.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
+import { formatError } from "@/lib/format-error.ts";
+import { cn } from "@/lib/utils.ts";
+import { WALK_FORM_ID, WalkForm } from "./dispatch-plan/walk-form.tsx";
 import { useWalkState } from "./dispatch-plan/walk-state.ts";
+import { WalkSummary } from "./dispatch-plan/walk-summary.tsx";
 
 /**
- * Dispatch plan — the Direction C walk-definition page
- * (warren-02bb / pl-7e38 step 7), replacing the legacy new-plan-run
- * form. Left rail: target, agent runtime, children (plan source or
- * explicit ordered issue list), per-child guardrails, prompt template.
- * Right rail: the resolved walk manifest and admission policy, derived
- * from the same draft + real API data. Submit path is `POST
- * /plan-runs`, unchanged.
+ * Dispatch plan — walk a plan's steps one run at a time (warren-02bb;
+ * restyled in warren-9474). Left: target, steps (a seeds plan or an
+ * explicit ordered issue list), agent, per-step limits, prompt template.
+ * Right: "What will happen", derived from the same draft plus real API
+ * data, carrying the submit actions. Submit path is `POST /plan-runs`,
+ * unchanged.
  *
  * Spectator safety lives at the route (`OperatorRoute` in app.tsx) —
  * this page is operator-only by construction because dispatch is a
  * mutation.
  */
 
-export function DispatchPlanPage() {
-	const s = useWalkState();
+function NoTrackerAlert({ projectId }: { projectId: string }) {
 	const qc = useQueryClient();
 	const refreshProject = useMutation({
 		mutationFn: (id: string) => projectsApi.refresh(id),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
 	});
+	return (
+		<Alert variant="warning" title="This project has no issue tracker" className="max-w-3xl">
+			<p>
+				Plan runs walk a seeds plan, so the project needs a{" "}
+				<code className="font-mono">.seeds/</code> directory at its root. Add one, then refresh the
+				project.
+			</p>
+			{/* `POST /projects/:id/refresh` is `admin`, a strictly narrower
+			    grant than the `dispatch` this page is route-guarded on
+			    (warren-f53e). */}
+			<OperatorOnly capability="admin">
+				<div className="mt-2.5 flex flex-wrap items-center gap-3">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => refreshProject.mutate(projectId)}
+						disabled={refreshProject.isPending}
+					>
+						<RefreshCw className={cn(refreshProject.isPending && "animate-spin")} />
+						Refresh project
+					</Button>
+					{refreshProject.isError ? (
+						<span className="text-xs text-(--color-danger)">
+							Refresh failed: {formatError(refreshProject.error)}
+						</span>
+					) : null}
+				</div>
+			</OperatorOnly>
+		</Alert>
+	);
+}
 
+export function DispatchPlanPage() {
+	const s = useWalkState();
 	const hasSeeds = s.selectedProject?.hasSeeds ?? false;
 
+	const actions = (
+		<>
+			{s.submitError ? (
+				<Alert variant="danger" title="Dispatch failed">
+					{s.submitError}
+				</Alert>
+			) : null}
+			<Button
+				type="submit"
+				form={WALK_FORM_ID}
+				size="lg"
+				className="h-11 w-full sm:h-10"
+				disabled={!s.valid || s.pending}
+			>
+				{s.pending ? "Dispatching…" : "Start plan run"}
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				className="h-11 w-full sm:h-8"
+				onClick={s.cancel}
+				disabled={s.pending}
+			>
+				Cancel
+			</Button>
+		</>
+	);
+
 	return (
-		<div className="flex min-h-full flex-col gap-1.5 px-3.5 pt-5 pb-12 md:px-6">
-			<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">PLAN RUNS / NEW</p>
-			<div className="flex flex-col gap-[5px] pb-[20px]">
-				<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
-					Dispatch plan
-				</h1>
-				<p className="max-w-prose text-[12px] leading-4 text-(--color-text-2)">
-					Dispatch each child issue of a plan as its own run, in order.
-				</p>
-			</div>
+		<div className="flex min-h-full flex-col gap-6 px-3.5 pt-5 pb-12 md:px-6">
+			<PageHeader
+				title="Dispatch a plan"
+				description="Warren works the plan's issues in order, one run each, and waits for each pull request to merge before starting the next."
+			/>
 
 			{s.noProjects ? (
-				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
-					No projects added. Visit Projects to clone one from GitHub.
-				</p>
+				<Alert variant="warning" title="No projects yet" className="max-w-3xl">
+					Plan runs need a project with an issue tracker.{" "}
+					<Link to="/projects" className="font-medium underline underline-offset-2">
+						Add one on Projects
+					</Link>
+					.
+				</Alert>
 			) : null}
 			{s.noAgents && hasSeeds ? (
-				<p className="max-w-[760px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
-					No agents registered. Visit Agents and click Refresh registry.
-				</p>
+				<Alert variant="warning" title="No agents available" className="max-w-3xl">
+					Warren found no agents to dispatch.{" "}
+					<Link to="/agents" className="font-medium underline underline-offset-2">
+						Check Agents
+					</Link>
+					.
+				</Alert>
 			) : null}
-			{s.draft.project.length > 0 && !hasSeeds ? (
-				<div className="flex max-w-[760px] flex-col gap-3 rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) p-3 text-[11px] leading-4 text-(--color-danger)">
-					<p>
-						Plan runs require <code className="font-mono">.seeds/</code>. The selected project has
-						no <code className="font-mono">.seeds/</code> directory at the clone root. Add one and
-						refresh the project to enable plan-run dispatch.
-					</p>
-					<div className="flex items-center gap-3">
-						{/* `POST /projects/:id/refresh` is `admin`, a strictly
-						    narrower grant than the `dispatch` this page is
-						    route-guarded on (warren-f53e). */}
-						<OperatorOnly capability="admin">
-							<button
-								type="button"
-								onClick={() => refreshProject.mutate(s.draft.project)}
-								disabled={refreshProject.isPending}
-								className="flex h-[31px] items-center gap-2 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50"
-							>
-								<RefreshCw
-									className={`h-3.5 w-3.5 ${refreshProject.isPending ? "animate-spin" : ""}`}
-								/>
-								Refresh project
-							</button>
-						</OperatorOnly>
-						{refreshProject.isError ? (
-							<span className="text-[11px]">
-								{refreshProject.error instanceof Error
-									? refreshProject.error.message
-									: String(refreshProject.error)}
-							</span>
-						) : null}
-					</div>
-				</div>
+			{s.draft.project.length > 0 && s.selectedProject !== undefined && !hasSeeds ? (
+				<NoTrackerAlert projectId={s.draft.project} />
 			) : null}
 
 			<div className="flex flex-col items-start gap-4 lg:flex-row">
@@ -92,6 +130,9 @@ export function DispatchPlanPage() {
 					draft={s.draft}
 					agents={s.agentRows}
 					projects={s.projectRows}
+					projectsLoading={s.projectsLoading}
+					agentsLoading={s.agentsLoading}
+					plansLoading={s.plansLoading}
 					selectedProject={s.selectedProject}
 					hasSeeds={hasSeeds}
 					agentDefaultFrom={s.agentDefaultFrom}
@@ -102,9 +143,7 @@ export function DispatchPlanPage() {
 					openChildCount={s.openChildCount}
 					issueStatuses={s.issueStatuses}
 					costCapError={s.costCapError}
-					submitError={s.submitError}
-					pending={s.pending}
-					canSubmit={s.valid}
+					timeLimitError={s.timeLimitError}
 					onProject={s.setProject}
 					onRef={s.setRef}
 					onPlanId={s.setPlanId}
@@ -116,10 +155,10 @@ export function DispatchPlanPage() {
 					onModel={s.setModel}
 					onPrompt={s.setPrompt}
 					onCostCap={s.setCostCap}
-					onCancel={s.cancel}
+					onTimeLimit={s.setTimeLimit}
 					onSubmit={s.submit}
 				/>
-				<WalkManifest
+				<WalkSummary
 					input={{
 						project: s.selectedProject,
 						ref: s.draft.ref,
@@ -127,6 +166,7 @@ export function DispatchPlanPage() {
 						provider: s.draft.providerOverride.trim(),
 						model: s.draft.modelOverride.trim(),
 						costCap: s.draft.costCap,
+						timeLimit: s.draft.timeLimit,
 						planId: s.draft.planId,
 						issuesText: s.draft.issuesText,
 						sourceMode: s.draft.sourceMode,
@@ -134,7 +174,9 @@ export function DispatchPlanPage() {
 					}}
 					project={s.selectedProject}
 					facts={s.facts}
+					openChildCount={s.openChildCount}
 					valid={s.valid}
+					actions={actions}
 				/>
 			</div>
 		</div>

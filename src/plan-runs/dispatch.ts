@@ -22,11 +22,12 @@
  */
 
 import type { Repos } from "../db/repos/index.ts";
+import type { PlanRunRow } from "../db/schema.ts";
 import type { Forge } from "../forge/contract.ts";
 import { mintGitCredential } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
-import { spawnRun } from "../runs/index.ts";
+import { type SpawnRunInput, spawnRun } from "../runs/index.ts";
 import type { BridgeRegistry } from "../runs/stream/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
@@ -62,6 +63,22 @@ export interface CreatePlanRunSpawnInput {
 	readonly spawnRunFn?: typeof spawnRun;
 }
 
+/**
+ * The plan-run's per-child caps on the override tier: the spend cap
+ * (warren-a63d) and the wall-clock cap (warren-a112). Split out to keep the
+ * spawn closure under the complexity ceiling.
+ */
+function planRunCapOverrides(
+	planRun: Pick<PlanRunRow, "maxCostUsd" | "maxDurationMinutes">,
+): Pick<SpawnRunInput, "maxCostUsdOverride" | "maxDurationMinutesOverride"> {
+	return {
+		...(planRun.maxCostUsd !== null ? { maxCostUsdOverride: planRun.maxCostUsd } : {}),
+		...(planRun.maxDurationMinutes !== null
+			? { maxDurationMinutesOverride: planRun.maxDurationMinutes }
+			: {}),
+	};
+}
+
 export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorSpawnFn {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
 	return async ({ planRun, child, prompt }) => {
@@ -84,7 +101,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 			...(planRun.modelOverride !== null ? { modelOverride: planRun.modelOverride } : {}),
 			// warren-a63d: the plan-run's spend cap applies to EACH child dispatch
 			// on the override tier, same slot a POST /runs body cap rides.
-			...(planRun.maxCostUsd !== null ? { maxCostUsdOverride: planRun.maxCostUsd } : {}),
+			...planRunCapOverrides(planRun),
 			ref,
 			metadata: {
 				planRunId: planRun.id,

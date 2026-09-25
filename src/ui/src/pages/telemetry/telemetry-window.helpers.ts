@@ -22,3 +22,20 @@ export function telemetryQueryKey(
 ] {
 	return ["analytics", kind, { projectId, from, to }];
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The window a "N days" selection covers (warren-e9cd): today plus the
+ * N-1 calendar days before it, in UTC — the same days the run-outcomes
+ * chart draws one column for. `from` is the UTC midnight that opens the
+ * first day, `to` is now.
+ */
+export function telemetryWindowBounds(days: number, now: number): { from: string; to: string } {
+	const today = new Date(now);
+	const startOfToday = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+	return {
+		from: new Date(startOfToday - (days - 1) * DAY_MS).toISOString(),
+		to: new Date(now).toISOString(),
+	};
+}

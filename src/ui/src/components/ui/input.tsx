@@ -1,6 +1,21 @@
 import * as React from "react";
 import { cn } from "@/lib/utils.ts";
 
+/**
+ * Form control surface (warren-9474), shared by Input, Select and
+ * Textarea: sunken on the page background with a strong hairline, a
+ * primary focus ring, and the 44px/16px phone treatment so iOS never
+ * zooms on focus.
+ */
+export const controlSurface = cn(
+	"w-full min-w-0 rounded-sm border border-(--color-border-strong) bg-(--color-bg) px-2.5 text-(--color-text)",
+	"placeholder:text-(--color-text-3) transition-colors hover:border-(--color-text-3)",
+	"focus-visible:border-(--color-primary) focus-visible:ring-2 focus-visible:ring-(--color-primary)/25 focus-visible:outline-none",
+	"disabled:cursor-not-allowed disabled:opacity-50",
+);
+
+export const controlHeight = "h-11 text-input sm:h-8 sm:text-sm";
+
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -8,13 +23,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 		<input
 			ref={ref}
 			type={type}
-			className={cn(
-				"flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs",
-				"placeholder:text-(--color-muted-foreground)",
-				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)",
-				"disabled:cursor-not-allowed disabled:opacity-50",
-				className,
-			)}
+			className={cn(controlSurface, controlHeight, className)}
 			{...props}
 		/>
 	),

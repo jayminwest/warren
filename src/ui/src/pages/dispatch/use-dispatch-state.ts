@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { agentsApi, instanceApi, projectsApi, runsApi } from "@/api/client.ts";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
 import type { AgentRow, CreateRunInput, ProjectRow } from "@/api/types.ts";
+import { formatError } from "@/lib/format-error.ts";
 import {
 	buildCreateRunInput,
 	type DispatchDraft,
@@ -12,6 +13,9 @@ import {
 	initialDraft,
 	initialTouched,
 	parseCostCap,
+	parseErrorOf,
+	parseTimeLimit,
+	parseValueOf,
 	readDispatchRouteState,
 	resolveDefaultKind,
 } from "./dispatch-draft.ts";
@@ -36,9 +40,12 @@ export interface useDispatchStateResult {
 	readonly providerDefaultKind: "project" | "agent" | null;
 	readonly modelDefaultKind: "project" | "agent" | null;
 	readonly costCapError: string | null;
+	readonly timeLimitError: string | null;
 	readonly valid: boolean;
 	readonly noAgents: boolean;
 	readonly noProjects: boolean;
+	readonly projectsLoading: boolean;
+	readonly agentsLoading: boolean;
 	readonly pending: boolean;
 	readonly submitError: string | null;
 	readonly setAgent: (value: string) => void;
@@ -49,6 +56,7 @@ export interface useDispatchStateResult {
 	readonly setProvider: (value: string) => void;
 	readonly setModel: (value: string) => void;
 	readonly setCostCap: (value: string) => void;
+	readonly setTimeLimit: (value: string) => void;
 	readonly cancel: () => void;
 	readonly submit: () => void;
 }
@@ -117,8 +125,9 @@ export function useDispatchState(): useDispatchStateResult {
 	);
 
 	const costCapResult = parseCostCap(draft.costCap);
-	const costCapError =
-		costCapResult !== null && "error" in costCapResult ? costCapResult.error : null;
+	const costCapError = parseErrorOf(costCapResult);
+	const timeLimitResult = parseTimeLimit(draft.timeLimit);
+	const timeLimitError = parseErrorOf(timeLimitResult);
 
 	const spawn = useMutation({
 		mutationFn: (input: CreateRunInput) => runsApi.create(input),
@@ -134,14 +143,20 @@ export function useDispatchState(): useDispatchStateResult {
 			draft.agent.length === 0 ||
 			draft.project.length === 0 ||
 			draft.prompt.trim().length === 0 ||
-			costCapError !== null
+			costCapError !== null ||
+			timeLimitError !== null
 		) {
 			return;
 		}
-		const cost =
-			costCapResult !== null && "value" in costCapResult ? costCapResult.value : undefined;
-		spawn.mutate(buildCreateRunInput({ draft, routeState: initialState, maxCostUsd: cost }));
-	}, [spawn, draft, costCapError, costCapResult, initialState]);
+		spawn.mutate(
+			buildCreateRunInput({
+				draft,
+				routeState: initialState,
+				maxCostUsd: parseValueOf(costCapResult),
+				maxDurationMinutes: parseValueOf(timeLimitResult),
+			}),
+		);
+	}, [spawn, draft, costCapError, costCapResult, timeLimitError, timeLimitResult, initialState]);
 
 	const agentDefaultFrom =
 		defaults?.defaultRole !== undefined && defaults.defaultRole === draft.agent
@@ -171,11 +186,14 @@ export function useDispatchState(): useDispatchStateResult {
 			selectedAgent?.model,
 		),
 		costCapError,
+		timeLimitError,
 		valid: draft.agent.length > 0 && draft.project.length > 0 && draft.prompt.trim().length > 0,
 		noAgents: !agents.isLoading && agentRows.length === 0,
 		noProjects: !projects.isLoading && projectRows.length === 0,
+		projectsLoading: projects.isLoading,
+		agentsLoading: agents.isLoading,
 		pending: spawn.isPending,
-		submitError: spawn.isError ? String(spawn.error) : null,
+		submitError: spawn.isError ? formatError(spawn.error) : null,
 		setAgent: (value) => setTouchedValue("agent", value),
 		setProject: (value) => setDraftValue("project", value),
 		setRef: (value) => setDraftValue("ref", value),
@@ -184,6 +202,7 @@ export function useDispatchState(): useDispatchStateResult {
 		setProvider: (value) => setTouchedValue("providerOverride", value),
 		setModel: (value) => setTouchedValue("modelOverride", value),
 		setCostCap: (value) => setTouchedValue("costCap", value),
+		setTimeLimit: (value) => setTouchedValue("timeLimit", value),
 		cancel: () => navigate("/runs"),
 		submit,
 	};

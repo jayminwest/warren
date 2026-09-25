@@ -1,103 +1,51 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent } from "react";
 import type { AgentRow, ProjectRow } from "@/api/types.ts";
-import {
-	responsiveFooterActions,
-	responsiveFooterButton,
-	responsiveFormControl,
-} from "@/components/ui/responsive.ts";
-import { cn } from "@/lib/utils.ts";
+import { Input } from "@/components/ui/input.tsx";
+import { Select } from "@/components/ui/select.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { Field, FieldRow, FormSection, invalidClass } from "./field.tsx";
+import { repositoryLabel } from "./manifest-view.ts";
 
 /**
- * Left rail of the Direction C Dispatch page (warren-bbe8): the workload
- * definition form, translated from `docs/ui-revamp/screens/dispatch.jsx`.
- * Token variables only — dark and light themes both render off
- * `src/ui/src/tokens.css`.
- *
- * Mobile arm (pl-4ab6 / warren-5cf7): below md the single form card splits
- * into three `--color-thead`-headed cards (Target / Agent runtime incl.
- * intent / Guardrails) per the mock mobile/dispatch artboard; desktop is
- * unchanged.
+ * The Dispatch page's form (warren-bbe8, restyled in warren-9474): one Card
+ * per concern — where the run works, which agent, the task, and limits.
+ * The submit actions live in the summary rail and reach this form through
+ * the `form` attribute, so they sit beside what they will dispatch.
  */
 
-const controlClass = cn(
-	responsiveFormControl,
-	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 leading-[17px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)",
-	"sm:h-8 sm:text-[11px] sm:leading-[14px]",
-);
+export const DISPATCH_FORM_ID = "dispatch-form";
 
-const labelClass = "text-[10px] font-medium leading-3 text-(--color-text-2)";
-const hintClass = "font-mono text-[9px] leading-3 text-(--color-text-3)";
-
-function Section({
-	title,
-	description,
-	children,
-	divider = "both",
-}: {
-	title: string;
-	description?: string;
-	children: ReactNode;
-	/** Where the section's bottom hairline renders: both arms, md+ only, or never. */
-	divider?: "both" | "md" | "none";
-}) {
-	return (
-		<section
-			className={cn(
-				"flex flex-col",
-				divider === "both" && "border-b border-(--color-border)",
-				divider !== "none" && "md:border-b md:border-(--color-border)",
-			)}
-		>
-			{/* Desktop header — below md the card's --color-thead bar replaces it. */}
-			<div className="hidden md:flex md:flex-col md:gap-[3px] md:px-[15px] md:pt-[15px] md:pb-[13px]">
-				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">{title}</h2>
-				{description && (
-					<p className="text-[10px] leading-3 text-(--color-text-3)">{description}</p>
-				)}
-			</div>
-			<div className="flex flex-col px-3 py-3 md:px-[15px] md:py-0 md:pb-[15px]">{children}</div>
-		</section>
-	);
+/** Loading placeholder shaped like a single control. */
+export function ControlSkeleton() {
+	return <Skeleton className="h-11 w-full sm:h-8" />;
 }
 
-/**
- * Mobile-only card wrapper (pl-4ab6 / warren-5cf7): below md each form group
- * renders as its own card with a --color-thead title bar (mock
- * mobile/dispatch); at md+ the wrapper collapses via `md:contents` so the
- * single-card desktop layout is untouched.
- */
-function MobileCard({ title, children }: { title: string; children: ReactNode }) {
-	return (
-		<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:contents">
-			<div className="flex items-center border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:hidden">
-				<h2 className="text-[12px] font-semibold leading-[15px] text-(--color-text)">{title}</h2>
-			</div>
-			{children}
-		</div>
-	);
+/** ⌘/Ctrl+Enter in a textarea submits its form. */
+export function submitOnModEnter(e: KeyboardEvent<HTMLTextAreaElement>): void {
+	if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+		e.preventDefault();
+		e.currentTarget.form?.requestSubmit();
+	}
 }
 
-function Field({
-	label,
-	hint,
-	children,
-}: {
-	label: string;
-	hint?: ReactNode;
-	children: ReactNode;
-}) {
-	return (
-		<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
-			<span className={labelClass}>{label}</span>
-			{children}
-			{hint ? <p className={hintClass}>{hint}</p> : null}
-		</div>
-	);
+/** Where a provider/model value came from, in operator words. */
+export function defaultKindHint(kind: "project" | "agent" | null, value: string): string {
+	if (kind === "project") return "Project default";
+	if (kind === "agent") return "Agent default";
+	return value.trim().length > 0 ? "Set for this dispatch" : "Empty uses the agent's default";
+}
+
+/** Project picker label: `owner/repo`, falling back to the raw URL. */
+export function projectLabel(project: ProjectRow): string {
+	return repositoryLabel(project.gitUrl) ?? project.gitUrl;
 }
 
 export interface DispatchFormProps {
 	agents: readonly AgentRow[];
 	projects: readonly ProjectRow[];
+	projectsLoading: boolean;
+	agentsLoading: boolean;
 	agentDefaultFrom: { role: string; sourceFile: string } | null;
 	selectedProject: ProjectRow | undefined;
 	agent: string;
@@ -109,11 +57,11 @@ export interface DispatchFormProps {
 	providerOverride: string;
 	modelOverride: string;
 	costCap: string;
+	timeLimit: string;
 	providerDefaultKind: "project" | "agent" | null;
 	modelDefaultKind: "project" | "agent" | null;
 	costCapError: string | null;
-	submitError: string | null;
-	pending: boolean;
+	timeLimitError: string | null;
 	onAgent: (value: string) => void;
 	onProject: (value: string) => void;
 	onRef: (value: string) => void;
@@ -122,234 +70,220 @@ export interface DispatchFormProps {
 	onProvider: (value: string) => void;
 	onModel: (value: string) => void;
 	onCostCap: (value: string) => void;
-	onCancel: () => void;
-	/** Fires on form submission (Enter key or the Dispatch button). */
+	onTimeLimit: (value: string) => void;
+	/** Fires on form submission (Enter, ⌘Enter, or the Dispatch button). */
 	onSubmit: () => void;
 }
 
-export function DispatchForm(props: DispatchFormProps) {
-	const canSubmit =
-		!props.pending &&
-		props.agent.length > 0 &&
-		props.project.length > 0 &&
-		props.prompt.trim().length > 0 &&
-		props.costCapError === null;
+function TargetSection(props: DispatchFormProps) {
+	const defaultBranch = props.selectedProject?.defaultBranch;
+	return (
+		<FormSection title="Target" description="Where the run works">
+			<Field label="Project" htmlFor="dispatch-project">
+				{props.projectsLoading ? (
+					<ControlSkeleton />
+				) : (
+					<Select
+						id="dispatch-project"
+						wrapperClassName="w-full"
+						value={props.project}
+						onChange={(e) => props.onProject(e.target.value)}
+					>
+						<option value="" disabled>
+							Pick a project…
+						</option>
+						{props.projects.map((p) => (
+							<option key={p.id} value={p.id}>
+								{projectLabel(p)}
+							</option>
+						))}
+					</Select>
+				)}
+			</Field>
+			<FieldRow>
+				<Field
+					label="Git ref"
+					htmlFor="dispatch-ref"
+					optional
+					hint={defaultBranch ? `Empty starts from ${defaultBranch}` : undefined}
+				>
+					<Input
+						id="dispatch-ref"
+						className="font-mono"
+						value={props.gitRef}
+						onChange={(e) => props.onRef(e.target.value)}
+						placeholder={defaultBranch ?? "Default branch"}
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
+				<Field
+					label="Issue"
+					htmlFor="dispatch-issue"
+					optional
+					hint="Links the run to a tracker issue"
+				>
+					<Input
+						id="dispatch-issue"
+						className="font-mono"
+						value={props.seedId}
+						onChange={(e) => props.onSeedId(e.target.value)}
+						placeholder="warren-1a2b"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
+			</FieldRow>
+		</FormSection>
+	);
+}
 
+function AgentSection(props: DispatchFormProps) {
+	const selected = props.agents.find((a) => a.name === props.agent);
+	const agentHint = props.agentDefaultFrom
+		? "The project's default agent"
+		: (selected?.description ?? undefined);
+	return (
+		<FormSection title="Agent" description="Who does the work">
+			<Field label="Agent" htmlFor="dispatch-agent" hint={agentHint}>
+				{props.agentsLoading ? (
+					<ControlSkeleton />
+				) : (
+					<Select
+						id="dispatch-agent"
+						wrapperClassName="w-full"
+						value={props.agent}
+						onChange={(e) => props.onAgent(e.target.value)}
+					>
+						<option value="" disabled>
+							Pick an agent…
+						</option>
+						{props.agents.map((a) => (
+							<option key={a.name} value={a.name}>
+								{a.name}
+							</option>
+						))}
+					</Select>
+				)}
+			</Field>
+			<FieldRow>
+				<Field
+					label="Provider"
+					htmlFor="dispatch-provider"
+					hint={defaultKindHint(props.providerDefaultKind, props.providerOverride)}
+				>
+					<Input
+						id="dispatch-provider"
+						value={props.providerOverride}
+						onChange={(e) => props.onProvider(e.target.value)}
+						placeholder="anthropic"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
+				<Field
+					label="Model"
+					htmlFor="dispatch-model"
+					hint={defaultKindHint(props.modelDefaultKind, props.modelOverride)}
+				>
+					<Input
+						id="dispatch-model"
+						value={props.modelOverride}
+						onChange={(e) => props.onModel(e.target.value)}
+						placeholder="claude-sonnet-4-6"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
+			</FieldRow>
+		</FormSection>
+	);
+}
+
+function TaskSection(props: DispatchFormProps) {
+	const count = props.prompt.length;
+	return (
+		<FormSection title="Task" description="What the agent should do">
+			<Field
+				label="Prompt"
+				htmlFor="dispatch-prompt"
+				hint={`${count.toLocaleString()} ${count === 1 ? "character" : "characters"} · the project's context is added when the run starts`}
+			>
+				<Textarea
+					id="dispatch-prompt"
+					rows={7}
+					className="resize-y"
+					value={props.prompt}
+					onChange={(e) => props.onPrompt(e.target.value)}
+					onKeyDown={submitOnModEnter}
+					placeholder="Describe the change: what to do, how to know it's done, and how to verify it."
+				/>
+			</Field>
+		</FormSection>
+	);
+}
+
+function LimitsSection(props: DispatchFormProps) {
+	return (
+		<FormSection title="Limits" description="Optional guardrails for this run">
+			<FieldRow>
+				<Field
+					label="Spend cap (USD)"
+					htmlFor="dispatch-cost-cap"
+					optional
+					error={props.costCapError}
+					hint="The run stops when its spend crosses this"
+				>
+					<Input
+						id="dispatch-cost-cap"
+						className={invalidClass(props.costCapError)}
+						aria-invalid={props.costCapError !== null}
+						value={props.costCap}
+						onChange={(e) => props.onCostCap(e.target.value)}
+						placeholder="5.00"
+						inputMode="decimal"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
+				<Field
+					label="Time limit (minutes)"
+					htmlFor="dispatch-time-limit"
+					optional
+					error={props.timeLimitError}
+					hint="The run is stopped and marked timed out after this long"
+				>
+					<Input
+						id="dispatch-time-limit"
+						className={invalidClass(props.timeLimitError)}
+						aria-invalid={props.timeLimitError !== null}
+						value={props.timeLimit}
+						onChange={(e) => props.onTimeLimit(e.target.value)}
+						placeholder="60"
+						inputMode="numeric"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
+			</FieldRow>
+		</FormSection>
+	);
+}
+
+export function DispatchForm(props: DispatchFormProps) {
 	return (
 		<form
-			className="flex min-w-0 max-w-[760px] flex-1 flex-col gap-3.5 md:gap-0 md:overflow-clip md:rounded-(--radius-md) md:border md:border-(--color-border) md:bg-(--color-surface)"
+			id={DISPATCH_FORM_ID}
+			className="flex w-full min-w-0 max-w-3xl flex-1 flex-col gap-4"
 			onSubmit={(e) => {
 				e.preventDefault();
-				if (canSubmit) props.onSubmit();
+				props.onSubmit();
 			}}
 		>
-			<MobileCard title="Target">
-				<Section title="Target" description="Where the run works." divider="md">
-					<div className="flex flex-col gap-[5px] pb-[12px]">
-						<Field
-							label="Project"
-							hint={props.project.length > 0 ? `PROJECT ID ${props.project}` : undefined}
-						>
-							<select
-								className={controlClass}
-								value={props.project}
-								onChange={(e) => props.onProject(e.target.value)}
-							>
-								<option value="" disabled>
-									Pick a project…
-								</option>
-								{props.projects.map((p) => (
-									<option key={p.id} value={p.id}>
-										{p.gitUrl} ({p.id}){p.hasSeeds ? "" : " — no .seeds/"}
-									</option>
-								))}
-							</select>
-						</Field>
-					</div>
-					<div className="flex flex-col gap-[12px] md:flex-row md:gap-[12px]">
-						<Field
-							label="Git ref"
-							hint={
-								props.selectedProject ? `DEFAULT ${props.selectedProject.defaultBranch}` : undefined
-							}
-						>
-							<input
-								className={controlClass}
-								value={props.gitRef}
-								onChange={(e) => props.onRef(e.target.value)}
-								placeholder={props.selectedProject?.defaultBranch ?? "default branch"}
-								autoComplete="off"
-								spellCheck={false}
-							/>
-						</Field>
-						<Field label="Tracker item" hint="OPTIONAL · ATTACHED TO RUN RECORD">
-							<input
-								className={controlClass}
-								value={props.seedId}
-								onChange={(e) => props.onSeedId(e.target.value)}
-								placeholder="e.g. warren-b6f2"
-								autoComplete="off"
-								spellCheck={false}
-							/>
-						</Field>
-					</div>
-				</Section>
-			</MobileCard>
-
-			<MobileCard title="Agent runtime">
-				<Section title="Agent runtime" description="Choose the agent and model.">
-					{/*
-					 * Mobile (mock): AGENT|MODEL two-up, PROVIDER full-width. Desktop:
-					 * Agent full-width, then the Provider|Model row. The grid placements
-					 * are inert once the container becomes a wrapping flex row at md.
-					 */}
-					<div className="grid grid-cols-2 gap-x-[10px] gap-y-[12px] md:flex md:flex-row md:flex-wrap md:gap-[12px]">
-						<div className="col-start-1 row-start-1 flex flex-col gap-[5px] md:w-full">
-							<Field
-								label="Agent"
-								hint={
-									props.agentDefaultFrom
-										? `PROJECT DEFAULT · ${props.agentDefaultFrom.sourceFile}`
-										: undefined
-								}
-							>
-								<select
-									className={controlClass}
-									value={props.agent}
-									onChange={(e) => props.onAgent(e.target.value)}
-								>
-									<option value="" disabled>
-										Pick an agent…
-									</option>
-									{props.agents.map((a) => (
-										<option key={a.name} value={a.name}>
-											{a.name}
-											{a.source ? ` · ${a.source}` : ""}
-										</option>
-									))}
-								</select>
-							</Field>
-						</div>
-						<div className="col-span-2 row-start-2 flex flex-col md:order-2 md:flex-1">
-							<Field
-								label="Provider"
-								hint={
-									props.providerDefaultKind === "project"
-										? "PROJECT DEFAULT"
-										: props.providerDefaultKind === "agent"
-											? "AGENT DEFAULT"
-											: "OVERRIDE · FREE TEXT"
-								}
-							>
-								<input
-									className={controlClass}
-									value={props.providerOverride}
-									onChange={(e) => props.onProvider(e.target.value)}
-									placeholder="anthropic, openai, …"
-									autoComplete="off"
-									spellCheck={false}
-								/>
-							</Field>
-						</div>
-						<div className="col-start-2 row-start-1 flex flex-col md:order-3 md:flex-1">
-							<Field
-								label="Model"
-								hint={
-									props.modelDefaultKind === "project"
-										? "PROJECT DEFAULT"
-										: props.modelDefaultKind === "agent"
-											? "AGENT DEFAULT"
-											: "OVERRIDE · FREE TEXT"
-								}
-							>
-								<input
-									className={controlClass}
-									value={props.modelOverride}
-									onChange={(e) => props.onModel(e.target.value)}
-									placeholder="claude-sonnet-4-6, gpt-4o, …"
-									autoComplete="off"
-									spellCheck={false}
-								/>
-							</Field>
-						</div>
-					</div>
-				</Section>
-				<Section title="Intent" divider="md">
-					<div className="flex flex-col gap-[5px]">
-						<span className={labelClass}>Prompt</span>
-						<textarea
-							className={cn(controlClass, "min-h-[104px] resize-y py-2 sm:leading-[17px]")}
-							value={props.prompt}
-							onChange={(e) => props.onPrompt(e.target.value)}
-							placeholder="What should the agent do?"
-						/>
-						<p className={hintClass}>
-							{props.prompt.length} CHARACTERS · PROJECT CONTEXT APPENDED AT DISPATCH
-						</p>
-					</div>
-				</Section>
-			</MobileCard>
-
-			<MobileCard title="Guardrails">
-				<Section title="Guardrails" description="Optional limits for this run." divider="none">
-					<div className="flex gap-[12px]">
-						<Field
-							label="Cost cap (USD)"
-							hint={
-								props.costCapError ?? "ENFORCED FROM LIVE USAGE EVENTS · WEAKEST: PROJECT DEFAULT"
-							}
-						>
-							<input
-								className={`${controlClass} ${props.costCapError ? "border-(--color-danger)" : ""} font-mono`}
-								value={props.costCap}
-								onChange={(e) => props.onCostCap(e.target.value)}
-								placeholder="unset"
-								inputMode="decimal"
-								autoComplete="off"
-								spellCheck={false}
-							/>
-						</Field>
-						<Field label="Timeout" hint="NO PER-RUN TIMEOUT API YET">
-							<select className={`${controlClass} opacity-60`} disabled value="">
-								<option value="">—</option>
-							</select>
-						</Field>
-					</div>
-				</Section>
-			</MobileCard>
-
-			<div className={cn(responsiveFooterActions, "px-0 py-[12px] sm:items-center md:px-[15px]")}>
-				<p className={cn(hintClass, "hidden md:block md:flex-1")}>
-					Dispatch writes the run definition before admission.
-				</p>
-				<button
-					type="button"
-					onClick={props.onCancel}
-					disabled={props.pending}
-					className={cn(
-						responsiveFooterButton,
-						"hidden h-11 items-center justify-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50 sm:h-[31px] sm:justify-start md:flex",
-					)}
-				>
-					Cancel
-				</button>
-				<button
-					type="submit"
-					disabled={!canSubmit}
-					className={cn(
-						responsiveFooterButton,
-						"flex h-11 items-center justify-center rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-primary-ink) disabled:opacity-50 sm:h-[31px] sm:justify-start",
-					)}
-				>
-					{props.pending ? "Dispatching…" : "Dispatch workload"}
-				</button>
-			</div>
-
-			{props.submitError ? (
-				<p className="px-3.5 py-2 font-mono text-[10px] leading-3 text-(--color-danger) md:border-t md:border-(--color-border) md:px-[15px]">
-					{props.submitError}
-				</p>
-			) : null}
+			<TargetSection {...props} />
+			<AgentSection {...props} />
+			<TaskSection {...props} />
+			<LimitsSection {...props} />
 		</form>
 	);
 }

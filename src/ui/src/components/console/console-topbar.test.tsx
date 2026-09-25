@@ -7,12 +7,12 @@ import {
 } from "./console-topbar.helpers.ts";
 
 describe("healthLabel", () => {
-	test("renders HEALTHY when the /healthz probe is ok", () => {
-		expect(healthLabel("ok")).toBe("HEALTHY");
+	test("renders Healthy when the /healthz probe is ok", () => {
+		expect(healthLabel("ok")).toBe("Healthy");
 	});
 
-	test("renders UNREACHABLE when the /healthz probe fails", () => {
-		expect(healthLabel("down")).toBe("UNREACHABLE");
+	test("renders Unreachable when the /healthz probe fails", () => {
+		expect(healthLabel("down")).toBe("Unreachable");
 	});
 
 	test("renders an em dash while the probe is unknown", () => {
@@ -50,20 +50,20 @@ describe("deriveBurnUsdPerHour", () => {
 
 describe("burnValue", () => {
 	test("renders the burn figure with a two-decimal USD rate per hour", () => {
-		expect(burnValue(0.5)).toBe("$0.50 / H");
-		expect(burnValue(1.5)).toBe("$1.50 / H");
+		expect(burnValue(0.5)).toBe("$0.50/h");
+		expect(burnValue(1.5)).toBe("$1.50/h");
 	});
 
 	test("renders the quiet placeholder when the figure is null (spectator/loading)", () => {
-		expect(burnValue(null)).toBe("— / H");
+		expect(burnValue(null)).toBe("—");
 	});
 });
 
 describe("runtimeValue", () => {
-	test("renders the boot-resolved provider upper-cased", () => {
-		expect(runtimeValue("local")).toBe("LOCAL");
-		expect(runtimeValue("docker")).toBe("DOCKER");
-		expect(runtimeValue("k8s")).toBe("K8S");
+	test("renders the boot-resolved provider as a display name", () => {
+		expect(runtimeValue("local")).toBe("Local");
+		expect(runtimeValue("docker")).toBe("Docker");
+		expect(runtimeValue("k8s")).toBe("Kubernetes");
 	});
 
 	test("renders null while the instance facts are loading", () => {

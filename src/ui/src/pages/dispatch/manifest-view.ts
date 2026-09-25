@@ -1,6 +1,6 @@
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
 import type { ProjectRow } from "@/api/types.ts";
-import { parseCostCap } from "./dispatch-draft.ts";
+import { parseCostCap, parseTimeLimit } from "./dispatch-draft.ts";
 
 /**
  * Pure derivations behind the Dispatch page's resolved-manifest rail
@@ -40,6 +40,8 @@ export interface ManifestInput {
 	readonly provider: string;
 	readonly model: string;
 	readonly costCap: string;
+	/** Time limit draft text (warren-a112); absent reads as unset. */
+	readonly timeLimit?: string;
 	readonly runBranchPrefix: string | undefined;
 	readonly runtime: InstanceFactsResponse["runtime"] | undefined;
 }
@@ -62,38 +64,20 @@ export function buildManifestLines(input: ManifestInput): readonly ManifestLine[
 		{ key: "workspace:" },
 		{ indent: true, key: "repository: ", value: repository },
 		{ indent: true, key: "ref: ", value: ref },
-		{ indent: true, key: "branch: ", value: `${input.runBranchPrefix ?? "burrow"}/<new run>` },
+		{ indent: true, key: "branch: ", value: runBranchValue(input.runBranchPrefix) },
 		{ key: "runtime:" },
 		{ indent: true, key: "provider: ", value: input.runtime ?? "—" },
 		{ indent: true, key: "adapter: ", value: input.agent.length > 0 ? input.agent : "—" },
 		{ indent: true, key: "model: ", value: modelValue(input.provider, input.model) },
 		{ key: "limits:" },
 		{ indent: true, key: "costUsd: ", value: costValue(input.costCap) },
+		{ indent: true, key: "durationMinutes: ", value: minutesValue(input.timeLimit ?? "") },
 		{ key: "delivery:" },
 		{ indent: true, key: "pushBranch: ", value: "true" },
 	];
 }
 
-/**
- * The mobile summary projection (pl-4ab6 / warren-5cf7): the dispatch mock's
- * 7 flat lines. The full manifest stays md+; phones render this projection.
- */
-export function buildManifestSummaryLines(input: ManifestInput): readonly ManifestLine[] {
-	return [
-		{ key: "apiVersion: ", value: "warren.run/v1" },
-		{ key: "kind: ", value: "AgentRun" },
-		{ key: "project: ", value: input.project ? input.project.id : "—" },
-		{
-			key: "tracker: ",
-			value: input.seedId.trim().length > 0 ? input.seedId.trim() : "—",
-		},
-		{ key: "branch: ", value: `${input.runBranchPrefix ?? "burrow"}/<new run>` },
-		{ key: "costUsd: ", value: costValue(input.costCap) },
-		{ key: "openPullRequest: ", value: "configured" },
-	];
-}
-
-function modelValue(provider: string, model: string): string {
+export function modelValue(provider: string, model: string): string {
 	if (provider.length > 0 && model.length > 0) return `${provider}/${model}`;
 	if (model.length > 0) return model;
 	if (provider.length > 0) return provider;
@@ -105,55 +89,85 @@ function costValue(costCap: string): string {
 	return parsed !== null && "value" in parsed ? parsed.value.toFixed(2) : "—";
 }
 
-function isolationRow(runtime: InstanceFactsResponse["runtime"] | undefined): AdmissionRow {
+function minutesValue(timeLimit: string): string {
+	const parsed = parseTimeLimit(timeLimit);
+	return parsed !== null && "value" in parsed ? String(parsed.value) : "—";
+}
+
+/** The branch a new run pushes: `<prefix>/<run id>`; warren's default prefix is `warren`. */
+export function runBranchValue(prefix: string | undefined): string {
+	return `${prefix ?? "warren"}/<run id>`;
+}
+
+/** Where the agent's workspace is sandboxed, in operator words. */
+export function isolationLabel(
+	runtime: InstanceFactsResponse["runtime"] | undefined,
+): string | null {
 	switch (runtime) {
 		case "k8s":
-			return { label: "Workspace isolation", value: "POD BOUNDARY", status: "ok" };
+			return "Kubernetes pod";
 		case "docker":
-			return { label: "Workspace isolation", value: "CONTAINER BOUNDARY", status: "ok" };
+			return "Docker container";
 		case "local":
-			return { label: "Workspace isolation", value: "BWRAP PROFILE", status: "ok" };
+			return "local sandbox";
 		default:
-			return { label: "Workspace isolation", value: "—", status: "unknown" };
+			return null;
 	}
 }
 
-/** The admission-policy rows the right rail renders, in display order. */
+/** `"5"` → `"$5.00"`; unset or invalid → null. */
+export function costCapLabel(costCap: string): string | null {
+	const parsed = parseCostCap(costCap);
+	return parsed !== null && "value" in parsed ? `$${parsed.value.toFixed(2)}` : null;
+}
+
+/** `"60"` → `"60 min"`; unset or invalid → null (warren-a112). */
+export function timeLimitLabel(timeLimit: string): string | null {
+	const parsed = parseTimeLimit(timeLimit);
+	return parsed !== null && "value" in parsed ? `${parsed.value} min` : null;
+}
+
+/** Provider/model pair for display; empty → null (the agent's default applies). */
+export function modelLabel(provider: string, model: string): string | null {
+	const value = modelValue(provider, model);
+	return value === "—" ? null : value;
+}
+
+/**
+ * The pre-flight checks the summary rail lists, in display order. Only
+ * facts the UI can read are listed; a check it cannot verify is left out
+ * rather than shown as a permanent unknown.
+ */
 export function buildAdmissionRows(
 	project: ProjectRow | undefined,
 	facts: InstanceFactsResponse | undefined,
 ): readonly AdmissionRow[] {
-	const rows: AdmissionRow[] = [
-		isolationRow(facts?.runtime),
-		{
-			label: "Forge credential",
-			value: "—",
-			status: "unknown",
-			title: "No forge-credential status API yet",
-		},
-		{
-			label: "Git hooks",
-			value: "—",
-			status: "unknown",
-			title: "No per-project hook-status API yet",
-		},
-		{
-			label: "Issue queue",
-			value: project ? (project.hasSeeds ? ".seeds PRESENT" : "NO .seeds") : "—",
-			status: project ? (project.hasSeeds ? "ok" : "absent") : "unknown",
-		},
-	];
+	const rows: AdmissionRow[] = [];
+	const isolation = isolationLabel(facts?.runtime);
+	rows.push({
+		label: "Isolated workspace",
+		value: isolation === null ? "—" : capitalize(isolation),
+		status: isolation === null ? "unknown" : "ok",
+	});
+	rows.push({
+		label: "Issue tracker",
+		value: project ? (project.hasSeeds ? "Seeds" : "None") : "—",
+		status: project ? (project.hasSeeds ? "ok" : "absent") : "unknown",
+	});
 	const caps = facts?.admission;
 	if (caps !== undefined && caps !== null) {
 		rows.push({
-			label: "Admission cap",
+			label: "Concurrency limit",
 			value:
 				caps.maxProjectConcurrency !== null
-					? `PROJECT ≤${caps.maxProjectConcurrency}`
-					: "PROJECT UNCAPPED",
+					? `${caps.maxProjectConcurrency} per project`
+					: "No per-project limit",
 			status: "ok",
-			title: `WARREN_K8S_MAX_QUEUE_DEPTH ${caps.maxQueueDepth} · MAX_PENDING_PODS ${caps.maxPendingPods}`,
 		});
 	}
 	return rows;
+}
+
+function capitalize(text: string): string {
+	return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -149,3 +149,25 @@ export function formatRunElapsed(run: RunRow, now: number): string {
 	if (endMs < startMs) return "—";
 	return formatElapsedMs(endMs - startMs);
 }
+
+const TRIGGER_LABELS: Readonly<Record<string, string>> = {
+	manual: "Dispatched by an operator",
+	"manual-trigger": "Run now",
+	cron: "Scheduled",
+	scheduled: "Scheduled",
+	webhook: "Webhook",
+	comment: "Issue comment",
+	cli: "CLI",
+	"plan-run": "Plan run",
+	auto_plan_run: "Auto plan run",
+	"ci-fixer": "CI fixer",
+	healer: "Healer",
+};
+
+/** Operator wording for a run's `trigger` (warren-7d17); unknown values humanize. */
+export function formatTrigger(trigger: string): string {
+	const known = TRIGGER_LABELS[trigger];
+	if (known !== undefined) return known;
+	const spaced = trigger.replace(/[_-]+/g, " ").trim();
+	return spaced === "" ? trigger : `${spaced.charAt(0).toUpperCase()}${spaced.slice(1)}`;
+}

@@ -1,19 +1,15 @@
 import type { RunRow } from "@/api/types.ts";
+import { Tag } from "@/components/ui/tag.tsx";
 
 /**
- * Cost-basis marker (warren-f3c3 / pl-26f3 step 5). A run whose anthropic
- * credential was `CLAUDE_CODE_OAUTH_TOKEN` (subscription auth) renders its
- * `costUsd` as an API-priced ESTIMATE — this pill is the honesty marker so
- * the number never reads as a bill. Renders nothing for `api` runs.
+ * Cost-basis marker (warren-f3c3, migrated in warren-9474). A run
+ * authenticated with a subscription token reports its cost as an
+ * API-priced estimate; this tag says so, so the number never reads as a
+ * bill. Renders nothing for API-billed runs.
  */
 export function CostBasisNote({ run }: { run: RunRow }) {
 	if (run.costBasis !== "subscription_estimate") return null;
 	return (
-		<span
-			title="Subscription-authenticated run: cost is an API-priced estimate of the same usage, not a bill"
-			className="rounded-(--radius-sm) border border-(--color-border) bg-(--color-surface) px-1 py-px font-mono text-[9px] leading-3 text-(--color-text-3)"
-		>
-			est. (subscription)
-		</span>
+		<Tag title="Subscription run: the cost is an estimate at API prices, not a bill">Estimate</Tag>
 	);
 }

@@ -69,6 +69,24 @@ export function formatEventClock(ts: string): string {
 	return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+/**
+ * Clock for today's events, date + clock for older ones ("Sep 22,
+ * 09:11") — a bare clock on a three-day-old event reads as this morning.
+ */
+export function formatEventWhen(ts: string, now: number = Date.now()): string {
+	const date = new Date(ts);
+	if (Number.isNaN(date.getTime())) return ts;
+	const today = new Date(now);
+	const sameDay =
+		date.getFullYear() === today.getFullYear() &&
+		date.getMonth() === today.getMonth() &&
+		date.getDate() === today.getDate();
+	if (sameDay) return formatEventClock(ts);
+	const pad = (n: number): string => String(n).padStart(2, "0");
+	const day = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+	return `${day}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /** Tailwind text-color class for the kind column, keyed on the event stream. */
 export function streamToneClass(stream: string | null): string {
 	switch (stream) {
@@ -92,10 +110,10 @@ export interface TimeRangePreset {
 }
 
 export const TIME_RANGES: readonly TimeRangePreset[] = [
-	{ id: "15m", label: "15M", windowMs: 15 * 60_000 },
-	{ id: "1h", label: "1H", windowMs: 60 * 60_000 },
-	{ id: "24h", label: "24H", windowMs: 24 * 60 * 60_000 },
-	{ id: "all", label: "ALL", windowMs: null },
+	{ id: "15m", label: "15m", windowMs: 15 * 60_000 },
+	{ id: "1h", label: "1h", windowMs: 60 * 60_000 },
+	{ id: "24h", label: "24h", windowMs: 24 * 60 * 60_000 },
+	{ id: "all", label: "All", windowMs: null },
 ];
 
 /** ISO lower bound for a preset, or undefined when the range is unbounded. */

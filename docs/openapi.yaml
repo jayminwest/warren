@@ -381,7 +381,7 @@ paths:
                   planRuns:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PlanRun'
+                      $ref: '#/components/schemas/PlanRunListRow'
                 required:
                   - planRuns
         default:
@@ -1668,6 +1668,10 @@ components:
           type:
             - number
             - 'null'
+        maxDurationMinutes:
+          type:
+            - integer
+            - 'null'
         dispatcherHandle:
           type: string
         trigger:
@@ -1698,6 +1702,17 @@ components:
         - trigger
         - state
         - createdAt
+    PlanRunListRow:
+      allOf:
+        - $ref: '#/components/schemas/PlanRun'
+        - type: object
+          properties:
+            childStates:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanRunChildState'
+          required:
+            - childStates
     PlanRunChild:
       type: object
       properties:

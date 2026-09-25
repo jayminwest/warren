@@ -112,6 +112,12 @@ export interface SpawnRunInput {
 	 * `.warren/config.yaml` `maxCostUsd` default) still applies.
 	 */
 	readonly maxCostUsdOverride?: number;
+	/**
+	 * Per-dispatch wall-clock cap in minutes (warren-a112), the sibling of
+	 * `maxCostUsdOverride`: folded onto `frontmatter.maxDurationMinutes`
+	 * before the row freezes; the heartbeat watchdog enforces it.
+	 */
+	readonly maxDurationMinutesOverride?: number;
 	readonly now?: () => Date;
 	/**
 	 * Refresh the project's on-disk clone before provisioning burrow.

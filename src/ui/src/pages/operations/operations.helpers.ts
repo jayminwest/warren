@@ -99,15 +99,29 @@ export function activityLine(prompt: string): string {
 }
 
 /**
- * Age label for the mobile workloads footer (warren-10d3,
- * mobile/operations.jsx:284): "2S AGO", "4M AGO", "3H AGO". A negative or
- * non-finite age renders as "JUST NOW" — clocks disagree, never lie.
+ * Compact age for "oldest waiting" and elapsed figures: "12s", "4m",
+ * "3h 20m", "2d 4h". Unknown, negative, or non-finite ages read "just
+ * now" — clocks disagree, never lie.
  */
-export function refreshedAgeLabel(ms: number | null | undefined): string {
-	if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "JUST NOW";
+export function formatAgeMs(ms: number | null | undefined): string {
+	if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 1000) return "just now";
 	const s = Math.floor(ms / 1000);
-	if (s < 60) return `${s}S AGO`;
+	if (s < 60) return `${s}s`;
 	const m = Math.floor(s / 60);
-	if (m < 60) return `${m}M AGO`;
-	return `${Math.floor(m / 60)}H AGO`;
+	if (m < 60) return `${m}m`;
+	const h = Math.floor(m / 60);
+	if (h < 24) return m % 60 === 0 ? `${h}h` : `${h}h ${m % 60}m`;
+	const d = Math.floor(h / 24);
+	return h % 24 === 0 ? `${d}d` : `${d}d ${h % 24}h`;
+}
+
+const WINDOW_LABELS: Readonly<Record<string, string>> = {
+	"24h": "last 24h",
+	"7d": "last 7 days",
+	"30d": "last 30 days",
+};
+
+/** Human span for an ops window id ("7d" → "last 7 days"). */
+export function windowLabel(window: string): string {
+	return WINDOW_LABELS[window] ?? window;
 }

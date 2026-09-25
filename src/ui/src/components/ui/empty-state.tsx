@@ -33,21 +33,23 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
 		<div
 			ref={ref}
 			className={cn(
-				"flex flex-col items-center justify-center text-center gap-2",
-				compact ? "py-6" : "py-12",
+				"animate-fade-in flex flex-col items-center justify-center gap-1.5 px-6 text-center",
+				compact ? "py-8" : "py-14",
 				className,
 			)}
 			{...props}
 		>
 			{Icon ? (
-				<Icon aria-hidden="true" className="h-8 w-8 text-(--color-muted-foreground) opacity-70" />
+				<span className="mb-2 inline-flex size-9 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface-raised)">
+					<Icon aria-hidden="true" className="size-4 text-(--color-text-3)" />
+				</span>
 			) : null}
-			<div className="text-sm font-medium text-(--color-fg)">{title}</div>
+			<div className="text-base font-medium text-(--color-text)">{title}</div>
 			{description ? (
-				<div className="text-sm text-(--color-muted-foreground) max-w-prose">{description}</div>
+				<div className="max-w-sm text-sm text-(--color-text-3)">{description}</div>
 			) : null}
 			{children}
-			{action ? <div className="mt-2">{action}</div> : null}
+			{action ? <div className="mt-3">{action}</div> : null}
 		</div>
 	),
 );

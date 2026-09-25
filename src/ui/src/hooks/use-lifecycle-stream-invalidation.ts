@@ -52,6 +52,8 @@ export function useLifecycleStreamInvalidation(): void {
 				debounce = undefined;
 				void queryClient.invalidateQueries({ queryKey: ["runs"] });
 				void queryClient.invalidateQueries({ queryKey: ["plan-runs"] });
+				// The shell's run counts read the overview (warren-b2d6).
+				void queryClient.invalidateQueries({ queryKey: ["ops-overview"] });
 			}, LIFECYCLE_INVALIDATE_DEBOUNCE_MS);
 		};
 

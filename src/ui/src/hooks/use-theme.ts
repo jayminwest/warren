@@ -4,6 +4,7 @@ export type Theme = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 const STORAGE_KEY = "warren.theme";
+const THEME_EVENT = "warren:theme";
 
 function isTheme(value: unknown): value is Theme {
 	return value === "light" || value === "dark" || value === "system";
@@ -25,9 +26,10 @@ function readStoredTheme(): Theme {
 
 function getSystemTheme(): ResolvedTheme {
 	if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-		return "light";
+		return "dark";
 	}
-	return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+	// Dark-first: only an explicit OS light preference resolves to light.
+	return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 function applyTheme(theme: Theme, system: ResolvedTheme): void {
@@ -75,12 +77,12 @@ export function useTheme(): {
 	// to "system" picks up the current OS value without a remount.
 	useEffect(() => {
 		if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-		const mq = window.matchMedia("(prefers-color-scheme: dark)");
+		const mq = window.matchMedia("(prefers-color-scheme: light)");
 		const onChange = (e: MediaQueryListEvent): void => {
-			setSystemTheme(e.matches ? "dark" : "light");
+			setSystemTheme(e.matches ? "light" : "dark");
 		};
 		// Sync once in case it changed before we attached.
-		setSystemTheme(mq.matches ? "dark" : "light");
+		setSystemTheme(mq.matches ? "light" : "dark");
 		mq.addEventListener("change", onChange);
 		return () => mq.removeEventListener("change", onChange);
 	}, []);
@@ -88,6 +90,15 @@ export function useTheme(): {
 	const setTheme = useCallback((next: Theme): void => {
 		persistTheme(next);
 		setThemeState(next);
+		// Several components hold this hook (the sidebar toggle, the global
+		// keys, the palette); tell the others so they never drift apart.
+		window.dispatchEvent(new Event(THEME_EVENT));
+	}, []);
+
+	useEffect(() => {
+		const onChange = (): void => setThemeState(readStoredTheme());
+		window.addEventListener(THEME_EVENT, onChange);
+		return () => window.removeEventListener(THEME_EVENT, onChange);
 	}, []);
 
 	const resolvedTheme: ResolvedTheme = theme === "system" ? systemTheme : theme;

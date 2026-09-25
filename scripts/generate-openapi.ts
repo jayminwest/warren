@@ -126,7 +126,7 @@ const NULLABLE_INTEGER = { type: ["integer", "null"] } as const;
 function envelope(properties: Record<string, JsonSchema>): JsonSchema {
 	return { type: "object", properties, required: Object.keys(properties) };
 }
-
+const planRunListExtra = () => envelope({ childStates: arrayOf(refSchema("PlanRunChildState")) });
 function buildComponentSchemas(): Record<string, JsonSchema> {
 	return {
 		RunState: enumSchema(RUN_STATES),
@@ -244,6 +244,7 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 				providerOverride: NULLABLE_STRING,
 				modelOverride: NULLABLE_STRING,
 				maxCostUsd: NULLABLE_NUMBER,
+				maxDurationMinutes: NULLABLE_INTEGER,
 				dispatcherHandle: STRING,
 				trigger: STRING,
 				state: refSchema("PlanRunState"),
@@ -264,6 +265,7 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 				"createdAt",
 			],
 		},
+		PlanRunListRow: { allOf: [refSchema("PlanRun"), planRunListExtra()] },
 		PlanRunChild: {
 			type: "object",
 			properties: {
@@ -307,7 +309,7 @@ const KNOWN_RESPONSE_BODIES: Record<string, JsonSchema> = {
 	"POST /projects": envelope({ project: refSchema("Project") }),
 	"GET /projects/:id": envelope({ project: refSchema("Project") }),
 	"GET /agents": envelope({ agents: arrayOf(refSchema("Agent")) }),
-	"GET /plan-runs": envelope({ planRuns: arrayOf(refSchema("PlanRun")) }),
+	"GET /plan-runs": envelope({ planRuns: arrayOf(refSchema("PlanRunListRow")) }),
 	"POST /plan-runs": envelope({
 		planRun: refSchema("PlanRun"),
 		children: arrayOf(refSchema("PlanRunChild")),

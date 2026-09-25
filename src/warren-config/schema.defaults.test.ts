@@ -56,6 +56,15 @@ describe("DefaultsConfigSchema", () => {
 		expect(DefaultsConfigSchema.safeParse({ repoContext: "" }).success).toBe(false);
 	});
 
+	test("accepts a whole-minute maxDurationMinutes and rejects anything else (warren-a112)", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ maxDurationMinutes: 90 });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) expect(parsed.data.maxDurationMinutes).toBe(90);
+		for (const bad of [0, -1, 1.5, "90"]) {
+			expect(DefaultsConfigSchema.safeParse({ maxDurationMinutes: bad }).success).toBe(false);
+		}
+	});
+
 	test("rejects a non-positive or string maxCostUsd", () => {
 		for (const bad of [0, -1, "2.5"]) {
 			expect(DefaultsConfigSchema.safeParse({ maxCostUsd: bad }).success).toBe(false);

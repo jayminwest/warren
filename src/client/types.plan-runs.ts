@@ -39,6 +39,8 @@ export interface PlanRunRow {
 	modelOverride: string | null;
 	/** warren-a63d: per-child USD spend cap forwarded to every child dispatch. */
 	maxCostUsd: number | null;
+	/** warren-a112: per-child wall-clock cap (minutes) forwarded to every child dispatch. */
+	maxDurationMinutes: number | null;
 	dispatcherHandle: string;
 	trigger: string;
 	state: PlanRunState;
@@ -77,6 +79,8 @@ export interface CreatePlanRunInput {
 	modelOverride?: string;
 	/** Per-child USD spend cap (warren-a63d); same validation as `POST /runs` maxCostUsd. */
 	maxCostUsd?: number;
+	/** Per-child wall-clock cap in minutes (warren-a112); same validation as `POST /runs`. */
+	maxDurationMinutes?: number;
 	dispatcherHandle?: string;
 }
 
@@ -97,8 +101,17 @@ export interface ListPlanRunsFilter {
 	state?: PlanRunStateFilter;
 }
 
+/**
+ * A `GET /plan-runs` row: the plan-run plus its children's states in seq
+ * order, so a list can draw progress without a detail fetch per row
+ * (warren-b2d6).
+ */
+export interface PlanRunListRow extends PlanRunRow {
+	childStates: PlanRunChildState[];
+}
+
 export interface ListPlanRunsResponse {
-	planRuns: PlanRunRow[];
+	planRuns: PlanRunListRow[];
 }
 
 /** `POST /plan-runs/:id/cancel` response envelope. */

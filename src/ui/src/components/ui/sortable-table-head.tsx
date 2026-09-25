@@ -52,9 +52,9 @@ export function SortableTableHead<K extends string>({
 				type="button"
 				onClick={() => onSort(columnKey)}
 				className={cn(
-					"inline-flex items-center gap-1 transition-colors hover:text-(--color-fg)",
+					"inline-flex items-center gap-1 transition-colors hover:text-(--color-text)",
 					align === "right" && "ml-auto",
-					isActive && "text-(--color-fg)",
+					isActive && "text-(--color-text)",
 				)}
 			>
 				{children}

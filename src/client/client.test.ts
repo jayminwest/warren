@@ -111,6 +111,12 @@ describe("WarrenClient", () => {
 				/maxCostUsd must be a positive finite number/,
 			);
 		}
+		// warren-a112: the wall-clock cap gets the same guard (whole minutes only).
+		for (const bad of [Number.NaN, 0, -1, 1.5]) {
+			expect(client.dispatch({ ...base, maxDurationMinutes: bad })).rejects.toThrow(
+				/maxDurationMinutes must be a positive integer/,
+			);
+		}
 		expect(fetched).toBe(false);
 	});
 

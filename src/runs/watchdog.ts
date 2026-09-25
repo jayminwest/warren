@@ -53,6 +53,7 @@ import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
+import { DURATION_EXCEEDED_KIND, evaluateDurationCap } from "./run-timeout.ts";
 import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
 import { hasCancelIntent, maybeReconcileTerminal } from "./watchdog-reconcile.ts";
 
@@ -149,6 +150,12 @@ export interface WatchdogTickDeps {
 export interface WatchdogTickResult {
 	readonly timedOut: readonly { readonly runId: string; readonly idleMs: number }[];
 	/**
+	 * Runs force-failed this tick for outliving their per-run wall-clock cap
+	 * (warren-a112, `maxDurationMinutes`). Same force-fail path as a
+	 * heartbeat timeout; a distinct `duration.exceeded` event says why.
+	 */
+	readonly durationExceeded: readonly { readonly runId: string; readonly elapsedMs: number }[];
+	/**
 	 * Runs the terminal-reconcile net force-finalized this tick (warren-c433):
 	 * their pod was terminal-or-gone but the row stayed non-terminal past the
 	 * grace. Carries the reconciled outcome so callers can distinguish a reclaimed
@@ -186,6 +193,7 @@ export async function computeIdleMs(repos: Repos, run: RunRow, now: Date): Promi
 export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTickResult> {
 	const now = deps.now ?? (() => new Date());
 	const timedOut: { runId: string; idleMs: number }[] = [];
+	const durationExceeded: { runId: string; elapsedMs: number }[] = [];
 	const reconciled: { runId: string; idleMs: number; outcome: RunTerminalState }[] = [];
 	const errors: { runId: string; reason: string }[] = [];
 	const graceMs = deps.terminalReconcileGraceMs ?? 0;
@@ -196,6 +204,7 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 	} catch (err) {
 		return {
 			timedOut,
+			durationExceeded,
 			reconciled,
 			errors: [{ runId: "<listByState:running>", reason: formatError(err) }],
 		};
@@ -205,7 +214,9 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 		try {
 			const action = await evaluateRun(deps, run, now(), graceMs);
 			if (action.kind === "timedOut") timedOut.push({ runId: run.id, idleMs: action.idleMs });
-			else if (action.kind === "reconciled") {
+			else if (action.kind === "durationExceeded") {
+				durationExceeded.push({ runId: run.id, elapsedMs: action.elapsedMs });
+			} else if (action.kind === "reconciled") {
 				reconciled.push({ runId: run.id, idleMs: action.idleMs, outcome: action.outcome });
 			}
 		} catch (err) {
@@ -217,12 +228,13 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 		}
 	}
 
-	return { timedOut, reconciled, errors };
+	return { timedOut, durationExceeded, reconciled, errors };
 }
 
 /** What the tick did (or didn't do) for one `running` run. */
 type TickAction =
 	| { kind: "timedOut"; idleMs: number }
+	| { kind: "durationExceeded"; elapsedMs: number }
 	| { kind: "reconciled"; idleMs: number; outcome: RunTerminalState }
 	| { kind: "none" };
 
@@ -237,10 +249,29 @@ async function evaluateRun(
 	now: Date,
 	graceMs: number,
 ): Promise<TickAction> {
+	// warren-a112: the per-run wall-clock cap wins over the heartbeat check —
+	// a busy run past its deadline is cut even while it still emits events.
+	const overrun = evaluateDurationCap(run, now);
+	if (overrun !== null) {
+		await forceFail(deps, run, now, {
+			kind: DURATION_EXCEEDED_KIND,
+			payload: { ...overrun, sandboxRunId: run.sandboxRunId },
+			cancelReason: `run exceeded its ${overrun.maxDurationMinutes}-minute wall-clock cap`,
+		});
+		return { kind: "durationExceeded", elapsedMs: overrun.elapsedMs };
+	}
 	const idleMs = await computeIdleMs(deps.repos, run, now);
 	if (idleMs === null) return { kind: "none" };
 	if (idleMs >= deps.heartbeatTimeoutMs) {
-		await forceFail(deps, run, idleMs, now);
+		await forceFail(deps, run, now, {
+			kind: WATCHDOG_TIMED_OUT_KIND,
+			payload: {
+				idleMs,
+				heartbeatTimeoutMs: deps.heartbeatTimeoutMs,
+				sandboxRunId: run.sandboxRunId,
+			},
+			cancelReason: "watchdog heartbeat timeout",
+		});
 		return { kind: "timedOut", idleMs };
 	}
 	// warren-c433: terminal-reconcile safety net. Below the heartbeat budget but idle
@@ -269,11 +300,22 @@ async function evaluateRun(
 	return { kind: "none" };
 }
 
+/**
+ * Why a run is being force-failed: the system event to record and the
+ * reason handed to `provider.cancel`. Both causes reap `failed` with
+ * `failureReason: "timed_out"`; the event kind tells them apart.
+ */
+interface ForceFailCause {
+	readonly kind: typeof WATCHDOG_TIMED_OUT_KIND | typeof DURATION_EXCEEDED_KIND;
+	readonly payload: Record<string, unknown>;
+	readonly cancelReason: string;
+}
+
 async function forceFail(
 	deps: WatchdogTickDeps,
 	run: RunRow,
-	idleMs: number,
 	now: Date,
+	cause: ForceFailCause,
 ): Promise<void> {
 	// warren-9f06: bind run_id (+ sandbox_run_id when present) once per
 	// force-fail so the timeout/cancel lines share correlation fields.
@@ -281,8 +323,8 @@ async function forceFail(
 		run_id: run.id,
 		...(run.sandboxRunId !== null ? { sandbox_run_id: run.sandboxRunId } : {}),
 	});
-	await emitTimedOutEvent(deps, run, idleMs, now);
-	await cancelBurrowRun(deps, run, log);
+	await emitForceFailEvent(deps, run, now, cause);
+	await cancelBurrowRun(deps, run, log, cause.cancelReason);
 
 	await deps.reap({
 		runId: run.id,
@@ -299,14 +341,7 @@ async function forceFail(
 		...(deps.autoOpenPr !== undefined ? { autoOpenPr: deps.autoOpenPr } : {}),
 	});
 
-	log.info(
-		{
-			event: WATCHDOG_TIMED_OUT_KIND,
-			idleMs,
-			heartbeatTimeoutMs: deps.heartbeatTimeoutMs,
-		},
-		"watchdog force-failed hung run",
-	);
+	log.info({ event: cause.kind, ...cause.payload }, "watchdog force-failed run");
 }
 
 /**
@@ -320,6 +355,7 @@ async function cancelBurrowRun(
 	deps: WatchdogTickDeps,
 	run: RunRow,
 	log: ReturnType<typeof bindBridgeLogger>,
+	reason: string,
 ): Promise<void> {
 	if (run.sandboxId === null || run.sandboxRunId === null) return;
 	const handle: RunHandle = {
@@ -328,7 +364,7 @@ async function cancelBurrowRun(
 		providerRunId: run.sandboxRunId,
 	};
 	try {
-		await deps.runtimeProvider.cancel(handle, "watchdog heartbeat timeout");
+		await deps.runtimeProvider.cancel(handle, reason);
 	} catch (err) {
 		if (err instanceof RuntimeRunNotFoundError) return;
 		log.error(
@@ -338,24 +374,20 @@ async function cancelBurrowRun(
 	}
 }
 
-async function emitTimedOutEvent(
+async function emitForceFailEvent(
 	deps: WatchdogTickDeps,
 	run: RunRow,
-	idleMs: number,
 	now: Date,
+	cause: ForceFailCause,
 ): Promise<void> {
 	const seq = ((await deps.repos.events.maxSeqForRun(run.id)) ?? 0) + 1;
 	const row = await deps.repos.events.append({
 		runId: run.id,
 		sandboxEventSeq: seq,
 		ts: now.toISOString(),
-		kind: WATCHDOG_TIMED_OUT_KIND,
+		kind: cause.kind,
 		stream: "system",
-		payload: {
-			idleMs,
-			heartbeatTimeoutMs: deps.heartbeatTimeoutMs,
-			sandboxRunId: run.sandboxRunId,
-		},
+		payload: cause.payload,
 	});
 	deps.broker?.publish(run.id, row);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	formatEventClock,
+	formatEventWhen,
 	sinceForPreset,
 	streamToneClass,
 	summarizeEventPayload,
@@ -73,5 +74,21 @@ describe("sinceForPreset", () => {
 			expect(since).toBeDefined();
 			expect(Number.isNaN(new Date(since ?? "").getTime())).toBe(false);
 		}
+	});
+});
+
+describe("formatEventWhen", () => {
+	test("shows only the clock for an event from today", () => {
+		const now = new Date(2026, 8, 25, 15, 0, 0).getTime();
+		const ts = new Date(2026, 8, 25, 9, 11, 10).toISOString();
+		expect(formatEventWhen(ts, now)).toBe("09:11:10");
+	});
+	test("adds the date for an older event", () => {
+		const now = new Date(2026, 8, 25, 15, 0, 0).getTime();
+		const ts = new Date(2026, 8, 22, 9, 11, 10).toISOString();
+		expect(formatEventWhen(ts, now)).toBe("Sep 22, 09:11");
+	});
+	test("returns an unparseable timestamp unchanged", () => {
+		expect(formatEventWhen("not-a-date", 0)).toBe("not-a-date");
 	});
 });

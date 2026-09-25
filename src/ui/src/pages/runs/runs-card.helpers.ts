@@ -1,5 +1,4 @@
 import type { RunRow } from "@/api/types.ts";
-import type { InventoryCardTone } from "@/components/ui/inventory-card.tsx";
 // Relative, not `@/` — this module is imported by runs-card.helpers.test.ts,
 // which runs under the repo-root `bun test`, where the `@/` alias does not
 // resolve (see labels.test.ts for the same constraint).
@@ -23,30 +22,21 @@ export const CAP_SUBLINE_RATIO = 0.8;
 export const CAP_WARNING_RATIO = 0.9;
 
 export interface RunStateCell {
-	readonly tone: InventoryCardTone;
+	/** Status key for `stateTone` — a run state, or a PR state once delivered. */
+	readonly state: string;
 	readonly label: string;
 }
 
-/** State cell (tone + short word), per the mock's state column. */
+/**
+ * State cell: a succeeded run's PR facts pick the word (warren-0993) —
+ * "Merged" / "PR open" — otherwise the run state in sentence case.
+ */
 export function stateCellOf(row: RunRow): RunStateCell {
-	switch (row.state) {
-		case "running":
-			return { tone: "info", label: "running" };
-		case "queued":
-			return { tone: "warning", label: "queued" };
-		case "succeeded":
-			// warren-0993: a succeeded run's PR facts pick the short word —
-			// "merged" / "PR open" — otherwise the plain state name. The mock
-			// paints PR-open with the primary accent; the card vocabulary's
-			// closest reachable tone is info.
-			if (row.prMergedAt !== null) return { tone: "success", label: "merged" };
-			if (row.prState === "open") return { tone: "info", label: "PR open" };
-			return { tone: "success", label: "succeeded" };
-		case "failed":
-			return { tone: "danger", label: "failed" };
-		case "cancelled":
-			return { tone: "neutral", label: "cancel" };
+	if (row.state === "succeeded") {
+		if (row.prMergedAt !== null) return { state: "merged", label: "Merged" };
+		if (row.prState === "open") return { state: "pr_open", label: "PR open" };
 	}
+	return { state: row.state, label: row.state.charAt(0).toUpperCase() + row.state.slice(1) };
 }
 
 /** "984" from a PR URL's trailing numeric segment; "" when absent. */

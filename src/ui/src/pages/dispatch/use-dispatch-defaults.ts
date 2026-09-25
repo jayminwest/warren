@@ -32,6 +32,7 @@ export function useDispatchDefaults(input: DispatchDefaultsInput, setDraft: SetD
 	const defaultProvider = defaults?.defaultProvider;
 	const defaultModel = defaults?.defaultModel;
 	const defaultCostUsd = defaults?.maxCostUsd;
+	const defaultMinutes = defaults?.maxDurationMinutes;
 
 	const defaultRoleRegistered =
 		defaultRole !== undefined && agents.some((a) => a.name === defaultRole);
@@ -88,4 +89,14 @@ export function useDispatchDefaults(input: DispatchDefaultsInput, setDraft: SetD
 			return { ...prev, draft: { ...prev.draft, costCap: costCapText } };
 		});
 	}, [costCapText, setDraft]);
+
+	// Time limit (warren-a112): same weakest-source pre-fill as the cost cap.
+	const timeLimitText = defaultMinutes !== undefined ? String(defaultMinutes) : "";
+	useEffect(() => {
+		if (timeLimitText.length === 0) return;
+		setDraft((prev) => {
+			if (prev.touched.timeLimit || prev.draft.timeLimit === timeLimitText) return prev;
+			return { ...prev, draft: { ...prev.draft, timeLimit: timeLimitText } };
+		});
+	}, [timeLimitText, setDraft]);
 }

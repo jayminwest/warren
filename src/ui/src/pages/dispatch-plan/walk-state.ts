@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { agentsApi, instanceApi, planRunsApi, projectsApi } from "@/api/client.ts";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
@@ -10,6 +10,7 @@ import type {
 	ProjectRow,
 	SeedStatusResponse,
 } from "@/api/types.ts";
+import { formatError } from "@/lib/format-error.ts";
 import { resolveDefaultKind } from "../dispatch/dispatch-draft.ts";
 import { useWalkDefaults } from "./use-walk-defaults.ts";
 import {
@@ -20,7 +21,9 @@ import {
 	initialWalkTouched,
 	parseCostCap,
 	parseIssueIds,
+	parseTimeLimit,
 	readWalkRouteState,
+	timeLimitErrorOf,
 	type WalkDraft,
 	type WalkDraftPatch,
 	type WalkRouteState,
@@ -59,6 +62,7 @@ export interface WalkStateResult {
 	readonly modelDefaultKind: "project" | "agent" | null;
 	readonly costCapError: string | null;
 	readonly costCapResult: CostCapResult;
+	readonly timeLimitError: string | null;
 	readonly planOptions: readonly PlanOption[];
 	readonly planSelectorUnavailable: boolean;
 	readonly useManualPlanId: boolean;
@@ -67,6 +71,9 @@ export interface WalkStateResult {
 	readonly valid: boolean;
 	readonly noAgents: boolean;
 	readonly noProjects: boolean;
+	readonly projectsLoading: boolean;
+	readonly agentsLoading: boolean;
+	readonly plansLoading: boolean;
 	readonly pending: boolean;
 	readonly submitError: string | null;
 	readonly setAgent: (value: string) => void;
@@ -79,6 +86,7 @@ export interface WalkStateResult {
 	readonly setProvider: (value: string) => void;
 	readonly setModel: (value: string) => void;
 	readonly setCostCap: (value: string) => void;
+	readonly setTimeLimit: (value: string) => void;
 	readonly setSourceMode: (mode: "plan" | "issues") => void;
 	readonly cancel: () => void;
 	readonly submit: () => void;
@@ -92,12 +100,12 @@ function issueIdsOf(draft: WalkDraft): string[] {
 	return draft.sourceMode === "issues" ? parseIssueIds(draft.issuesText).slice(0, 100) : [];
 }
 
-function costValueOf(result: CostCapResult): number | undefined {
+function parsedValueOf(result: CostCapResult): number | undefined {
 	return result !== null && "value" in result ? result.value : undefined;
 }
 
 function errorTextOf(mutation: { isError: boolean; error: unknown }): string | null {
-	return mutation.isError ? String(mutation.error) : null;
+	return mutation.isError ? formatError(mutation.error) : null;
 }
 
 function toPlanOptions(
@@ -125,13 +133,28 @@ export function isSubmittable(args: {
 	readonly draft: WalkDraft;
 	readonly hasSeeds: boolean;
 	readonly costCapError: string | null;
+	readonly timeLimitError?: string | null;
 }): boolean {
 	const { draft } = args;
 	if (args.costCapError !== null) return false;
+	if (args.timeLimitError !== undefined && args.timeLimitError !== null) return false;
 	if (draft.project.length === 0 || draft.agent.length === 0) return false;
 	if (draft.promptTemplate.trim().length === 0) return false;
 	if (draft.sourceMode === "issues") return parseIssueIds(draft.issuesText).length > 0;
 	return draft.planId.trim().length > 0 && args.hasSeeds;
+}
+
+/**
+ * `value`, once it has held still for `delayMs`. Keeps the per-issue
+ * status lookups from firing on every keystroke of a half-typed id.
+ */
+function useSettledValue(value: string, delayMs: number): string {
+	const [settled, setSettled] = useState(value);
+	useEffect(() => {
+		const timer = setTimeout(() => setSettled(value), delayMs);
+		return () => clearTimeout(timer);
+	}, [value, delayMs]);
+	return settled;
 }
 
 /** Per-issue status rows for the children table (issues mode). */
@@ -144,6 +167,7 @@ function useIssueStatuses(
 			queryKey: ["projects", project, "seed", id],
 			queryFn: ({ signal }: { signal: AbortSignal }) => projectsApi.seedStatus(project, id, signal),
 			retry: false,
+			staleTime: 60_000,
 		})),
 	});
 	return issueIds.map((id, i) => {
@@ -225,7 +249,11 @@ export function useWalkState(): WalkStateResult {
 	const openChildCount =
 		readyPlans.data?.plans.find((p) => p.id === draft.planId)?.openChildCount ?? null;
 
-	const issueStatuses = useIssueStatuses(draft.project, issueIdsOf(draft));
+	const settledIssuesText = useSettledValue(draft.issuesText, 400);
+	const issueStatuses = useIssueStatuses(
+		draft.project,
+		issueIdsOf({ ...draft, issuesText: settledIssuesText }),
+	);
 
 	const dispatch = useMutation({
 		mutationFn: (input: CreatePlanRunInput) => planRunsApi.create(input),
@@ -238,12 +266,20 @@ export function useWalkState(): WalkStateResult {
 
 	const costCapResult = parseCostCap(draft.costCap);
 	const costCapError = costCapErrorOf(draft.costCap);
-	const valid = isSubmittable({ draft, hasSeeds, costCapError });
+	const timeLimitResult = parseTimeLimit(draft.timeLimit);
+	const timeLimitError = timeLimitErrorOf(draft.timeLimit);
+	const valid = isSubmittable({ draft, hasSeeds, costCapError, timeLimitError });
 
 	const submit = useCallback((): void => {
 		if (dispatch.isPending || !valid) return;
-		dispatch.mutate(buildCreatePlanRunInput({ draft, maxCostUsd: costValueOf(costCapResult) }));
-	}, [dispatch, valid, costCapResult, draft]);
+		dispatch.mutate(
+			buildCreatePlanRunInput({
+				draft,
+				maxCostUsd: parsedValueOf(costCapResult),
+				maxDurationMinutes: parsedValueOf(timeLimitResult),
+			}),
+		);
+	}, [dispatch, valid, costCapResult, timeLimitResult, draft]);
 
 	return {
 		initialState,
@@ -270,6 +306,7 @@ export function useWalkState(): WalkStateResult {
 		),
 		costCapError,
 		costCapResult,
+		timeLimitError,
 		planOptions,
 		planSelectorUnavailable,
 		useManualPlanId,
@@ -278,6 +315,9 @@ export function useWalkState(): WalkStateResult {
 		valid,
 		noAgents: !agents.isLoading && agentRows.length === 0,
 		noProjects: !projects.isLoading && projectRows.length === 0,
+		projectsLoading: projects.isLoading,
+		agentsLoading: agents.isLoading,
+		plansLoading: plans.isLoading,
 		pending: dispatch.isPending,
 		submitError: errorTextOf(dispatch),
 		setAgent: (value) => setTouchedValue("agent", value, "agent"),
@@ -290,6 +330,7 @@ export function useWalkState(): WalkStateResult {
 		setProvider: (value) => setTouchedValue("providerOverride", value, "provider"),
 		setModel: (value) => setTouchedValue("modelOverride", value, "model"),
 		setCostCap: (value) => setTouchedValue("costCap", value, "costCap"),
+		setTimeLimit: (value) => setTouchedValue("timeLimit", value, "timeLimit"),
 		setSourceMode: (mode) => setDraftValue("sourceMode", mode),
 		cancel: () => navigate("/plan-runs"),
 		submit,

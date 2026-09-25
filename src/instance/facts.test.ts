@@ -8,7 +8,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { VERSION } from "../index.ts";
-import { buildInstanceFacts, type InstanceFacts, publicInstanceFacts } from "./facts.ts";
+import {
+	buildInstanceFacts,
+	INSTANCE_NAME_MAX_LENGTH,
+	type InstanceFacts,
+	publicInstanceFacts,
+} from "./facts.ts";
 
 const SECRET_ENV = {
 	WARREN_API_TOKEN: "super-secret-token-abcdef",
@@ -32,6 +37,8 @@ describe("buildInstanceFacts", () => {
 		const facts = buildInstanceFacts(baseInput({ WARREN_RUNTIME: undefined }));
 		expect(facts).toEqual({
 			version: VERSION,
+			name: null,
+			publicUrl: null,
 			runtime: "local",
 			authMode: "token",
 			dbBackend: "sqlite",
@@ -93,11 +100,62 @@ describe("buildInstanceFacts", () => {
 	});
 });
 
+describe("instance identity (warren-a112)", () => {
+	test("reads the display name from WARREN_INSTANCE_NAME, trimmed", () => {
+		const facts = buildInstanceFacts(baseInput({ WARREN_INSTANCE_NAME: "  prod-east  " }));
+		expect(facts.name).toBe("prod-east");
+	});
+
+	test("maps a blank name to null and caps an overlong one", () => {
+		expect(buildInstanceFacts(baseInput({ WARREN_INSTANCE_NAME: "   " })).name).toBeNull();
+		const long = "x".repeat(INSTANCE_NAME_MAX_LENGTH + 20);
+		expect(buildInstanceFacts(baseInput({ WARREN_INSTANCE_NAME: long })).name).toHaveLength(
+			INSTANCE_NAME_MAX_LENGTH,
+		);
+	});
+
+	test("reads publicUrl from WARREN_BASE_URL and trims the trailing slash", () => {
+		const facts = buildInstanceFacts(
+			baseInput({ WARREN_BASE_URL: "https://warren.example.com/console/" }),
+		);
+		expect(facts.publicUrl).toBe("https://warren.example.com/console");
+	});
+
+	test("strips userinfo, query, and fragment from publicUrl", () => {
+		const facts = buildInstanceFacts(
+			baseInput({ WARREN_BASE_URL: "https://user:hunter2@warren.example.com/?t=abc#frag" }),
+		);
+		expect(facts.publicUrl).toBe("https://warren.example.com");
+		expect(JSON.stringify(facts).includes("hunter2")).toBe(false);
+	});
+
+	test("rejects a non-http or unparseable publicUrl", () => {
+		expect(buildInstanceFacts(baseInput({ WARREN_BASE_URL: "ftp://x.example" })).publicUrl).toBe(
+			null,
+		);
+		expect(buildInstanceFacts(baseInput({ WARREN_BASE_URL: "not a url" })).publicUrl).toBeNull();
+	});
+});
+
 describe("publicInstanceFacts", () => {
-	test("keeps only the three static facts", () => {
-		const facts: InstanceFacts = buildInstanceFacts(baseInput({ WARREN_RUNTIME: "k8s" }));
+	test("keeps only the static facts plus the identity pair", () => {
+		const facts: InstanceFacts = buildInstanceFacts(
+			baseInput({
+				WARREN_RUNTIME: "k8s",
+				WARREN_INSTANCE_NAME: "demo",
+				WARREN_BASE_URL: "https://demo.example.com",
+			}),
+		);
 		const pub = publicInstanceFacts(facts);
-		expect(Object.keys(pub).sort()).toEqual(["authMode", "runtime", "version"]);
+		expect(Object.keys(pub).sort()).toEqual([
+			"authMode",
+			"name",
+			"publicUrl",
+			"runtime",
+			"version",
+		]);
 		expect(pub.version).toBe(VERSION);
+		expect(pub.name).toBe("demo");
+		expect(pub.publicUrl).toBe("https://demo.example.com");
 	});
 });

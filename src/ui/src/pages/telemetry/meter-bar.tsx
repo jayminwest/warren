@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils.ts";
  * track. The percentage must resolve against the track, not the whole
  * row — otherwise the 100% bar equals the panel width and the label +
  * gaps + value push the document into horizontal scroll.
+ *
+ * Labels are sans; pass `mono` when the label is a machine identifier
+ * (a directory path, a run id). Values use tabular numerals.
  */
 interface MeterBarProps {
 	/** Percentage width (or px fallback) resolved against the track. */
@@ -15,6 +18,7 @@ interface MeterBarProps {
 	readonly label?: string;
 	/** Extra classes for the label span, e.g. a fixed width. */
 	readonly labelClass?: string;
+	readonly mono?: boolean;
 	readonly value?: string;
 	/** Extra classes for the value span. */
 	readonly valueClass?: string;
@@ -26,27 +30,42 @@ export function MeterBar({
 	markClass,
 	label,
 	labelClass,
+	mono = false,
 	value,
 	valueClass,
 	title,
 }: MeterBarProps) {
 	return (
-		<div className="flex w-full min-w-0 items-center gap-2.5">
+		<div className="flex w-full min-w-0 items-center gap-3" title={title}>
 			{label === undefined ? null : (
-				<span className={cn("shrink-0 font-mono text-[11px] leading-[14px]", labelClass)}>
+				<span
+					className={cn(
+						"shrink-0 truncate text-(--color-text-2)",
+						mono ? "font-mono text-xs" : "text-sm",
+						labelClass,
+					)}
+				>
 					{label}
 				</span>
 			)}
 			<div className="min-w-0 flex-1">
-				<div className={cn("rounded-[1px]", markClass)} style={{ width }} title={title} />
+				<div className={cn("rounded-xs", markClass)} style={{ width }} />
 			</div>
 			{value === undefined ? null : (
 				<span
-					className={cn("font-mono text-[11px] leading-[14px] text-(--color-text-3)", valueClass)}
+					className={cn(
+						"shrink-0 text-right text-sm text-(--color-text-2) tabular-nums",
+						valueClass,
+					)}
 				>
 					{value}
 				</span>
 			)}
 		</div>
 	);
+}
+
+/** Share of `max` as a meter width, with a small floor so a mark shows. */
+export function meterWidth(value: number, max: number): string {
+	return max > 0 ? `${Math.max(3, Math.round((value / max) * 100))}%` : "0%";
 }

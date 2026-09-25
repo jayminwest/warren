@@ -1,205 +1,40 @@
+import { Plus, Workflow } from "lucide-react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { ProjectRow, RunRow } from "@/api/types.ts";
+import { OperatorOnly } from "@/components/operator-only.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card, CardHeader } from "@/components/ui/card.tsx";
+import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { SkeletonRows } from "@/components/ui/skeleton.tsx";
+import { StatusText } from "@/components/ui/status.tsx";
 import {
-	CardFigure,
-	CardFigureNote,
-	InventoryCardList,
-	InventoryRowCard,
-} from "@/components/ui/inventory-card.tsx";
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table.tsx";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
-import { costNoteToneOf } from "@/pages/runs/runs-card.helpers.ts";
 import {
 	activeWorkloads,
 	activityLine,
-	formatDurationMs,
+	formatAgeMs,
 	phaseElapsedMs,
-	refreshedAgeLabel,
 	shortRepo,
 } from "./operations.helpers.ts";
-import { StatePill } from "./state-tone.tsx";
 
 /**
- * Active workloads table (warren-d903): the non-terminal runs from the
- * shared newest-runs window, oldest phase first (the row that has waited
- * longest is the one the operator judges). The ACTIVITY column shows the
- * prompt's first line — the live toolcall feed the canvas sketches needs
- * per-run event tails this page does not open; a one-poll snapshot stays
- * honest with dispatch intent.
- *
- * Mobile (warren-10d3, mobile/operations.jsx:213-337): the header lives
- * on an in-card --color-thead bar, rows render as dot-only
- * InventoryRowCards with "awaiting admission" folded into the subline and
- * a warning tint on near-cap costs, and the LIVE · REFRESHED footer is
- * visible below md too. The md+ table is unchanged.
+ * Active workloads (warren-d903, warren-9474): the queued and running
+ * runs, longest-waiting first — the row that has waited longest is the
+ * one the operator judges. Activity is the prompt's first line. On a
+ * phone the table scrolls inside its card.
  */
 
 const MAX_ROWS = 8;
 
-export function ActiveWorkloads({
-	runs,
-	projects,
-	now,
-	loading,
-	refreshedAt,
-	total,
-}: {
-	runs: readonly RunRow[] | undefined;
-	projects: readonly ProjectRow[] | undefined;
-	now: number;
-	loading: boolean;
-	/** Epoch ms of the last successful newest-runs fetch (query dataUpdatedAt). */
-	refreshedAt: number | undefined;
-	/** All-time run count from the same response, for the mobile footer. */
-	total: number | undefined;
-}) {
-	const active = runs !== undefined ? activeWorkloads(runs, MAX_ROWS) : [];
-	const running = runs?.filter((r) => r.state === "running").length ?? 0;
-	const queued = runs?.filter((r) => r.state === "queued").length ?? 0;
-	const windowSummary = `${running} RUNNING · ${queued} QUEUED`;
-	const projectIndex = new Map<string, string>();
-	for (const p of projects ?? []) projectIndex.set(p.id, shortRepo(p.gitUrl));
-	return (
-		<div className="flex min-w-0 flex-col md:flex-[1.8]">
-			<header className="hidden h-7 shrink-0 items-center pb-1.25 md:flex">
-				<h2 className="text-[11px] leading-3.5 font-semibold text-(--color-text-2)">
-					Active workloads
-				</h2>
-				<span className="flex-1" />
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
-					{windowSummary}
-				</span>
-			</header>
-			<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-				<div className="flex items-center gap-2 border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:hidden">
-					<h2 className="text-[12px] leading-[15px] font-semibold text-(--color-text)">
-						Active workloads
-					</h2>
-					<span className="flex-1" />
-					<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
-						{windowSummary}
-					</span>
-				</div>
-				{active.length === 0 ? (
-					<p className="px-3 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
-						{loading ? (
-							"loading active workloads…"
-						) : (
-							<>
-								0 active
-								<span
-									className="mx-1.5 inline-block h-1.5 w-1.5 rounded-full bg-(--color-text-3)"
-									aria-hidden
-								/>
-								idle
-							</>
-						)}
-					</p>
-				) : (
-					<InventoryCardList>
-						{active.map((run) => (
-							<ActiveWorkloadCard
-								key={run.id}
-								run={run}
-								projectLabel={
-									run.projectId === null
-										? "orphaned"
-										: (projectIndex.get(run.projectId) ?? run.projectId)
-								}
-								now={now}
-							/>
-						))}
-					</InventoryCardList>
-				)}
-				<div className="flex items-center border-t border-(--color-border) px-3 py-2.25 md:hidden">
-					<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
-						LIVE · REFRESHED{" "}
-						{refreshedAgeLabel(refreshedAt === undefined ? undefined : now - refreshedAt)}
-					</span>
-					<span className="flex-1" />
-					<Link
-						to="/runs"
-						className="text-[11px] leading-[14px] font-medium text-(--color-primary) hover:underline"
-					>
-						{total === undefined ? "View all runs →" : `View all ${total} runs →`}
-					</Link>
-				</div>
-				<div className="hidden md:block">
-					<div className="flex h-[31px] shrink-0 items-center gap-2.5 border-b border-(--color-border-strong) bg-(--color-thead) px-2.5">
-						<span className="w-[82px] shrink-0 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							STATE
-						</span>
-						<span className="w-[112px] shrink-0 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							RUN
-						</span>
-						<span className="w-[76px] shrink-0 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							AGENT
-						</span>
-						<span className="w-[96px] shrink-0 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							PROJECT
-						</span>
-						<span className="min-w-0 flex-1 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							ACTIVITY
-						</span>
-						<span className="w-[48px] shrink-0 text-right font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							ELAPSED
-						</span>
-						<span className="w-[52px] shrink-0 text-right font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
-							COST
-						</span>
-					</div>
-					{active.map((run) => (
-						<Link
-							key={run.id}
-							to={`/runs/${run.id}`}
-							className="flex h-[38px] items-center gap-2.5 border-b border-(--color-border) px-2.5 last:border-b-0 hover:bg-(--color-surface-hover)"
-						>
-							<span className="w-[82px] shrink-0">
-								<StatePill state={run.state} />
-							</span>
-							<span className="w-[112px] shrink-0 truncate font-mono text-[10px] leading-3 text-(--color-text)">
-								{run.id}
-							</span>
-							<span className="w-[76px] shrink-0 truncate text-[11px] leading-3.5 text-(--color-text-2)">
-								{run.agentName}
-							</span>
-							<span className="w-[96px] shrink-0 truncate text-[11px] leading-3.5 text-(--color-text-3)">
-								{run.projectId === null
-									? "orphaned"
-									: (projectIndex.get(run.projectId) ?? run.projectId)}
-							</span>
-							<span className="min-w-0 flex-1 truncate text-[11px] leading-3.5 text-(--color-text-2)">
-								{run.state === "queued" ? "awaiting admission" : activityLine(run.prompt)}
-							</span>
-							<span className="w-[48px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
-								{formatDurationMs(phaseElapsedMs(run, now))}
-							</span>
-							<span className="w-[52px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
-								{run.costUsd === null ? "—" : formatCostUsd(run.costUsd)}
-							</span>
-						</Link>
-					))}
-					<div className="flex h-[38px] shrink-0 items-center gap-3 border-t border-(--color-border) px-2.5">
-						<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
-							NEWEST-RUNS WINDOW · FALLBACK POLL
-						</span>
-						<span className="flex-1" />
-						<Link
-							to="/runs"
-							className="text-[11px] leading-3.5 text-(--color-primary) hover:underline"
-						>
-							View all runs →
-						</Link>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-/** Mobile active-workload card (warren-dea8 / warren-10d3): dot-only
- *  state, agent · project · "awaiting admission" subline, activity meta,
- *  elapsed · cost figures with a warning tint near the cost cap. */
-function ActiveWorkloadCard({
+function WorkloadRow({
 	run,
 	projectLabel,
 	now,
@@ -208,27 +43,138 @@ function ActiveWorkloadCard({
 	projectLabel: string;
 	now: number;
 }) {
-	const tone = run.state === "running" ? "info" : "warning";
 	return (
-		<InventoryRowCard
-			tone={tone}
-			title={run.id}
-			titleTo={`/runs/${run.id}`}
-			subline={
-				run.state === "queued"
-					? `${run.agentName} · ${projectLabel} · awaiting admission`
-					: `${run.agentName} · ${projectLabel}`
-			}
-			figures={
-				<>
-					<CardFigure value={formatDurationMs(phaseElapsedMs(run, now))} />
-					<CardFigureNote
-						value={run.costUsd === null ? "—" : formatCostUsd(run.costUsd)}
-						tone={costNoteToneOf(run)}
+		<TableRow>
+			<TableCell>
+				<StatusText state={run.state} />
+			</TableCell>
+			<TableCell>
+				<Link
+					to={`/runs/${run.id}`}
+					className="font-mono text-xs text-(--color-text) hover:text-(--color-primary) hover:underline"
+				>
+					{run.id}
+				</Link>
+			</TableCell>
+			<TableCell className="text-(--color-text-2)">{run.agentName}</TableCell>
+			<TableCell className="max-w-40 truncate text-(--color-text-2)">{projectLabel}</TableCell>
+			<TableCell className="max-w-80 truncate text-(--color-text-2)">
+				{run.state === "queued" ? "Waiting for a slot" : activityLine(run.prompt)}
+			</TableCell>
+			<TableCell className="text-right text-(--color-text-2)">
+				{formatAgeMs(phaseElapsedMs(run, now))}
+			</TableCell>
+			<TableCell className="text-right text-(--color-text-2)">
+				{run.costUsd === null ? "—" : formatCostUsd(run.costUsd)}
+			</TableCell>
+		</TableRow>
+	);
+}
+
+function WorkloadsBody({
+	active,
+	projectIndex,
+	now,
+	loading,
+}: {
+	active: readonly RunRow[];
+	projectIndex: ReadonlyMap<string, string>;
+	now: number;
+	loading: boolean;
+}) {
+	if (loading) return <SkeletonRows rows={3} />;
+	if (active.length === 0) {
+		return (
+			<EmptyState
+				compact
+				icon={Workflow}
+				title="Nothing running"
+				description="Runs show here while they wait for a slot and while they work."
+				action={
+					<OperatorOnly>
+						<Button asChild variant="outline" size="sm">
+							<Link to="/dispatch">
+								<Plus aria-hidden />
+								Dispatch a run
+							</Link>
+						</Button>
+					</OperatorOnly>
+				}
+			/>
+		);
+	}
+	return (
+		<Table>
+			<TableHeader>
+				<TableRow>
+					<TableHead>State</TableHead>
+					<TableHead>Run</TableHead>
+					<TableHead>Agent</TableHead>
+					<TableHead>Project</TableHead>
+					<TableHead>Activity</TableHead>
+					<TableHead className="text-right">Elapsed</TableHead>
+					<TableHead className="text-right">Cost</TableHead>
+				</TableRow>
+			</TableHeader>
+			<TableBody>
+				{active.map((run) => (
+					<WorkloadRow
+						key={run.id}
+						run={run}
+						projectLabel={
+							run.projectId === null
+								? "No project"
+								: (projectIndex.get(run.projectId) ?? run.projectId)
+						}
+						now={now}
 					/>
-				</>
-			}
-			meta={run.state === "queued" ? undefined : activityLine(run.prompt)}
-		/>
+				))}
+			</TableBody>
+		</Table>
+	);
+}
+
+export function ActiveWorkloads({
+	runs,
+	projects,
+	now,
+	loading,
+}: {
+	runs: readonly RunRow[] | undefined;
+	projects: readonly ProjectRow[] | undefined;
+	now: number;
+	loading: boolean;
+}) {
+	const { active, running, queued } = useMemo(() => {
+		const list = runs ?? [];
+		return {
+			active: activeWorkloads(list, MAX_ROWS),
+			running: list.filter((r) => r.state === "running").length,
+			queued: list.filter((r) => r.state === "queued").length,
+		};
+	}, [runs]);
+	const projectIndex = useMemo(() => {
+		const index = new Map<string, string>();
+		for (const p of projects ?? []) index.set(p.id, shortRepo(p.gitUrl));
+		return index;
+	}, [projects]);
+	return (
+		<Card>
+			<CardHeader
+				title="Active workloads"
+				meta={runs === undefined ? undefined : `${running} running · ${queued} queued`}
+				actions={
+					<Button asChild variant="ghost" size="sm">
+						<Link to="/runs">All runs</Link>
+					</Button>
+				}
+			/>
+			<WorkloadsBody
+				active={active}
+				projectIndex={projectIndex}
+				now={now}
+				loading={loading && runs === undefined}
+			/>
+		</Card>
 	);
 }

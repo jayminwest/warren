@@ -1,156 +1,55 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { CircleStop, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
+import { Link, useParams } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type { CancelPlanRunResponse, PlanRunDetailResponse } from "@/api/types.ts";
+import type { CancelPlanRunResponse, PlanRunRow } from "@/api/types.ts";
 import { isTerminalPlanRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { StatusBadge } from "@/components/ui/status.tsx";
+import { Tag } from "@/components/ui/tag.tsx";
+import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatPlanRunFailureReason } from "@/lib/labels.ts";
+import { formatElapsedMs } from "@/pages/runs/runs-format.ts";
 import { ChildWalkPanel } from "./plan-run-detail/child-walk.tsx";
 import { DetailRail } from "./plan-run-detail/detail-rail.tsx";
-import { PLAN_RUN_STATE_COLOR, summarizeCost } from "./plan-runs/walk-state.ts";
+import { summarizeCost } from "./plan-runs/walk-state.ts";
+import { ProblemNote } from "./run-detail/problem-note.tsx";
+import { formatTrigger } from "./run-detail/run-detail-format.ts";
 
 /**
- * Plan run detail — the Direction C walk inspector (warren-2520 /
- * pl-7e38 step 8, from docs/ui-revamp/screens/plan-run-detail.jsx).
- * Child-by-child gate state in the main panel, the source plan
- * definition + prompt + delivered PRs in the right rail. No summary
- * cards; the walk is the product.
+ * Plan run detail — the walk inspector (warren-2520, migrated in
+ * warren-9474 / warren-0690). Child-by-child gate state in the main card,
+ * the plan definition, delivered PRs and prompt template in the rail.
  *
- * Keeps the legacy page's data behavior: one `GET /plan-runs/:id`
- * round-trip under the `["plan-runs", id]` key (shared with the
- * inventory's per-row detail fetch), 5s poll while active, and the
- * Tier-1 lifecycle stream invalidates the key globally
- * (use-lifecycle-stream-invalidation). The read surface is readPublic,
- * so a spectator sees the same walk read-only — the only operator
- * affordance is the Cancel plan run button, which `OperatorOnly` drops.
+ * One `GET /plan-runs/:id` round-trip under the `["plan-runs", id]` key.
+ * The lifecycle stream invalidates that key as children move
+ * (use-lifecycle-stream-invalidation), so the page only keeps a slow
+ * fallback poll while the walk is active. The read surface is public; the
+ * one operator affordance, Cancel, rides OperatorOnly.
  */
 
-const ACTIVE_STATES = new Set<PlanRunDetailResponse["planRun"]["state"]>(["queued", "running"]);
+/** Fallback re-read of an active walk when the lifecycle stream is quiet. */
+const ACTIVE_FALLBACK_POLL_MS = 30_000;
 
-export function PlanRunDetailPage() {
-	const { id = "" } = useParams<{ id: string }>();
-	const qc = useQueryClient();
-
-	const detail = useQuery({
-		queryKey: ["plan-runs", id],
-		queryFn: ({ signal }) => planRunsApi.get(id, signal),
-		refetchInterval: (q) => {
-			const data = q.state.data;
-			if (!data) return 5000;
-			return isTerminalPlanRunState(data.planRun.state) ? false : 5000;
-		},
-	});
-
-	// Same key as the inventory pages: resolves the project git URL for
-	// the hero meta line, falling back to the raw project id.
-	const projects = useQuery({
-		queryKey: ["projects"],
-		queryFn: ({ signal }) => projectsApi.list(signal),
-	});
-
-	const cancel = useMutation({
-		mutationFn: () => planRunsApi.cancel(id),
-		onSettled: () => qc.invalidateQueries({ queryKey: ["plan-runs"] }),
-	});
-
-	if (detail.isLoading) {
-		return <Spinner label="Loading plan run" />;
-	}
-	if (detail.isError) {
-		return (
-			<Alert variant="danger" title="Failed to load plan run">
-				{formatError(detail.error)}
-			</Alert>
-		);
-	}
-	if (!detail.data) return null;
-	const { planRun, children, runs } = detail.data;
-
-	const project = projects.data?.projects.find((p) => p.id === planRun.projectId);
-	const projectLabel = project
-		? project.gitUrl.replace(/^https:\/\/github\.com\//, "") || project.gitUrl
-		: planRun.projectId;
-	const canCancel = ACTIVE_STATES.has(planRun.state);
-	const cost = summarizeCost(runs);
-
+function PlanRunSkeleton() {
 	return (
-		<div className="flex min-h-full flex-col px-3.5 pb-12 pt-[22px] md:px-6">
-			<div className="shrink-0 pb-2.5">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
-					PLAN RUNS / {id.toUpperCase()}
-				</span>
-			</div>
-
-			<header className="flex shrink-0 flex-wrap items-center gap-3 pb-5">
-				<h1 className="font-mono text-[16px] leading-5 font-medium text-(--color-text)">{id}</h1>
-				<StateLabel state={planRun.state} />
-				{planRun.planId !== null ? <PlanChip planId={planRun.planId} /> : null}
-				<span className="text-[11px] leading-[14px] text-(--color-text-2)">
-					{projectLabel} · {planRun.agentName} · {planRun.trigger}
-				</span>
-				<div className="min-w-0 flex-1" />
-				{canCancel ? (
-					<OperatorOnly>
-						<div className="flex flex-col items-end gap-1">
-							<button
-								type="button"
-								onClick={() => cancel.mutate()}
-								disabled={cancel.isPending}
-								className="flex h-[31px] items-center justify-center gap-[7px] rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-text) disabled:opacity-60"
-							>
-								<CircleStop className="h-2 w-2 text-(--color-danger)" aria-hidden />
-								{cancel.isPending ? "Cancelling…" : "Cancel plan run"}
-							</button>
-							<CancelStatus mutation={cancel} />
-						</div>
-					</OperatorOnly>
-				) : null}
-			</header>
-
-			{planRun.state === "failed" && planRun.failureReason != null ? (
-				<Alert variant="danger" title="Walk failed">
-					{/* Prose for the visitor, raw reason in the tooltip for the
-					    operator (warren-14fc / #641). Redacted to undefined for
-					    spectators (warren-17d7). */}
-					<span title={planRun.failureReason}>
-						{formatPlanRunFailureReason(planRun.failureReason)}
-					</span>
-				</Alert>
-			) : null}
-
-			<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-				<ChildWalkPanel planRun={planRun} childRows={children} runs={runs} />
-				<DetailRail detail={detail.data} projectLabel={projectLabel} cost={cost} />
+		<div
+			role="status"
+			aria-label="Loading plan run"
+			className="flex flex-col gap-4 px-4 pt-6 md:px-6"
+		>
+			<Skeleton className="h-3 w-40" />
+			<Skeleton className="h-6 w-72" />
+			<Skeleton className="h-3.5 w-1/2" />
+			<div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+				<Skeleton className="h-96 w-full rounded-md lg:flex-1" />
+				<Skeleton className="h-80 w-full rounded-md lg:w-84" />
 			</div>
 		</div>
-	);
-}
-
-function StateLabel({ state }: { state: PlanRunDetailResponse["planRun"]["state"] }) {
-	const color = PLAN_RUN_STATE_COLOR[state];
-	return (
-		<span className="flex items-center gap-[7px]">
-			<span
-				className="h-1.5 w-1.5 shrink-0 rounded-full"
-				style={{ backgroundColor: color }}
-				aria-hidden
-			/>
-			<span className="font-mono text-[10px] leading-3" style={{ color }}>
-				{state}
-			</span>
-		</span>
-	);
-}
-
-function PlanChip({ planId }: { planId: string }) {
-	return (
-		<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-primary-border, var(--color-border-strong)) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
-			{planId}
-		</span>
 	);
 }
 
@@ -160,18 +59,188 @@ function CancelStatus({
 	mutation: ReturnType<typeof useMutation<CancelPlanRunResponse, Error, void>>;
 }) {
 	if (mutation.isError) {
-		return (
-			<p className="text-[10px] leading-3 text-(--color-danger)">{formatError(mutation.error)}</p>
-		);
+		return <p className="text-xs text-(--color-danger)">{formatError(mutation.error)}</p>;
 	}
-	if (mutation.isSuccess && mutation.data !== undefined) {
-		return (
-			<p className="text-[10px] leading-3 text-(--color-success)">
-				{mutation.data.alreadyTerminal
-					? "Walk was already terminal."
-					: `Cancel forwarded${mutation.data.cancelledChild !== null ? ` (child ${mutation.data.cancelledChild.childSeq})` : ""}.`}
+	if (!mutation.isSuccess || mutation.data === undefined) return null;
+	const { alreadyTerminal, cancelledChild } = mutation.data;
+	return (
+		<p className="text-xs text-(--color-text-3)">
+			{alreadyTerminal
+				? "The walk had already finished."
+				: `Cancelling${cancelledChild !== null ? ` child ${cancelledChild.childSeq}` : ""}; no further children will start.`}
+		</p>
+	);
+}
+
+function CancelWalk({ id }: { id: string }) {
+	const qc = useQueryClient();
+	const cancel = useMutation({
+		mutationFn: () => planRunsApi.cancel(id),
+		onSettled: () => qc.invalidateQueries({ queryKey: ["plan-runs"] }),
+	});
+	return (
+		<div className="flex flex-col items-end gap-1">
+			<Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
+				<CircleStop aria-hidden className="text-(--color-danger)" />
+				{cancel.isPending ? "Cancelling…" : "Cancel plan run"}
+			</Button>
+			<CancelStatus mutation={cancel} />
+		</div>
+	);
+}
+
+function Dot() {
+	return (
+		<span aria-hidden className="text-(--color-text-3)">
+			·
+		</span>
+	);
+}
+
+function elapsedLabel(planRun: PlanRunRow, now: number): string | null {
+	if (planRun.startedAt === null) return null;
+	const start = Date.parse(planRun.startedAt);
+	const end = planRun.endedAt !== null ? Date.parse(planRun.endedAt) : now;
+	const prefix = planRun.endedAt !== null ? "Took" : "Running for";
+	return `${prefix} ${formatElapsedMs(Math.max(0, end - start))}`;
+}
+
+function Header({
+	planRun,
+	projectLabel,
+	now,
+}: {
+	planRun: PlanRunRow;
+	projectLabel: string;
+	now: number;
+}) {
+	const failed = planRun.state === "failed" && planRun.failureReason != null;
+	const elapsed = elapsedLabel(planRun, now);
+	const meta: [string, ReactNode][] = [
+		[
+			"agent",
+			<span key="agent">
+				<span className="text-(--color-text)">{planRun.agentName}</span> on {projectLabel}
+			</span>,
+		],
+		["trigger", <span key="trigger">{formatTrigger(planRun.trigger)}</span>],
+	];
+	if (elapsed !== null) meta.push(["elapsed", <span key="elapsed">{elapsed}</span>]);
+	return (
+		<header className="flex shrink-0 flex-col gap-2.5">
+			<nav aria-label="Breadcrumb" className="text-xs text-(--color-text-3)">
+				<Link to="/plan-runs" className="hover:text-(--color-text)">
+					Plan runs
+				</Link>
+				<span aria-hidden className="px-1.5">
+					/
+				</span>
+				<span className="font-mono">{planRun.id}</span>
+			</nav>
+			<div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+				<div className="flex min-w-0 flex-col gap-2">
+					<h1 className="truncate font-mono text-xl font-semibold tracking-tight text-(--color-text)">
+						{planRun.id}
+					</h1>
+					<div className="flex flex-wrap items-center gap-2">
+						<StatusBadge
+							state={planRun.state}
+							reason={planRun.failureReason}
+							label={failed ? "Failed" : undefined}
+						/>
+						{planRun.planId !== null ? (
+							<Tag className="font-mono" title="Source plan">
+								{planRun.planId}
+							</Tag>
+						) : (
+							<Tag>Issue list</Tag>
+						)}
+					</div>
+				</div>
+				{!isTerminalPlanRunState(planRun.state) ? (
+					<OperatorOnly>
+						<CancelWalk id={planRun.id} />
+					</OperatorOnly>
+				) : null}
+			</div>
+			<p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-(--color-text-2)">
+				{meta.flatMap(([key, node], i) => (i === 0 ? [node] : [<Dot key={`dot-${key}`} />, node]))}
 			</p>
+		</header>
+	);
+}
+
+export function PlanRunDetailPage() {
+	const { id = "" } = useParams<{ id: string }>();
+
+	const detail = useQuery({
+		queryKey: ["plan-runs", id],
+		queryFn: ({ signal }) => planRunsApi.get(id, signal),
+		refetchInterval: (q) => {
+			const data = q.state.data;
+			return data !== undefined && !isTerminalPlanRunState(data.planRun.state)
+				? ACTIVE_FALLBACK_POLL_MS
+				: false;
+		},
+	});
+
+	// Same key as the inventory pages: resolves the project's repo name,
+	// falling back to the raw project id.
+	const projects = useQuery({
+		queryKey: ["projects"],
+		queryFn: ({ signal }) => projectsApi.list(signal),
+	});
+
+	const active = detail.data !== undefined && !isTerminalPlanRunState(detail.data.planRun.state);
+	const now = useNow(1000, active);
+
+	if (detail.isLoading) return <PlanRunSkeleton />;
+	if (detail.isError || !detail.data) {
+		return (
+			<div className="px-4 pt-6 md:px-6">
+				<ProblemNote
+					title="Couldn't load this plan run"
+					action={
+						<Button variant="outline" size="sm" onClick={() => void detail.refetch()}>
+							<RefreshCw aria-hidden />
+							Try again
+						</Button>
+					}
+				>
+					{detail.isError ? formatError(detail.error) : "The plan run was not found."}
+				</ProblemNote>
+			</div>
 		);
 	}
-	return null;
+	const { planRun, children, runs } = detail.data;
+
+	const project = projects.data?.projects.find((p) => p.id === planRun.projectId);
+	const projectLabel = project
+		? project.gitUrl.replace(/^https:\/\/github\.com\//, "") || project.gitUrl
+		: planRun.projectId;
+	const cost = summarizeCost(runs);
+
+	return (
+		<div className="flex min-h-full flex-col gap-4 px-4 pt-6 pb-12 md:px-6">
+			<Header planRun={planRun} projectLabel={projectLabel} now={now} />
+
+			{planRun.state === "failed" && planRun.failureReason != null ? (
+				<ProblemNote title="The walk stopped">
+					{/* Prose for the visitor, the raw reason in the tooltip for the
+					    operator (warren-14fc / #641). Redacted for spectators
+					    (warren-17d7). */}
+					<span title={planRun.failureReason}>
+						{formatPlanRunFailureReason(planRun.failureReason)}
+					</span>
+				</ProblemNote>
+			) : null}
+
+			{/* items-start: the child walk sizes to its rows rather than
+			    stretching to the rail's height (warren-dac1). */}
+			<div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+				<ChildWalkPanel planRun={planRun} childRows={children} runs={runs} />
+				<DetailRail detail={detail.data} projectLabel={projectLabel} cost={cost} />
+			</div>
+		</div>
+	);
 }

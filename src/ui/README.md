@@ -62,3 +62,26 @@ should reuse instead of re-typing ad-hoc strings:
   (the 16px floor suppresses iOS Safari focus auto-zoom), compact at `sm+`.
 - `responsiveFooterActions` / `responsiveFooterButton` — footer action
   rows that stack full-width on mobile and right-align at `sm+`.
+
+## Visual language
+
+The console keeps the Direction C operator look: blue-gray surfaces,
+hairline borders, and one green action per view. The type scale is
+readable (warren-468e). Follow these rules.
+
+
+- **Type.** Use only the scale utilities. `text-2xs` is 11px, the floor. `text-xs` is 12px and `text-sm` is 13px, the body size. `text-base` is 14px, `text-lg` 17px, `text-xl` 20px for page titles, and `text-2xl` 24px for stat numbers. Each step sets its own line height. Do not add a `leading-*` literal or a `text-[Npx]` literal.
+
+- **Case.** Use sentence case for labels, table headers, buttons, and status. Do not use uppercase letter-spaced labels.
+
+- **Mono.** Use `font-mono` only for machine identifiers: run ids, seed ids, branches, hashes, file paths, and log lines. Numbers use the sans face with `tabular-nums`. Names, agents, projects, and times use sans.
+
+- **Colour.** Colour shows meaning and nothing else. Status comes from `components/ui/status.tsx`. Do not write a local state-to-colour map.
+
+- **Surfaces.** Panels use `Card`, `CardHeader`, `CardBody`, and `CardFooter`, and size to their content. Pages open with `PageHeader`. Tables use `components/ui/table.tsx`. Neutral labels use `Tag`.
+
+- **States.** Show loading with `SkeletonRows` or `Skeleton` in the shape of the content. Show an empty list with `EmptyState`. Say what fills the list and, for an operator, give the action. An error names what failed and how to retry.
+
+- **Forms.** Use `Input`, `Select`, `Textarea`, `Button`, and `Segmented`. Do not use raw form elements or local class strings.
+
+- **Copy.** Write for the operator. Visible text has no issue ids, API names, poll intervals, or notes about missing APIs.

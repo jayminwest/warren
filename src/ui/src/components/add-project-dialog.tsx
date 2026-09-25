@@ -12,11 +12,12 @@ import {
 } from "@/components/ui/dialog.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { cn } from "@/lib/utils.ts";
 import { filterRepos, repoLabel, repoPickerMode } from "./add-project-repo-picker.helpers.ts";
 
 /**
- * "＋ Add project" dialog (warren-e228 / pl-7e38 step 9; repo picker
+ * "Add project" dialog (warren-e228 / pl-7e38 step 9; repo picker
  * warren-2601 / pl-26f3 step 10).
  *
  * When the active forge is the GitHub App, a picker lists the
@@ -90,17 +91,21 @@ export function AddProjectDialog({
 								value={filter}
 								onChange={(e) => setFilter(e.target.value)}
 							/>
-							<div className="max-h-44 overflow-y-auto rounded-(--radius-xs) border border-(--color-border)">
+							<div className="max-h-44 overflow-y-auto rounded-sm border border-(--color-border) bg-(--color-bg)">
 								{filtered.length === 0 ? (
-									<p className="p-2 text-[11px] leading-4 text-(--color-text-3)">
-										No match — paste the URL below instead.
+									<p className="px-3 py-2 text-sm text-(--color-text-3)">
+										No match. Paste the URL below instead.
 									</p>
 								) : (
 									filtered.map((repo) => (
 										<button
 											key={repo.cloneUrl}
 											type="button"
-											className="block w-full px-2.5 py-1.5 text-left font-mono text-[10px] leading-4 text-(--color-text) hover:bg-(--color-thead)"
+											aria-pressed={gitUrl === repo.cloneUrl}
+											className={cn(
+												"block w-full px-3 py-1.5 text-left font-mono text-xs text-(--color-text) transition-colors hover:bg-(--color-surface-hover)",
+												gitUrl === repo.cloneUrl && "bg-(--color-surface-hover)",
+											)}
 											onClick={() => pick(repo)}
 										>
 											{repoLabel(repo)}
@@ -111,11 +116,12 @@ export function AddProjectDialog({
 						</div>
 					) : null}
 					{repos.isLoading && open ? (
-						<div className="text-[11px] text-(--color-text-3)">
-							<Spinner label="Checking your GitHub connection" />
+						<div role="status" aria-label="Checking your GitHub connection" className="space-y-2">
+							<Skeleton className="h-3 w-32" />
+							<Skeleton className="h-8 w-full" />
 						</div>
 					) : null}
-					<div className="space-y-1">
+					<div className="space-y-1.5">
 						<Label htmlFor="gitUrl">GitHub URL</Label>
 						<Input
 							id="gitUrl"
@@ -125,16 +131,16 @@ export function AddProjectDialog({
 							onChange={(e) => setGitUrl(e.target.value)}
 						/>
 					</div>
-					<div className="space-y-1">
+					<div className="space-y-1.5">
 						<Label htmlFor="branch">Branch (optional)</Label>
 						<Input
 							id="branch"
-							placeholder="auto-detect"
+							placeholder="Detected from the repository"
 							value={defaultBranch}
 							onChange={(e) => setDefaultBranch(e.target.value)}
 						/>
 					</div>
-					{error !== null ? <p className="text-sm text-(--color-destructive)">{error}</p> : null}
+					{error !== null ? <p className="text-sm text-(--color-danger)">{error}</p> : null}
 					<DialogFooter>
 						<Button
 							type="button"
