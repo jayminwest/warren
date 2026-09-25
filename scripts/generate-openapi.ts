@@ -128,6 +128,7 @@ function envelope(properties: Record<string, JsonSchema>): JsonSchema {
 }
 
 function buildComponentSchemas(): Record<string, JsonSchema> {
+	const childStates = arrayOf(refSchema("PlanRunChildState"));
 	return {
 		RunState: enumSchema(RUN_STATES),
 		RunFailureReason: enumSchema(RUN_FAILURE_REASONS),
@@ -265,6 +266,7 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 				"createdAt",
 			],
 		},
+		PlanRunListRow: { allOf: [refSchema("PlanRun"), envelope({ childStates })] },
 		PlanRunChild: {
 			type: "object",
 			properties: {
@@ -308,7 +310,7 @@ const KNOWN_RESPONSE_BODIES: Record<string, JsonSchema> = {
 	"POST /projects": envelope({ project: refSchema("Project") }),
 	"GET /projects/:id": envelope({ project: refSchema("Project") }),
 	"GET /agents": envelope({ agents: arrayOf(refSchema("Agent")) }),
-	"GET /plan-runs": envelope({ planRuns: arrayOf(refSchema("PlanRun")) }),
+	"GET /plan-runs": envelope({ planRuns: arrayOf(refSchema("PlanRunListRow")) }),
 	"POST /plan-runs": envelope({
 		planRun: refSchema("PlanRun"),
 		children: arrayOf(refSchema("PlanRunChild")),

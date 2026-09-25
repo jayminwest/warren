@@ -52,22 +52,25 @@ function run(overrides: Partial<RunRow>): RunRow {
 }
 
 describe("stateCellOf", () => {
-	test("routes cancelled to the neutral tone with the short word", () => {
-		expect(stateCellOf(run({ state: "cancelled" }))).toEqual({ tone: "neutral", label: "cancel" });
+	test("reads a cancelled run in sentence case", () => {
+		expect(stateCellOf(run({ state: "cancelled" }))).toEqual({
+			state: "cancelled",
+			label: "Cancelled",
+		});
 	});
 
 	test("picks merged / PR open from a succeeded run's PR facts", () => {
 		expect(stateCellOf(run({ state: "succeeded", prMergedAt: "2026-08-01" }))).toEqual({
-			tone: "success",
-			label: "merged",
+			state: "merged",
+			label: "Merged",
 		});
 		expect(stateCellOf(run({ state: "succeeded", prState: "open" }))).toEqual({
-			tone: "info",
+			state: "pr_open",
 			label: "PR open",
 		});
 		expect(stateCellOf(run({ state: "succeeded" }))).toEqual({
-			tone: "success",
-			label: "succeeded",
+			state: "succeeded",
+			label: "Succeeded",
 		});
 	});
 });

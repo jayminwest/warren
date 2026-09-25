@@ -46,10 +46,14 @@ describe("Plan runs walk inventory (warren-23b2 / pl-7e38 step 6)", () => {
 	});
 
 	test("each row renders its children as per-state squares plus a merged count", () => {
-		expect(ROW).toMatch(/CHILD_SQUARE_COLOR\[c\.state\]/);
-		expect(ROW).toMatch(/childSummary\(state, childRows\)/);
-		// The squares key off the child's seq, never the array index.
-		expect(ROW).toMatch(/key=\{c\.seq\}/);
+		expect(ROW).toMatch(/<ChildSquares states=\{planRun\.childStates\} \/>/);
+		expect(ROW).toMatch(/childSummary\(planRun\.state, planRun\.childStates\)/);
+	});
+
+	test("child progress rides the list row, never a fetch per row (warren-b2d6)", () => {
+		for (const source of [ROW, read("plan-runs/walk-cards.tsx")]) {
+			expect(source).not.toMatch(/useQuery|planRunsApi\.get/);
+		}
 	});
 
 	test("child state colours cover the whole wire vocabulary", () => {
@@ -68,7 +72,7 @@ describe("Plan runs walk inventory (warren-23b2 / pl-7e38 step 6)", () => {
 
 	test("the plan cell distinguishes plan-source walks from issues walks", () => {
 		expect(ROW).toMatch(/planRun\.source === "plan"/);
-		expect(ROW).toMatch(/issues\$\{count\}|`issues\$\{count\}`/);
+		expect(ROW).toMatch(/"issue" : "issues"/);
 	});
 
 	test("theming uses token variables only — no hardcoded colors", () => {
@@ -90,7 +94,8 @@ describe("Plan runs walk inventory (warren-23b2 / pl-7e38 step 6)", () => {
 	});
 
 	test("no summary cards — the table is the product", () => {
-		expect(PAGE).not.toMatch(/<Card|CardTitle|KpiCard/);
+		// The table sits in one Card; no stat tiles above it.
+		expect(PAGE).not.toMatch(/CardTitle|KpiCard|StatCard/);
 	});
 
 	test("warren-17d7: redacted spectator fields render as em-dash, never crash", () => {
@@ -100,7 +105,7 @@ describe("Plan runs walk inventory (warren-23b2 / pl-7e38 step 6)", () => {
 		// must treat "absent" like "null": `== null`, `?? "—"`, never a
 		// `.toFixed()` on undefined.
 		expect(ROW).toMatch(/cap == null/);
-		expect(ROW).toMatch(/planRun\.dispatcherHandle \?\? "—"/);
+		expect(ROW).toMatch(/planRun\.dispatcherHandle \?\? null/);
 		expect(ROW).toMatch(/planRun\.modelOverride != null/);
 		// formatCostUsd accepts the widened null|undefined domain.
 		expect(ROW).toMatch(/from "@\/pages\/run-detail-format\.ts"/);

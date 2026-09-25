@@ -381,7 +381,7 @@ paths:
                   planRuns:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PlanRun'
+                      $ref: '#/components/schemas/PlanRunListRow'
                 required:
                   - planRuns
         default:
@@ -1702,6 +1702,17 @@ components:
         - trigger
         - state
         - createdAt
+    PlanRunListRow:
+      allOf:
+        - $ref: '#/components/schemas/PlanRun'
+        - type: object
+          properties:
+            childStates:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanRunChildState'
+          required:
+            - childStates
     PlanRunChild:
       type: object
       properties:

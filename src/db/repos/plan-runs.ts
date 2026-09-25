@@ -320,6 +320,22 @@ export class PlanRunsRepo {
 		);
 	}
 
+	/**
+	 * Every child of several plan-runs in one query, ordered by
+	 * (planRunId, seq). `GET /plan-runs` uses it to attach a per-row
+	 * progress summary without a detail fetch per row (warren-b2d6).
+	 */
+	async listChildrenForPlanRuns(planRunIds: readonly string[]): Promise<PlanRunChildRow[]> {
+		if (planRunIds.length === 0) return [];
+		return this.adapter.pickAll(
+			this.db
+				.select()
+				.from(this.planRunChildren)
+				.where(inArray(this.planRunChildren.planRunId, [...planRunIds]))
+				.orderBy(asc(this.planRunChildren.planRunId), asc(this.planRunChildren.seq)),
+		);
+	}
+
 	async listByProjectAndState(
 		projectId: string,
 		state?: PlanRunState | PlanRunState[],

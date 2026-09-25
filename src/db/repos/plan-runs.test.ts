@@ -396,6 +396,27 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("listChildrenForPlanRuns batches children ordered by plan-run and seq", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const a = await repo.create(seed({ agentName, projectId }));
+				const b = await repo.create({
+					...seed({ agentName, projectId }),
+					planId: "pl-b",
+					children: [{ seq: 1, seedId: "warren-dddd" }],
+				});
+				expect(await repo.listChildrenForPlanRuns([])).toEqual([]);
+				const rows = await repo.listChildrenForPlanRuns([a.planRun.id, b.planRun.id]);
+				expect(rows).toHaveLength(4);
+				const forA = rows.filter((c) => c.planRunId === a.planRun.id).map((c) => c.seq);
+				expect(forA).toEqual([1, 2, 3]);
+				const only = await repo.listChildrenForPlanRuns([b.planRun.id]);
+				expect(only.map((c) => c.seedId)).toEqual(["warren-dddd"]);
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("listDispatchedPlanIds returns empty for a project with no plan-runs", async () => {
 			const { handle, repo, projectId } = await open();
 			try {

@@ -651,6 +651,8 @@ export interface PlanRunRow {
 	endedAt: string | null;
 }
 
+export type PlanRunListRow = PlanRunRow & { childStates: PlanRunChildState[] };
+
 export interface PlanRunChildRow {
 	planRunId: string;
 	seq: number;

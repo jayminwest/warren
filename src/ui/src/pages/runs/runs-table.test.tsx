@@ -66,67 +66,51 @@ function renderTable(rows: RunRow[], isOperator: boolean): string {
 	);
 }
 
-describe("RunsTable Runtime column", () => {
-	test("renders the Runtime column for an operator", () => {
-		const html = renderTable([run({ sandboxRunId: "pod-xyz", sandboxId: "sbx-1" })], true);
-		expect(html).toContain(">Runtime<");
-		expect(html).toContain("pod-xyz");
+describe("RunsTable row", () => {
+	test("puts the runtime facts on the run id tooltip for an operator", () => {
+		const html = renderTable(
+			[run({ runtimeBackend: "k8s", sandboxRunId: "warren-run-abcdef123456" })],
+			true,
+		);
+		expect(html).toContain('title="Runtime: k8s · warren-run-abcdef123456"');
+		// No column is spent on the handle any more (warren-9474).
+		expect(html).not.toContain(">Runtime<");
 	});
 
-	test("hides the Runtime column for a spectator even when handles exist", () => {
+	test("never renders runtime facts for a spectator", () => {
 		const html = renderTable([run({ sandboxRunId: "pod-xyz", sandboxId: "sbx-1" })], false);
-		expect(html).not.toContain(">Runtime<");
 		expect(html).not.toContain("pod-xyz");
 	});
 
-	test("renders backend kind plus a truncated copyable handle (warren-a0f4)", () => {
+	test("reads a failed run's reason instead of the bare state", () => {
+		const html = renderTable([run({ state: "failed", failureReason: "timeout" })], true);
+		expect(html).not.toContain(">Failed<");
+	});
+
+	test("renders the PR as a chip with its lifecycle", () => {
 		const html = renderTable(
 			[
 				run({
-					runtimeBackend: "k8s",
-					sandboxRunId: "warren-run-abcdef123456",
-					sandboxId: "sbx-1",
+					state: "succeeded",
+					prUrl: "https://github.com/x/y/pull/42",
+					prState: "merged",
 				}),
 			],
 			true,
 		);
-		expect(html).toContain(">k8s<");
-		// truncated to ~10 chars with the full handle on hover
-		expect(html).toContain("warren-run");
-		expect(html).not.toContain("warren-run-abcdef123456>");
-		expect(html).toContain('title="warren-run-abcdef123456"');
-		expect(html).toContain('aria-label="Copy runtime handle warren-run-abcdef123456"');
+		expect(html).toContain("#42");
+		expect(html).toContain("Merged");
 	});
 
-	test("renders a short handle untruncated", () => {
-		const html = renderTable(
-			[run({ runtimeBackend: "docker", sandboxRunId: "run_1", sandboxId: null })],
-			true,
-		);
-		expect(html).toContain(">docker<");
-		expect(html).toContain(">run_1<");
-	});
-
-	test("renders the kind alone when no handle was assigned yet", () => {
-		const html = renderTable([run({ runtimeBackend: "local", sandboxRunId: null })], true);
-		expect(html).toContain(">local<");
-		expect(html).not.toContain("aria-label");
-	});
-
-	test("falls back to the handle on line one when no backend kind is recorded", () => {
-		const html = renderTable(
-			[run({ runtimeBackend: null, sandboxRunId: "pod-legacy", sandboxId: null })],
-			true,
-		);
-		expect(html).toContain("pod-legacy");
-		expect(html).not.toContain("aria-label");
+	test("shows the tracker item under the run id", () => {
+		const html = renderTable([run({ seedId: "warren-30e7" })], true);
+		expect(html).toContain(">warren-30e7<");
 	});
 });
 
-describe("RunsTable Project branch sub-line", () => {
-	test("shows the composed workspace branch when no targetBranch/ref is set", () => {
+describe("RunsTable Project branch tooltip", () => {
+	test("puts the composed workspace branch on the project tooltip", () => {
 		const html = renderTable([run({ branch: "warren/run_abc123" })], true);
-		expect(html).toContain("warren/run_abc123");
 		expect(html).toContain('title="warren/run_abc123"');
 	});
 });

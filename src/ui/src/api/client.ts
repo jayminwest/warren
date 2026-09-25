@@ -23,7 +23,7 @@ import type {
 	LifecycleStreamNotification,
 	ListRunsResponse,
 	PlanRunDetailResponse,
-	PlanRunRow,
+	PlanRunListRow,
 	PlanRunStateFilter,
 	PreviewConfigResponse,
 	PreviewLoginResponse,
@@ -410,7 +410,7 @@ export const planRunsApi = {
 		if (filter.project) params.set("project", filter.project);
 		if (filter.state) params.set("state", filter.state);
 		const qs = params.toString();
-		return request<{ planRuns: PlanRunRow[] }>(`/plan-runs${qs.length > 0 ? `?${qs}` : ""}`, {
+		return request<{ planRuns: PlanRunListRow[] }>(`/plan-runs${qs.length > 0 ? `?${qs}` : ""}`, {
 			...(signal ? { signal } : {}),
 		});
 	},
