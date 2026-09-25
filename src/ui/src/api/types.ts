@@ -651,7 +651,7 @@ export interface PlanRunRow {
 	endedAt: string | null;
 }
 
-export type PlanRunListRow = PlanRunRow & { childStates: PlanRunChildState[] };
+export type PlanRunListRow = PlanRunRow & { childStates?: PlanRunChildState[] }; // absent pre-warren-b2d6
 
 export interface PlanRunChildRow {
 	planRunId: string;

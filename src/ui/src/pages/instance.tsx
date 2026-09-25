@@ -125,7 +125,7 @@ function ServerCard({
 				label="Public URL"
 				value={facts ? (facts.publicUrl ?? <NotSet />) : "loading"}
 				hint="WARREN_BASE_URL"
-				mono
+				mono={typeof facts?.publicUrl === "string"}
 			/>
 			<FactRow label="Version" value={facts ? `v${facts.version}` : "loading"} />
 			<FactRow

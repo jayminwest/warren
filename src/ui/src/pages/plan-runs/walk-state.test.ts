@@ -22,6 +22,7 @@ describe("childSummary", () => {
 	test("reads a queued or childless walk plainly", () => {
 		expect(childSummary("queued", ["pending"])).toBe("0 of 1 merged · waiting to start");
 		expect(childSummary("running", [])).toBe("No children");
+		expect(childSummary("running", undefined)).toBe("—");
 	});
 });
 
@@ -40,6 +41,7 @@ describe("childSummary clauses", () => {
 		expect(childSummary("cancelled", ["merged"])).toBe("1 of 1 merged · cancelled");
 		expect(childSummary("running", ["merged", "pending"])).toBe("1 of 2 merged · in flight");
 		expect(childSummary("running", [])).toBe("No children");
+		expect(childSummary("running", undefined)).toBe("—");
 	});
 });
 

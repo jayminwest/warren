@@ -64,7 +64,12 @@ export function planRunElapsed(planRun: PlanRunRow, now: number): string {
  * child 4 running" or "9 of 9 merged". Only facts the API carries —
  * never a fabricated PR number.
  */
-export function childSummary(state: PlanRunState, children: readonly PlanRunChildState[]): string {
+export function childSummary(
+	state: PlanRunState,
+	children: readonly PlanRunChildState[] | undefined,
+): string {
+	// An older server sends no child states; say nothing rather than "none".
+	if (children === undefined) return "—";
 	if (children.length === 0) return "No children";
 	const merged = children.filter((c) => c === "merged").length;
 	const base = `${merged} of ${children.length} merged`;

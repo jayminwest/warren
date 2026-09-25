@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils.ts";
  * walk's progress at a glance. Colour comes from the shared status
  * vocabulary; a pending child is an empty outline.
  */
-export function ChildSquares({ states }: { states: readonly PlanRunChildState[] }) {
+export function ChildSquares({ states }: { states: readonly PlanRunChildState[] | undefined }) {
+	if (states === undefined || states.length === 0) return null;
 	return (
 		<span
 			className="flex shrink-0 flex-wrap gap-0.5"

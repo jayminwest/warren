@@ -17,7 +17,7 @@ import {
  * with the time spent between moments on the connectors. The live stage
  * pulses and its connector ticks with `now`; a failed run marks the
  * stage where it stopped; stages the runtime never reported are dimmed.
- * Scrolls sideways inside its card on a phone.
+ * On a phone it stacks into a vertical stepper instead of scrolling.
  */
 
 const NODE: Record<StageStatus, string> = {
@@ -89,11 +89,11 @@ function Connector({
 	status: string;
 }) {
 	return (
-		<div className="mx-3 mt-2.5 flex min-w-10 flex-1 flex-col items-center">
+		<div className="flex items-center gap-3 py-0.5 pl-2.5 sm:mx-3 sm:mt-2.5 sm:min-w-10 sm:flex-1 sm:flex-col sm:gap-0 sm:py-0 sm:pl-0">
 			<span
 				aria-hidden
 				className={cn(
-					"h-px w-full",
+					"h-5 w-px sm:h-px sm:w-full",
 					span.live
 						? "bg-(--color-info)/50"
 						: span.ms !== null && status !== "skipped"
@@ -103,7 +103,7 @@ function Connector({
 			/>
 			<span
 				className={cn(
-					"mt-1 text-xs tabular-nums",
+					"text-xs tabular-nums sm:mt-1",
 					span.live ? "text-(--color-info)" : "text-(--color-text-3)",
 				)}
 			>
@@ -125,10 +125,16 @@ export function StageTimeline({
 	const stages = useMemo(() => deriveStages(run, events), [run, events]);
 	return (
 		<Card className="self-stretch">
-			<div className="overflow-x-auto px-4 py-3.5">
-				<ol aria-label="Run stages" className="flex min-w-xl items-start">
+			<div className="px-4 py-3.5 sm:overflow-x-auto">
+				<ol
+					aria-label="Run stages"
+					className="flex flex-col sm:min-w-xl sm:flex-row sm:items-start"
+				>
 					{stages.map((s, i) => (
-						<li key={s.key} className="flex flex-1 items-start last:flex-none">
+						<li
+							key={s.key}
+							className="flex flex-col sm:flex-1 sm:flex-row sm:items-start sm:last:flex-none"
+						>
 							<StageNode stage={s} />
 							{i < stages.length - 1 ? (
 								<Connector

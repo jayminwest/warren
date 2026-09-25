@@ -95,15 +95,6 @@ describe("runsApi.previewLogin (warren-e1b0)", () => {
 	});
 });
 
-describe("planRunsApi.list", () => {
-	test("defaults childStates to an empty list when an older server omits it", async () => {
-		nextResponse = () => jsonOk({ planRuns: [{ id: "plnr_1" }] });
-		const { planRunsApi } = await import("./client.ts");
-		const res = await planRunsApi.list();
-		expect(res.planRuns[0]?.childStates).toEqual([]);
-	});
-});
-
 describe("api token storage", () => {
 	test("getApiToken reads the cached bearer; setApiToken(null) clears it", async () => {
 		const { getApiToken, setApiToken } = await import("./client.ts");

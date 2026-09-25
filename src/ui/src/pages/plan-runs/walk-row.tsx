@@ -17,6 +17,7 @@ import { childSummary, planRunElapsed } from "./walk-state.ts";
 /** "pl-10db" for a plan walk, "3 issues" for an explicit issue list. */
 export function planLabelOf(planRun: PlanRunListRow): string {
 	if (planRun.source === "plan") return planRun.planId ?? "—";
+	if (planRun.childStates === undefined) return "Issue list";
 	const n = planRun.childStates.length;
 	return `${n} ${n === 1 ? "issue" : "issues"}`;
 }
