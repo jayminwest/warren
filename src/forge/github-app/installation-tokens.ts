@@ -13,8 +13,15 @@
  *
  * No length assumption on the token (§6.9 — the stateless `ghs_` format
  * was observed at 383 characters); the secret is interpolated verbatim and
- * never logged. Per §4 the mint is NOT down-scoped to a repository — the
- * single installation id already bounds the blast radius.
+ * never logged. `mint()` is installation-wide: it serves the REST surface
+ * (PR open, checks, auto-merge) across every repo the installation covers.
+ *
+ * `mintForRepository()` (warren-b425) is the down-scoped path behind
+ * `gitCredential`. That credential reaches the run pod, so it is minted for
+ * the ONE repository the run targets, with `contents` + `workflows` write
+ * only. Each repository gets its own cache slot. An installation that was
+ * not granted `workflows` answers 422, and the mint retries with `contents`
+ * alone.
  *
  * Seam discipline (§2.2): `mint()` never throws. A transport failure maps
  * through the shared classifier; a JWT that `node:crypto` refuses to sign
@@ -63,6 +70,14 @@ interface CachedInstallationToken {
 	readonly expiresAt: number;
 }
 
+/**
+ * Permissions for a repository-scoped git credential. `workflows` lets a
+ * run push `.github/workflows/` edits; an installation without that grant
+ * falls back to `contents` alone.
+ */
+const REPOSITORY_PERMISSIONS = { contents: "write", workflows: "write" } as const;
+const REPOSITORY_PERMISSIONS_FALLBACK = { contents: "write" } as const;
+
 interface AccessTokenResponseJson {
 	readonly token?: unknown;
 	readonly expires_at?: unknown;
@@ -74,6 +89,7 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 	private readonly now: () => number;
 	private readonly marginMs: number;
 	private cached: CachedInstallationToken | null = null;
+	private readonly repoCache = new Map<string, CachedInstallationToken>();
 
 	constructor(options: InstallationTokenSourceOptions) {
 		this.options = options;
@@ -94,14 +110,44 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 	}
 
 	async mint(): Promise<ForgeResult<GitHubCredentialSecret>> {
-		const cached = this.cached;
-		if (cached !== null && this.now() < cached.expiresAt - this.marginMs) {
-			return { ok: true, value: { secret: cached.installationToken, expiresAt: cached.expiresAt } };
+		const cached = this.fresh(this.cached);
+		if (cached !== null) return cached;
+		const minted = await this.exchange({});
+		if (minted.ok) this.cached = toCached(minted.value);
+		return minted;
+	}
+
+	/**
+	 * Mint a git credential scoped to ONE repository of the installation
+	 * (warren-b425). `repository` is the bare repo name, without the owner.
+	 */
+	async mintForRepository(repository: string): Promise<ForgeResult<GitHubCredentialSecret>> {
+		const cached = this.fresh(this.repoCache.get(repository) ?? null);
+		if (cached !== null) return cached;
+		const repositories = [repository];
+		let minted = await this.exchange({ repositories, permissions: REPOSITORY_PERMISSIONS });
+		if (!minted.ok && minted.error.status === 422) {
+			minted = await this.exchange({ repositories, permissions: REPOSITORY_PERMISSIONS_FALLBACK });
 		}
-		return this.reMint();
+		if (minted.ok) this.repoCache.set(repository, toCached(minted.value));
+		return minted;
+	}
+
+	private fresh(
+		cached: CachedInstallationToken | null,
+	): ForgeResult<GitHubCredentialSecret> | null {
+		if (cached === null || this.now() >= cached.expiresAt - this.marginMs) return null;
+		return { ok: true, value: { secret: cached.installationToken, expiresAt: cached.expiresAt } };
 	}
 
 	private async reMint(): Promise<ForgeResult<GitHubCredentialSecret>> {
+		const minted = await this.exchange({});
+		if (minted.ok) this.cached = toCached(minted.value);
+		return minted;
+	}
+
+	/** Trade a fresh App JWT for an installation token. Caches nothing. */
+	private async exchange(body: object): Promise<ForgeResult<GitHubCredentialSecret>> {
 		let jwt: string;
 		try {
 			jwt = mintGitHubAppJwt({
@@ -124,13 +170,13 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 			token: jwt,
 			userAgent: USER_AGENT,
 			context: "POST /app/installations/:id/access_tokens",
-			body: {},
+			body,
 			fetch: this.fetch,
 		});
 		if (!result.ok) return { ok: false, error: toForgeError(result.error) };
-		const body = (await readJson(result.response)) as AccessTokenResponseJson | null;
-		const expiresAtMs = typeof body?.expires_at === "string" ? Date.parse(body.expires_at) : NaN;
-		if (typeof body?.token !== "string" || body.token === "" || !Number.isFinite(expiresAtMs)) {
+		const json = (await readJson(result.response)) as AccessTokenResponseJson | null;
+		const expiresAtMs = typeof json?.expires_at === "string" ? Date.parse(json.expires_at) : NaN;
+		if (typeof json?.token !== "string" || json.token === "" || !Number.isFinite(expiresAtMs)) {
 			return {
 				ok: false,
 				error: {
@@ -139,7 +185,10 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 				},
 			};
 		}
-		this.cached = { installationToken: body.token, expiresAt: expiresAtMs };
-		return { ok: true, value: { secret: body.token, expiresAt: expiresAtMs } };
+		return { ok: true, value: { secret: json.token, expiresAt: expiresAtMs } };
 	}
+}
+
+function toCached(secret: GitHubCredentialSecret): CachedInstallationToken {
+	return { installationToken: secret.secret, expiresAt: secret.expiresAt ?? 0 };
 }

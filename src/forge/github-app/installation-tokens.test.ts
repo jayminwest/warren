@@ -136,3 +136,58 @@ describe("InstallationTokenSource", () => {
 		}
 	});
 });
+
+describe("InstallationTokenSource.mintForRepository (warren-b425)", () => {
+	test("scopes the token to one repository with contents and workflows write", async () => {
+		const { fetch, calls } = recordingFetch([
+			tokenResponse("ghs_scoped", Date.now() + ONE_HOUR_MS),
+		]);
+		const result = await makeSource({ fetch }).mintForRepository("widgets");
+		expect(result.ok && result.value.secret === "ghs_scoped").toBe(true);
+		expect(JSON.parse(calls[0]?.body ?? "null")).toEqual({
+			repositories: ["widgets"],
+			permissions: { contents: "write", workflows: "write" },
+		});
+	});
+
+	test("falls back to contents-only when the installation lacks the workflows grant", async () => {
+		const { fetch, calls } = recordingFetch([
+			jsonResponse(422, {
+				message: "The permissions requested are not granted to this installation.",
+			}),
+			tokenResponse("ghs_contents_only", Date.now() + ONE_HOUR_MS),
+		]);
+		const result = await makeSource({ fetch }).mintForRepository("widgets");
+		expect(result.ok && result.value.secret === "ghs_contents_only").toBe(true);
+		expect(JSON.parse(calls[1]?.body ?? "null")).toEqual({
+			repositories: ["widgets"],
+			permissions: { contents: "write" },
+		});
+	});
+
+	test("caches per repository and never shares the installation-wide slot", async () => {
+		const expiresAt = Date.now() + ONE_HOUR_MS;
+		const { fetch, calls } = recordingFetch([
+			tokenResponse("ghs_widgets", expiresAt),
+			tokenResponse("ghs_gadgets", expiresAt),
+			tokenResponse("ghs_installation", expiresAt),
+		]);
+		const source = makeSource({ fetch });
+		expect((await source.mintForRepository("widgets")).ok).toBe(true);
+		const again = await source.mintForRepository("widgets");
+		expect(again.ok && again.value.secret === "ghs_widgets").toBe(true);
+		const other = await source.mintForRepository("gadgets");
+		expect(other.ok && other.value.secret === "ghs_gadgets").toBe(true);
+		const wide = await source.mint();
+		expect(wide.ok && wide.value.secret === "ghs_installation").toBe(true);
+		expect(calls).toHaveLength(3);
+		expect(calls[2]?.body).toBe("{}");
+	});
+
+	test("does not retry a non-422 failure", async () => {
+		const { fetch, calls } = recordingFetch([jsonResponse(401, { message: "Bad credentials" })]);
+		const result = await makeSource({ fetch }).mintForRepository("widgets");
+		expect(result.ok).toBe(false);
+		expect(calls).toHaveLength(1);
+	});
+});

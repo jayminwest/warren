@@ -51,10 +51,16 @@ spec:
 #      (b) the warren control-plane Service — in-cluster callback
 #          (events / inbox / finalize) on :8080, selected by the control-plane
 #          pod labels in namespace `warren`.
-#      (c) 0.0.0.0/0 — external git hosts, model providers, package registries.
-#          Intentionally open: FQDN-based allowlisting is the follow-up, not a
-#          forged CIDR list. Peer isolation is the ingress policy above, not
-#          an egress except-CIDR guess.
+#      (c) the public internet — external git hosts, model providers, package
+#          registries. 0.0.0.0/0 MINUS the non-public ranges (warren-b275):
+#          link-local 169.254.0.0/16 (the cloud metadata server, which hands
+#          out node and workload credentials), RFC 1918, and RFC 6598 shared
+#          space. These are fixed IANA ranges, not a guessed provider list.
+#          They cut the run off from the metadata server, peer pods, and
+#          in-cluster services. Rules (a) and (b) are separate allows, so DNS
+#          and the control-plane callback still work. No IPv6 rule ships, so
+#          IPv6 egress stays denied. FQDN-based allowlisting remains the
+#          follow-up for narrowing the public half.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -88,10 +94,16 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # (c) external world — git clone/push, model providers, package registries
+    # (c) public internet — git clone/push, model providers, package registries
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
+            except:
+              - 169.254.0.0/16 # link-local, incl. the metadata server
+              - 10.0.0.0/8 # RFC 1918
+              - 172.16.0.0/12 # RFC 1918
+              - 192.168.0.0/16 # RFC 1918
+              - 100.64.0.0/10 # RFC 6598 shared address space
 ---
 # 3. `network: none` — deny all egress. Mirrors LocalProvider/bwrap's
 #    unshared net and DockerProvider's `--network none`. Ingress is already

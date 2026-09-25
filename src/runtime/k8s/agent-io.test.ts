@@ -22,6 +22,17 @@ describe("agentChildEnv (warren-6016)", () => {
 		expect(env.GITHUB_TOKEN).toBeUndefined();
 	});
 
+	test("the run-scoped callback token is scrubbed so the agent cannot remint a push credential (warren-ccef)", () => {
+		const env = agentChildEnv({
+			WARREN_API_TOKEN: "wrs1.run-tok",
+			WARREN_API_URL: "http://warren:8080",
+			WARREN_AGENT_RUNTIME: "pi",
+		});
+		expect(env.WARREN_API_TOKEN).toBeUndefined();
+		expect(env.WARREN_API_URL).toBe("http://warren:8080");
+		expect(env.WARREN_AGENT_RUNTIME).toBe("pi");
+	});
+
 	test("a runtime's explicit command.env wins over the scrub (warren-controlled)", () => {
 		const env = agentChildEnv(
 			{ WARREN_GIT_TOKEN: "pod-tok", PATH: "/usr/bin" },

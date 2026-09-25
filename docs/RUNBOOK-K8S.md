@@ -805,6 +805,51 @@ kubectl -n warren-runs exec $POD -c agent -- \
 # proves the warren-fd08 assumptions survived the split).
 ```
 
+### 4.3 Sandboxed RuntimeClass — gVisor run pods (warren-9bd3)
+
+A project can run its pods under a sandboxed RuntimeClass, such as GKE Sandbox (gVisor).
+Set it per project in `.warren/config.yaml`:
+
+```yaml
+resources:
+  runtimeClass: gvisor
+```
+
+The builder sets `runtimeClassName` on the run pod.
+The RuntimeClass object supplies the node selector and toleration for its sandbox nodes.
+GKE Autopilot provisions a gVisor node on demand, so the first run can wait a few minutes in `Pending`.
+On GKE Standard, create a gVisor node pool first.
+
+The uid split in §4.2 cannot run unchanged under GKE Sandbox:
+
+- Admission rejects `allowPrivilegeEscalation: true`.
+- With no_new_privs on, the file caps on `setpriv` are inert.
+- gVisor does not keep ambient caps across a uid change.
+
+So under a RuntimeClass the agent container changes shape (`src/runtime/k8s/pod-runtime-class.ts`):
+
+| Field | Default runtime | Sandboxed runtime |
+|---|---|---|
+| Entrypoint uid | 1000 | 0 (root of the gVisor userspace kernel, not of the node) |
+| `allowPrivilegeEscalation` | `true` | `false` |
+| Capabilities | drop ALL, add SETUID/SETGID/KILL | the same |
+| Agent uid | 1001, no caps | 1001, no caps |
+
+The agent still cannot read the entrypoint's environ or write its stdout.
+The init container stays uid 1000 with no caps.
+The root entrypoint writes the workspace through group 1000, like the agent.
+
+Measured on Autopilot on 2026-09-25, one sample per arm: `bun install` for this repo took 10.7 s on runc and 29.5 s on gVisor.
+Clone and `bun test` changed little.
+Budget run time on I/O-heavy projects before you switch a project to gVisor.
+
+Check a gVisor run pod:
+
+```bash
+kubectl -n warren-runs exec $POD -c agent -- sh -c 'uname -r; dmesg | head -1'
+# expect: 4.4.0 and "Starting gVisor..."
+```
+
 ---
 
 ## 5. Garbage collection & resource growth

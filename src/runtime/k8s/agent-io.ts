@@ -250,8 +250,18 @@ export function sleepUntil(ms: number, signal: AbortSignal): Promise<void> {
  * compromised agent never holds the push token" still holds for the agent
  * process itself, so the entrypoint spawns the agent with these scrubbed. A
  * runtime's own `command.env` may still set them explicitly (warren-controlled).
+ *
+ * `WARREN_API_TOKEN` (warren-ccef) is the run-scoped callback token. Only the
+ * entrypoint uses it (inbox polling, finalize, salvage, and the App-mode
+ * `/runs/:id/git-credential` remint). An agent that inherited it could mint a
+ * push credential through that remint route, which defeats the push-token
+ * scrub above.
  */
-const AGENT_SCRUBBED_ENV_KEYS: readonly string[] = ["WARREN_GIT_TOKEN", "GITHUB_TOKEN"];
+const AGENT_SCRUBBED_ENV_KEYS: readonly string[] = [
+	"WARREN_GIT_TOKEN",
+	"GITHUB_TOKEN",
+	"WARREN_API_TOKEN",
+];
 
 /**
  * The env the agent child spawns with: the inherited (container) env minus the

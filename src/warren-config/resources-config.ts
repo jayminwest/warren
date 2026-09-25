@@ -78,11 +78,24 @@ const ResourceQuantitiesSchema = z
 	})
 	.strict();
 
+// warren-9bd3: a sandboxed K8s RuntimeClass for this project's run pods (for
+// example `gvisor` for GKE Sandbox). The value is a RuntimeClass object name,
+// so it must be a DNS-1123 subdomain. The pod-spec builder switches the agent
+// container to the sandbox-compatible posture (`src/runtime/k8s/pod-runtime-class.ts`).
+const RuntimeClassNameSchema = z
+	.string()
+	.max(253, "runtimeClass must be at most 253 characters")
+	.regex(
+		/^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/,
+		"runtimeClass must be a DNS-1123 subdomain (a RuntimeClass name such as gvisor)",
+	);
+
 export const ResourcesConfigSchema = z
 	.object({
 		requests: ResourceQuantitiesSchema.optional(),
 		limits: ResourceQuantitiesSchema.optional(),
 		network: NetworkPolicySchema.optional(),
+		runtimeClass: RuntimeClassNameSchema.optional(),
 	})
 	.strict();
 
