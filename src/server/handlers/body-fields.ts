@@ -72,6 +72,23 @@ export function optionalPositiveNumber(
 }
 
 /**
+ * An optional body field that must be a positive JSON integer. First
+ * consumer is `maxDurationMinutes` (warren-a112, the per-run wall-clock
+ * cap): zero, a fraction, or a string is refused here rather than failing
+ * open downstream as "no cap".
+ */
+export function optionalPositiveInteger(
+	body: Record<string, unknown>,
+	key: string,
+): number | undefined {
+	const value = optionalPositiveNumber(body, key);
+	if (value !== undefined && !Number.isSafeInteger(value)) {
+		throw new ValidationError(`field '${key}' must be a positive integer`);
+	}
+	return value;
+}
+
+/**
  * An optional body field that must be a JSON object. Rejects arrays, strings,
  * and numbers instead of casting them to a record and letting a non-object
  * reach persistence.

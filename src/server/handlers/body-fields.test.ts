@@ -1,6 +1,32 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../../core/errors.ts";
-import { optionalEnum, optionalObject, optionalPositiveNumber } from "./body-fields.ts";
+import {
+	optionalEnum,
+	optionalObject,
+	optionalPositiveInteger,
+	optionalPositiveNumber,
+} from "./body-fields.ts";
+
+describe("optionalPositiveInteger", () => {
+	test("returns undefined for an absent or null field", () => {
+		expect(optionalPositiveInteger({}, "maxDurationMinutes")).toBeUndefined();
+		expect(optionalPositiveInteger({ maxDurationMinutes: null }, "maxDurationMinutes")).toBe(
+			undefined,
+		);
+	});
+
+	test("returns a positive integer verbatim", () => {
+		expect(optionalPositiveInteger({ maxDurationMinutes: 30 }, "maxDurationMinutes")).toBe(30);
+	});
+
+	test("rejects zero, negatives, fractions, non-finite values, and strings", () => {
+		for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "30"]) {
+			expect(() =>
+				optionalPositiveInteger({ maxDurationMinutes: bad }, "maxDurationMinutes"),
+			).toThrow(ValidationError);
+		}
+	});
+});
 
 describe("optionalPositiveNumber", () => {
 	test("returns undefined for an absent or null field", () => {

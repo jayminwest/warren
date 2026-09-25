@@ -1,5 +1,4 @@
-import { ValidationError } from "../core/errors.ts";
-import { pollUntilTerminal } from "./client-helpers.ts";
+import { assertValidDispatchCaps, pollUntilTerminal } from "./client-helpers.ts";
 import { type EnvLike, loadWarrenClientConfigFromEnv, type WarrenClientConfig } from "./config.ts";
 import { WarrenClientError, WarrenUnreachableError } from "./errors.ts";
 import { errorFromResponse, readNdjsonStream } from "./ndjson.ts";
@@ -42,20 +41,6 @@ import {
 } from "./types.ts";
 
 export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
-
-/**
- * Guard the per-run spend cap before JSON serialization (warren-a63d).
- * `JSON.stringify` turns `NaN` / `±Infinity` into `null`, which the
- * server reads as "field absent" — the dispatch would then succeed
- * silently UNCAPPED instead of failing the documented positive-finite
- * validation. Fail here with the same rule the server enforces.
- */
-function assertValidMaxCostUsd(value: number | undefined): void {
-	if (value === undefined) return;
-	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-		throw new ValidationError("maxCostUsd must be a positive finite number of USD");
-	}
-}
 
 export { DEFAULT_POLL_INTERVAL_MS, DEFAULT_POLL_TIMEOUT_MS } from "./client-helpers.ts";
 
@@ -214,7 +199,7 @@ export class WarrenClient {
 	}
 
 	async createRun(input: CreateRunInput): Promise<SpawnRunResponse> {
-		assertValidMaxCostUsd(input.maxCostUsd);
+		assertValidDispatchCaps(input);
 		return this.request<SpawnRunResponse>("/runs", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -242,6 +227,7 @@ export class WarrenClient {
 		if (input.cloneFromRunId !== undefined) body.cloneFromRunId = input.cloneFromRunId;
 		if (input.rescueFromRunId !== undefined) body.rescueFromRunId = input.rescueFromRunId;
 		if (input.maxCostUsd !== undefined) body.maxCostUsd = input.maxCostUsd;
+		if (input.maxDurationMinutes !== undefined) body.maxDurationMinutes = input.maxDurationMinutes;
 		return this.createRun(body);
 	}
 
@@ -368,7 +354,7 @@ export class WarrenClient {
 	 * (idempotent resume contract).
 	 */
 	async createPlanRun(input: CreatePlanRunInput): Promise<CreatePlanRunResponse> {
-		assertValidMaxCostUsd(input.maxCostUsd);
+		assertValidDispatchCaps(input);
 		return this.request<CreatePlanRunResponse>("/plan-runs", {
 			method: "POST",
 			headers: { "content-type": "application/json" },

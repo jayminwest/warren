@@ -54,6 +54,7 @@ describe("plan-run field classification (warren-8793)", () => {
 				"dispatcherHandle",
 				"failureReason",
 				"maxCostUsd",
+				"maxDurationMinutes",
 				"modelOverride",
 				"promptTemplate",
 				"providerOverride",

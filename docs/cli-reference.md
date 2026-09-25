@@ -67,6 +67,7 @@ warren run [options] [agent] [project]
 | `--provider <name>` |  |  | per-run override of agent frontmatter.provider |
 | `--model <name>` |  |  | per-run override of agent frontmatter.model |
 | `--max-cost-usd <usd>` |  |  | per-run USD spend cap; wins over the agent's own and the project default |
+| `--max-duration-minutes <n>` |  |  | per-run wall-clock cap in minutes; past it the run fails timed_out |
 | `--seed <id>` |  |  | link the run to a seeds issue (POST /runs seedId) |
 | `--base-commit <sha>` |  |  | pin the workspace cut to a 40-hex commit SHA |
 | `--existing-branch <branch>` |  |  | run on an existing push-remote branch and push back to it; no PR |
@@ -186,6 +187,7 @@ warren plan run [options] [plan-id]
 | `--provider <name>` |  |  | per-run override of agent frontmatter.provider |
 | `--model <name>` |  |  | per-run override of agent frontmatter.model |
 | `--max-cost-usd <usd>` |  |  | per-child USD spend cap applied to every child dispatch |
+| `--max-duration-minutes <n>` |  |  | per-child wall-clock cap in minutes applied to every child dispatch |
 | `--no-follow` |  |  | dispatch and exit without tailing events |
 | `--output <mode>` |  | `"ndjson"` | output mode: ndjson (default) or pretty |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |

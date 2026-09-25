@@ -244,6 +244,7 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 				providerOverride: NULLABLE_STRING,
 				modelOverride: NULLABLE_STRING,
 				maxCostUsd: NULLABLE_NUMBER,
+				maxDurationMinutes: NULLABLE_INTEGER,
 				dispatcherHandle: STRING,
 				trigger: STRING,
 				state: refSchema("PlanRunState"),

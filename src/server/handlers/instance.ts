@@ -20,7 +20,11 @@ import type { RouteHandler, ServerDeps } from "../types.ts";
  * Policy is `readPublic`, and the body varies with `Authorization`: an
  * operator gets the full facts (db backend, uptime, K8s admission caps),
  * a `WARREN_AUTH=public` spectator gets the reduced static projection
- * (`version`, `runtime`, `authMode`). Never secrets, tokens, connection
+ * (`version`, `name`, `publicUrl`, `runtime`, `authMode`). warren-a112
+ * cleared the identity pair for spectators: `name` is an operator-chosen
+ * display label, and `publicUrl` is the address the spectator is already
+ * on (reap also prints it in every PR back-link), normalized so userinfo,
+ * query, and fragment never reach the wire. Never secrets, tokens, connection
  * strings, internal hostnames, or filesystem paths — the domain module's
  * allowlist makes that a structural guarantee, and the acceptance public
  * leak guard (scenario 39) polices the whole mode.

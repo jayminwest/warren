@@ -20,6 +20,8 @@ const TOKEN = "operator-secret-token-abcdef";
 
 interface InstanceBody {
 	version: string;
+	name: string | null;
+	publicUrl: string | null;
 	runtime: string;
 	authMode: string;
 	dbBackend?: string | null;
@@ -97,6 +99,8 @@ describe("GET /instance", () => {
 		expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0);
 		// Local runtime: admission caps are K8s-only knobs, so they stay null.
 		expect(body.admission).toBeNull();
+		expect(body).toHaveProperty("name");
+		expect(body).toHaveProperty("publicUrl");
 		expectNoSecrets(body);
 	});
 
@@ -109,8 +113,15 @@ describe("GET /instance", () => {
 			const res = await fetch(`${base}/instance`);
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as InstanceBody;
-			// Allowlist projection: only the three static facts.
-			expect(Object.keys(body).sort()).toEqual(["authMode", "runtime", "version"]);
+			// Allowlist projection: the static facts plus the warren-a112
+			// identity pair (null here — neither env knob is set).
+			expect(Object.keys(body).sort()).toEqual([
+				"authMode",
+				"name",
+				"publicUrl",
+				"runtime",
+				"version",
+			]);
 			expect(body.version).toMatch(/^\d+\.\d+\.\d+$/);
 			expect(body.authMode).toBe("public");
 			expectNoSecrets(body);

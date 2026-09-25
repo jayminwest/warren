@@ -12,6 +12,7 @@
 			"providerOverride": null,
 			"modelOverride": null,
 			"maxCostUsd": null,
+			"maxDurationMinutes": null,
 			"dispatcherHandle": "operator",
 			"trigger": "manual",
 			"parentRunId": null,

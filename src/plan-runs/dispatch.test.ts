@@ -67,6 +67,7 @@ describe("createPlanRunSpawn", () => {
 			agentName: "claude-code",
 			children: [{ seq: 1, seedId: "warren-a" }],
 			maxCostUsd: 3,
+			maxDurationMinutes: 25,
 			now: NOW,
 		});
 		const child = (await repos.planRuns.listChildren(planRun.id))[0];
@@ -129,6 +130,8 @@ describe("createPlanRunSpawn", () => {
 		expect(captured[0]?.runtimeProvider).toBe(runtimeProvider);
 		// warren-a63d: the plan-run's per-child spend cap rides the override slot.
 		expect(captured[0]?.maxCostUsdOverride).toBe(3);
+		// warren-a112: so does the per-child wall-clock cap.
+		expect(captured[0]?.maxDurationMinutesOverride).toBe(25);
 	});
 
 	test("spawns a single child run for a PlanRun with no bindings", async () => {

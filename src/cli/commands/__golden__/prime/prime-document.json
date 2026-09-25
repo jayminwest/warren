@@ -45,6 +45,10 @@
           "description": "per-run USD spend cap; wins over the agent's own and the project default"
         },
         {
+          "flags": "--max-duration-minutes <n>",
+          "description": "per-run wall-clock cap in minutes; past it the run fails timed_out"
+        },
+        {
           "flags": "--seed <id>",
           "description": "link the run to a seeds issue (POST /runs seedId)"
         },
@@ -208,6 +212,10 @@
         {
           "flags": "--max-cost-usd <usd>",
           "description": "per-child USD spend cap applied to every child dispatch"
+        },
+        {
+          "flags": "--max-duration-minutes <n>",
+          "description": "per-child wall-clock cap in minutes applied to every child dispatch"
         },
         {
           "flags": "--no-follow",

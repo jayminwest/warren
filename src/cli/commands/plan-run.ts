@@ -22,6 +22,7 @@
 
 import type { CreatePlanRunInput, WarrenClient } from "../../client/index.ts";
 import type { PlanRunState } from "../../client/types.ts";
+import { capFlags } from "../flags.ts";
 import type { CliContext } from "../output.ts";
 import {
 	commandFailure,
@@ -50,6 +51,8 @@ export interface PlanRunArgs {
 	readonly model?: string;
 	/** Per-child USD spend cap (warren-a63d), forwarded to every child dispatch. */
 	readonly maxCostUsd?: number;
+	/** Per-child wall-clock cap in minutes (warren-a112), forwarded to every child dispatch. */
+	readonly maxDurationMinutes?: number;
 	/** Tail events until terminal (default). `--no-follow` dispatches and exits. */
 	readonly follow: boolean;
 	/** Output mode for the dispatch summary + event stream. Default `ndjson`. */
@@ -129,7 +132,7 @@ export async function runPlanRun(
 			...(args.ref !== undefined ? { ref: args.ref } : {}),
 			...(args.provider !== undefined ? { providerOverride: args.provider } : {}),
 			...(args.model !== undefined ? { modelOverride: args.model } : {}),
-			...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
+			...capFlags(args),
 		});
 		planRunId = created.planRun.id;
 		renderer.dispatched(created.planRun, created.children);
