@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildCreateRunInput,
 	initialDraft,
+	initialTouched,
 	parseCostCap,
 	parseErrorOf,
 	parseTimeLimit,
 	parseValueOf,
+	readDispatchRouteState,
 } from "./dispatch-draft.ts";
 
 describe("parseTimeLimit", () => {
@@ -54,5 +56,56 @@ describe("buildCreateRunInput", () => {
 		const input = buildCreateRunInput({ draft, routeState: {}, maxCostUsd: undefined });
 		expect("maxDurationMinutes" in input).toBe(false);
 		expect("maxCostUsd" in input).toBe(false);
+	});
+});
+
+describe("readDispatchRouteState", () => {
+	test("keeps string fields and drops everything else", () => {
+		expect(readDispatchRouteState(null)).toEqual({});
+		expect(
+			readDispatchRouteState({
+				project: "p1",
+				agent: "pi",
+				prompt: "fix it",
+				seedId: "warren-1",
+				continueFromRunId: "run_a",
+				cloneFromRunId: "run_b",
+				rescueFromRunId: "run_c",
+				extra: 3,
+				planId: 7,
+			}),
+		).toEqual({
+			project: "p1",
+			agent: "pi",
+			prompt: "fix it",
+			seedId: "warren-1",
+			continueFromRunId: "run_a",
+			cloneFromRunId: "run_b",
+			rescueFromRunId: "run_c",
+		});
+	});
+});
+
+describe("initialDraft and initialTouched", () => {
+	test("seed the form from route state and mark supplied fields touched", () => {
+		const state = { project: "p1", agent: "pi", prompt: "go", seedId: "warren-1" };
+		expect(initialDraft(state)).toMatchObject({
+			project: "p1",
+			agent: "pi",
+			prompt: "go",
+			seedId: "warren-1",
+		});
+		expect(initialTouched(state)).toMatchObject({ agent: true, prompt: true, costCap: false });
+		expect(initialTouched({})).toMatchObject({ agent: false, prompt: false });
+	});
+});
+
+describe("parseErrorOf and parseValueOf", () => {
+	test("split a parse result into its error or its value", () => {
+		expect(parseErrorOf(null)).toBeNull();
+		expect(parseErrorOf({ error: "bad" })).toBe("bad");
+		expect(parseValueOf({ value: 3 })).toBe(3);
+		expect(parseValueOf({ error: "bad" })).toBeUndefined();
+		expect(parseValueOf(null)).toBeUndefined();
 	});
 });

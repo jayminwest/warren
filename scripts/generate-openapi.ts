@@ -126,9 +126,8 @@ const NULLABLE_INTEGER = { type: ["integer", "null"] } as const;
 function envelope(properties: Record<string, JsonSchema>): JsonSchema {
 	return { type: "object", properties, required: Object.keys(properties) };
 }
-
+const planRunListExtra = () => envelope({ childStates: arrayOf(refSchema("PlanRunChildState")) });
 function buildComponentSchemas(): Record<string, JsonSchema> {
-	const childStates = arrayOf(refSchema("PlanRunChildState"));
 	return {
 		RunState: enumSchema(RUN_STATES),
 		RunFailureReason: enumSchema(RUN_FAILURE_REASONS),
@@ -266,7 +265,7 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 				"createdAt",
 			],
 		},
-		PlanRunListRow: { allOf: [refSchema("PlanRun"), envelope({ childStates })] },
+		PlanRunListRow: { allOf: [refSchema("PlanRun"), planRunListExtra()] },
 		PlanRunChild: {
 			type: "object",
 			properties: {

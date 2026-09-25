@@ -69,8 +69,13 @@ body {
 	-moz-osx-font-smoothing: grayscale;
 }
 
-* {
-	border-color: var(--color-border);
+/* In the base layer so Tailwind border-colour utilities still win. */
+@layer base {
+	*,
+	::before,
+	::after {
+		border-color: var(--color-border);
+	}
 }
 
 /*

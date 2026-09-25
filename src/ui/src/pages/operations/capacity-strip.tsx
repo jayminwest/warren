@@ -1,57 +1,80 @@
 import type { OpsOverviewResponse } from "@/api/ops-types.ts";
 import type { RunRow } from "@/api/types.ts";
-import { cn } from "@/lib/utils.ts";
+import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import type { OpsWindow } from "../../../../core/wire.ts";
-import { formatDurationMs, oldestPhaseInstant } from "./operations.helpers.ts";
+import { formatAgeMs, oldestPhaseInstant, windowLabel } from "./operations.helpers.ts";
+import { type StatCell, StatStrip } from "./stat-strip.tsx";
 
 /**
- * The Operations capacity strip (warren-d903): RUNNING / QUEUE DEPTH /
- * SPEND / DELIVERY cards from one `GET /ops/overview` snapshot. Cards
- * whose section the public projection omits (spend, delivery) render on
- * presence — a spectator sees the reduced strip, not zeroed cards
- * (warren-f53e: absent ≠ 0).
- *
- * Mobile (warren-10d3, mobile/operations.jsx:72-137): below sm the strip
- * is the mock's 2x2 grid — RUNNING|QUEUE over SPEND|DELIVERY — with a
- * right hairline on the left cells, a bottom hairline on the first row,
- * 12px cell padding, and 18/22 600 values. The sm+ row is unchanged.
+ * The Operations headline figures (warren-d903, warren-9474): running,
+ * queued, spend, and delivery from one ops overview. Cells whose section
+ * the public projection omits (spend, delivery) render on presence — a
+ * spectator sees the reduced strip, never zeroed cells (warren-f53e:
+ * absent ≠ 0).
  */
 
-interface CapacityCellSpec {
-	readonly label: string;
-	readonly value: string;
-	readonly unit?: string;
-	readonly detail: string;
+function plural(n: number, one: string, many = `${one}s`): string {
+	return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }
 
-function CapacityCell({
-	label,
-	value,
-	unit,
-	detail,
-	className,
-}: CapacityCellSpec & { className?: string }) {
-	return (
-		<div
-			className={cn(
-				"flex min-w-0 flex-col gap-[5px] p-3 sm:gap-2 sm:flex-1 sm:px-3.5 sm:pt-3 sm:pb-2.5",
-				className,
-			)}
-		>
-			<span className="font-mono text-2xs tracking-wide text-(--color-text-3) sm:tracking-wide">
-				{label}
-			</span>
-			<span className="flex items-baseline gap-1 sm:gap-[7px]">
-				<span className="font-mono text-lg font-semibold tracking-tight text-(--color-text) sm:text-xl sm:leading-6 sm:font-medium">
-					{value}
-				</span>
-				{unit ? (
-					<span className="w-max shrink-0 font-mono text-xs text-(--color-text-3)">{unit}</span>
-				) : null}
-			</span>
-			<span className="font-mono text-2xs text-(--color-text-3)">{detail}</span>
-		</div>
-	);
+function queueDetail(runs: readonly RunRow[] | undefined, now: number): string {
+	if (runs === undefined) return "Checking the queue";
+	const oldest = oldestPhaseInstant(runs, "queued");
+	return oldest === null ? "Nothing waiting" : `Oldest waiting ${formatAgeMs(now - oldest)}`;
+}
+
+function buildCapacityCells(
+	overview: OpsOverviewResponse | undefined,
+	runs: readonly RunRow[] | undefined,
+	now: number,
+	window: OpsWindow,
+): StatCell[] {
+	if (overview === undefined) {
+		return ["Running", "Queued", "Spend", "Delivered"].map((label) => ({
+			key: label,
+			label,
+			value: null,
+		}));
+	}
+	const running = overview.runs.byState.running ?? 0;
+	const queued = overview.runs.byState.queued ?? 0;
+	const span = windowLabel(window);
+	const cells: StatCell[] = [
+		{
+			key: "running",
+			label: "Running",
+			value: running.toLocaleString(),
+			detail: `${plural(overview.runs.nonTerminal, "run")} holding a slot · ${plural(overview.runs.total, "run")} all time`,
+		},
+		{
+			key: "queued",
+			label: "Queued",
+			value: queued.toLocaleString(),
+			detail: queueDetail(runs, now),
+		},
+	];
+	const spend = overview.spend;
+	if (spend !== undefined) {
+		cells.push({
+			key: "spend",
+			label: `Spend, ${span}`,
+			// The USD sums are operator-only — a spectator's reduced body
+			// carries windowRuns alone, so the figure reads "—", not $0.00.
+			value: spend.windowUsd === undefined ? "—" : formatCostUsd(spend.windowUsd),
+			detail: `${plural(spend.windowRuns, "run")} in this window`,
+		});
+	}
+	const delivery = overview.delivery;
+	if (delivery !== undefined) {
+		cells.push({
+			key: "delivery",
+			label: `Delivered, ${span}`,
+			value: delivery.branchesPushed.toLocaleString(),
+			unit: delivery.branchesPushed === 1 ? "branch" : "branches",
+			detail: `${plural(delivery.prsOpened, "PR")} opened · ${delivery.prsMerged.toLocaleString()} merged`,
+		});
+	}
+	return cells;
 }
 
 export function CapacityStrip({
@@ -66,81 +89,5 @@ export function CapacityStrip({
 	/** Trailing window the spend/delivery buckets cover (warren-7194). */
 	window?: OpsWindow;
 }) {
-	if (overview === undefined) {
-		return (
-			<div className="rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3.5 py-3 font-mono text-xs text-(--color-text-3)">
-				loading snapshot…
-			</div>
-		);
-	}
-	const running = overview.runs.byState.running ?? 0;
-	const queued = overview.runs.byState.queued ?? 0;
-	const nonTerminal = overview.runs.nonTerminal;
-	// Oldest phases come from the newest-runs window (the same shared
-	// ["runs"] query the shell uses) — the snapshot endpoint carries no
-	// per-state age. Null window = "unknown", never 0.
-	const oldestQueued = runs ? oldestPhaseInstant(runs, "queued") : null;
-	const oldestQueuedLabel =
-		runs === undefined
-			? "oldest queued unknown"
-			: oldestQueued === null
-				? "queue empty"
-				: `oldest queued ${formatDurationMs(now - oldestQueued)}`;
-	const spend = overview.spend;
-	const delivery = overview.delivery;
-
-	const cells: CapacityCellSpec[] = [
-		{
-			label: "RUNNING",
-			value: String(running),
-			unit: "ACTIVE",
-			detail: `${nonTerminal} occupying admission slots · ${overview.runs.total} total`,
-		},
-		{
-			label: "QUEUE DEPTH",
-			value: String(queued),
-			unit: "RUNS",
-			detail: oldestQueuedLabel,
-		},
-	];
-	if (spend !== undefined) {
-		cells.push({
-			label: `SPEND · ${window.toUpperCase()}`,
-			// The USD sums are operator-only — a spectator's reduced body
-			// carries windowRuns alone, so the value renders "—", not 0.00.
-			value: spend.windowUsd === undefined ? "—" : spend.windowUsd.toFixed(2),
-			unit: "USD",
-			detail: `${spend.windowRuns} runs in window`,
-		});
-	}
-	if (delivery !== undefined) {
-		cells.push({
-			label: "DELIVERY",
-			value: String(delivery.branchesPushed),
-			unit: "BRANCHES",
-			detail: `${delivery.prsOpened} PRs opened · ${delivery.prsMerged} merged`,
-		});
-	}
-
-	// Mobile hairlines (warren-10d3): a 2x2 grid wants a right hairline
-	// on cells with a right neighbour (left column, and the lone cell of
-	// an odd last row has none) and a bottom hairline on every row but
-	// the last. sm+ keeps the row layout's per-cell right hairline.
-	const rowCount = Math.ceil(cells.length / 2);
-
-	return (
-		<div className="grid min-w-0 grid-cols-2 overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) sm:flex sm:flex-row">
-			{cells.map((cell, i) => (
-				<CapacityCell
-					key={cell.label}
-					{...cell}
-					className={cn(
-						i % 2 === 0 && i + 1 < cells.length && "border-r border-(--color-border)",
-						i < 2 * (rowCount - 1) && "border-b border-(--color-border) sm:border-b-0",
-						"sm:border-r sm:border-r-(--color-border)",
-					)}
-				/>
-			))}
-		</div>
-	);
+	return <StatStrip cells={buildCapacityCells(overview, runs, now, window)} />;
 }

@@ -5,7 +5,7 @@
 /* projection, a `WARREN_AUTH=public` spectator gets the reduced static   */
 /* one (`version`, `name`, `publicUrl`, `runtime`, `authMode`). The       */
 /* operator-only fields are therefore optional on the wire type, and the  */
-/* Instance page renders them as quiet "—" placeholders when absent —     */
+/* Instance page renders them as a quiet "Operator only" when absent —    */
 /* never fabricated. `name` / `publicUrl` (warren-a112) are optional only */
 /* so older servers still type-check; current servers always send them.  */
 /* ----------------------------------------------------------------------- */

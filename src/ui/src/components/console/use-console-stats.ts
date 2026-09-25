@@ -58,7 +58,10 @@ export function useConsoleStats(): ConsoleStats {
 	const opsOverview = useQuery({
 		queryKey: ["ops-overview", "24h"],
 		queryFn: ({ signal }) => opsApi.overview("24h", signal),
-		refetchInterval: 30_000,
+		// The lifecycle stream invalidates this key; the timer is the
+		// public-mode fallback.
+		refetchInterval: 60_000,
+		refetchIntervalInBackground: false,
 	});
 	// Shared ["instance", "facts"] key: deduped with use-dispatch-state.ts.
 	const facts = useQuery({

@@ -3,13 +3,14 @@ import type { RunRow } from "@/api/types.ts";
 import {
 	activeWorkloads,
 	activityLine,
+	formatAgeMs,
 	formatDurationMs,
 	LIFECYCLE_ORDER,
 	oldestPhaseInstant,
 	phaseElapsedMs,
 	phaseInstant,
-	refreshedAgeLabel,
 	shortRepo,
+	windowLabel,
 } from "./operations.helpers.ts";
 
 /** Minimal run-shaped fixture — only phase fields feed the helpers. */
@@ -142,19 +143,28 @@ describe("activityLine", () => {
 	});
 });
 
-describe("refreshedAgeLabel", () => {
-	test("renders seconds under a minute", () => {
-		expect(refreshedAgeLabel(2_000)).toBe("2S AGO");
-		expect(refreshedAgeLabel(59_999)).toBe("59S AGO");
+describe("formatAgeMs", () => {
+	test("renders seconds and minutes compactly", () => {
+		expect(formatAgeMs(2_000)).toBe("2s");
+		expect(formatAgeMs(240_000)).toBe("4m");
 	});
-	test("rolls to minutes and hours", () => {
-		expect(refreshedAgeLabel(240_000)).toBe("4M AGO");
-		expect(refreshedAgeLabel(3 * 3_600_000)).toBe("3H AGO");
+	test("pairs hours with minutes and days with hours", () => {
+		expect(formatAgeMs(3 * 3_600_000)).toBe("3h");
+		expect(formatAgeMs(3 * 3_600_000 + 20 * 60_000)).toBe("3h 20m");
+		expect(formatAgeMs(52 * 3_600_000)).toBe("2d 4h");
 	});
-	test("treats null, negative, and non-finite ages as just-now", () => {
-		expect(refreshedAgeLabel(null)).toBe("JUST NOW");
-		expect(refreshedAgeLabel(undefined)).toBe("JUST NOW");
-		expect(refreshedAgeLabel(-5_000)).toBe("JUST NOW");
-		expect(refreshedAgeLabel(Number.NaN)).toBe("JUST NOW");
+	test("treats null, negative, and non-finite ages as just now", () => {
+		expect(formatAgeMs(null)).toBe("just now");
+		expect(formatAgeMs(undefined)).toBe("just now");
+		expect(formatAgeMs(-5_000)).toBe("just now");
+		expect(formatAgeMs(Number.NaN)).toBe("just now");
+	});
+});
+
+describe("windowLabel", () => {
+	test("names each ops window as a span", () => {
+		expect(windowLabel("24h")).toBe("last 24h");
+		expect(windowLabel("7d")).toBe("last 7 days");
+		expect(windowLabel("30d")).toBe("last 30 days");
 	});
 });

@@ -44,11 +44,11 @@ describe("dateSpendSeries", () => {
 });
 
 describe("dateBucketLabel", () => {
-	test("strips the year from an ISO date key", () => {
-		expect(dateBucketLabel("2026-09-03")).toBe("09-03");
+	test("renders a date key as month and day", () => {
+		expect(dateBucketLabel("2026-09-03")).toBe("Sep 3");
 	});
 	test("labels the unattributed sentinel", () => {
-		expect(dateBucketLabel("__none__")).toBe("(unattributed)");
+		expect(dateBucketLabel("__none__")).toBe("No date");
 	});
 	test("passes through unrecognized keys", () => {
 		expect(dateBucketLabel("weird")).toBe("weird");

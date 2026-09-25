@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { buildCreatePlanRunInput, initialWalkDraft, timeLimitErrorOf } from "./walk-draft.ts";
+import {
+	buildCreatePlanRunInput,
+	costCapErrorOf,
+	initialWalkDraft,
+	initialWalkTouched,
+	readWalkRouteState,
+	timeLimitErrorOf,
+} from "./walk-draft.ts";
 import { isSubmittable } from "./walk-state.ts";
 
 const draft = { ...initialWalkDraft({}), project: "p1", agent: "claude-code", planId: "pl-1" };
@@ -32,5 +39,33 @@ describe("isSubmittable", () => {
 		expect(isSubmittable(base)).toBe(true);
 		expect(isSubmittable({ ...base, timeLimitError: null })).toBe(true);
 		expect(isSubmittable({ ...base, timeLimitError: "bad" })).toBe(false);
+	});
+});
+
+describe("readWalkRouteState", () => {
+	test("keeps string fields and drops everything else", () => {
+		expect(readWalkRouteState(undefined)).toEqual({});
+		expect(readWalkRouteState({ project: "p1", planId: "pl-1", agent: "pi", x: 1 })).toEqual({
+			project: "p1",
+			planId: "pl-1",
+			agent: "pi",
+		});
+		expect(readWalkRouteState({ project: 1 })).toEqual({});
+	});
+});
+
+describe("initialWalkTouched", () => {
+	test("marks the agent touched only when route state named one", () => {
+		expect(initialWalkTouched({ agent: "pi" }).agent).toBe(true);
+		expect(initialWalkTouched({ agent: "" }).agent).toBe(false);
+		expect(initialWalkTouched({}).agent).toBe(false);
+	});
+});
+
+describe("costCapErrorOf", () => {
+	test("returns the parse error or null", () => {
+		expect(costCapErrorOf("")).toBeNull();
+		expect(costCapErrorOf("2.5")).toBeNull();
+		expect(costCapErrorOf("-1")).toBe("Cost cap must be a positive number.");
 	});
 });

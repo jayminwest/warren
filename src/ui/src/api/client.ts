@@ -415,7 +415,7 @@ export const planRunsApi = {
 			...(signal ? { signal } : {}),
 		}).then((res) => ({
 			...res,
-			planRuns: res.planRuns.map((p) => ({ ...p, childStates: p.childStates ?? [] })),
+			planRuns: (res.planRuns ?? []).map((p) => ({ ...p, childStates: p.childStates ?? [] })),
 		}));
 	},
 	get: (id: string, signal?: AbortSignal) =>
