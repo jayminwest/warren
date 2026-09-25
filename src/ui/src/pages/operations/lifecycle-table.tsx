@@ -1,14 +1,23 @@
 import type { OpsOverviewResponse } from "@/api/ops-types.ts";
 import type { RunRow } from "@/api/types.ts";
-import { formatDurationMs, LIFECYCLE_ORDER, oldestPhaseInstant } from "./operations.helpers.ts";
-import { StatePill } from "./state-tone.tsx";
+import { Card, CardHeader } from "@/components/ui/card.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { StatusText } from "@/components/ui/status.tsx";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table.tsx";
+import { formatAgeMs, LIFECYCLE_ORDER, oldestPhaseInstant } from "./operations.helpers.ts";
 
 /**
- * Lifecycle snapshot (warren-d903): phase → count from the ops
- * overview's dense `byState` roll-up, with the oldest phase age for the
- * two active phases (computed from the newest-runs window — the
- * snapshot carries no per-state age). Terminal-phase ages stay "—"
- * rather than fabricating a figure.
+ * Runs by state (warren-d903, warren-9474): the ops overview's per-state
+ * counts, with the longest wait for the two active states (from the
+ * newest-runs list — the overview carries no per-state age). Finished
+ * states show no age rather than an invented one.
  */
 
 export function LifecycleTable({
@@ -21,46 +30,41 @@ export function LifecycleTable({
 	now: number;
 }) {
 	return (
-		<div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-			<div className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
-				<span className="text-sm font-semibold text-(--color-text)">Lifecycle snapshot</span>
-			</div>
-			<div className="flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2">
-				<span className="flex-1 font-mono text-2xs font-semibold tracking-wide text-(--color-text-3)">
-					PHASE
-				</span>
-				<span className="w-[60px] shrink-0 text-right font-mono text-2xs font-semibold tracking-wide text-(--color-text-3)">
-					COUNT
-				</span>
-				<span className="w-[80px] shrink-0 text-right font-mono text-2xs font-semibold tracking-wide text-(--color-text-3)">
-					OLDEST
-				</span>
-			</div>
-			{LIFECYCLE_ORDER.map((state, i) => {
-				const count = overview?.runs.byState[state];
-				const active = state === "queued" || state === "running";
-				const oldest = runs !== undefined && active ? oldestPhaseInstant(runs, state) : null;
-				return (
-					<div
-						key={state}
-						className={
-							i < LIFECYCLE_ORDER.length - 1
-								? "flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2.5"
-								: "flex items-center gap-2 px-2.5 py-2.5"
-						}
-					>
-						<span className="flex-1">
-							<StatePill state={state} />
-						</span>
-						<span className="w-[60px] shrink-0 text-right font-mono text-sm text-(--color-text-2)">
-							{count === undefined ? "—" : count}
-						</span>
-						<span className="w-[80px] shrink-0 text-right font-mono text-xs text-(--color-text-3)">
-							{oldest === null ? "—" : formatDurationMs(now - oldest)}
-						</span>
-					</div>
-				);
-			})}
-		</div>
+		<Card>
+			<CardHeader title="Runs by state" />
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead>State</TableHead>
+						<TableHead className="text-right">Runs</TableHead>
+						<TableHead className="text-right">Longest</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{LIFECYCLE_ORDER.map((state) => {
+						const count = overview?.runs.byState[state];
+						const active = state === "queued" || state === "running";
+						const oldest = runs !== undefined && active ? oldestPhaseInstant(runs, state) : null;
+						return (
+							<TableRow key={state}>
+								<TableCell>
+									<StatusText state={state} />
+								</TableCell>
+								<TableCell className="text-right text-(--color-text)">
+									{overview === undefined ? (
+										<Skeleton className="ml-auto w-8" />
+									) : (
+										(count ?? 0).toLocaleString()
+									)}
+								</TableCell>
+								<TableCell className="text-right text-(--color-text-3)">
+									{oldest === null ? "" : formatAgeMs(now - oldest)}
+								</TableCell>
+							</TableRow>
+						);
+					})}
+				</TableBody>
+			</Table>
+		</Card>
 	);
 }

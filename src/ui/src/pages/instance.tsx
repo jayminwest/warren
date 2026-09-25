@@ -1,330 +1,244 @@
 import { useQuery } from "@tanstack/react-query";
-import { metaApi } from "@/api/client.ts";
+import type * as React from "react";
+import { instanceApi } from "@/api/client.ts";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card, CardHeader } from "@/components/ui/card.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { useNow } from "@/hooks/use-now.ts";
+import { formatError } from "@/lib/format-error.ts";
 import { cn } from "@/lib/utils.ts";
 
 /**
- * The Direction C Instance page (warren-e680 / pl-7e38 step 18) —
- * boot-resolved configuration, read-only, over `GET /instance`
- * (warren-2eec). Warren has no mutable settings state: everything here
- * resolves from env at boot or from a project's `.warren/config.yaml`,
- * so the page is a facts surface, never a form.
+ * Instance (warren-e680, migrated in warren-9474) — boot-resolved server
+ * configuration, read-only. Nothing here is a setting you change in the
+ * console: it resolves from the environment at boot or from a project's
+ * `.warren/config.yaml`, so the page is a facts surface, never a form.
  *
- * The body varies with `Authorization`: under `WARREN_AUTH=public` the
- * spectator gets the reduced static projection, and the operator-only
- * fields (db backend, uptime, admission caps) render as quiet "—"
- * placeholders. No fabricated values — fields with no API yet stay
- * placeholders naming where they land.
+ * A public spectator gets the reduced projection; the operator-only
+ * facts (database, uptime, admission caps) read "Operator only" rather
+ * than a blank. Uptime ticks locally from the last answer, so the page
+ * needs no poll.
  */
 
-/** Runtime kind → the label the console's vocabulary uses. */
 const RUNTIME_LABELS: Record<InstanceFactsResponse["runtime"], string> = {
-	local: "local · bwrap",
-	docker: "docker · sibling container",
-	k8s: "kubernetes · pod",
+	local: "Local sandbox",
+	docker: "Docker containers",
+	k8s: "Kubernetes pods",
+};
+
+const AUTH_LABELS: Record<InstanceFactsResponse["authMode"], string> = {
+	token: "Token — every request needs a credential",
+	public: "Public — visitors can read without signing in",
 };
 
 function formatUptime(seconds: number): string {
 	const d = Math.floor(seconds / 86_400);
 	const h = Math.floor((seconds % 86_400) / 3600);
 	const m = Math.floor((seconds % 3600) / 60);
-	const s = seconds % 60;
-	const pad = (n: number) => String(n).padStart(2, "0");
-	return d > 0 ? `${d}d ${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(h)}:${pad(m)}:${pad(s)}`;
+	if (d > 0) return `${d}d ${h}h ${m}m`;
+	if (h > 0) return `${h}h ${m}m`;
+	return `${m}m ${Math.floor(seconds % 60)}s`;
 }
 
-/**
- * Labeled read-only value row; `hint` rides under the value in mono.
- *
- * Below md the value renders inside the mock's inset bordered box:
- * editable-shaped surfaces get `--color-bg` + border-strong, while
- * boot-resolved facts sit on `--color-surface-raised` + border.
- */
-function FactField({
+/** A value slot: the fact, a skeleton while loading, or "Operator only". */
+type Fact = React.ReactNode | "loading" | "operator-only";
+
+function FactRow({
 	label,
 	value,
 	hint,
-	mono = true,
-	variant = "resolved",
-	className,
+	mono = false,
 }: {
 	label: string;
-	value: string;
+	value: Fact;
+	/** Where the value comes from — an env var, a file. */
 	hint?: string;
 	mono?: boolean;
-	variant?: "editable" | "resolved";
-	className?: string;
 }) {
+	let shown: React.ReactNode;
+	if (value === "loading") shown = <Skeleton className="w-24" />;
+	else if (value === "operator-only")
+		shown = <span className="text-(--color-text-3)">Operator only</span>;
+	else shown = value;
 	return (
-		<div className={cn("flex min-w-0 flex-1 flex-col gap-[5px]", className)}>
-			<span className="text-xs font-medium text-(--color-text-2)">{label}</span>
-			<span
-				className={cn(
-					"flex min-w-0 items-center truncate rounded-(--radius-sm) border px-2.5 py-2 font-mono text-sm ",
-					variant === "editable"
-						? "border-(--color-border-strong) bg-(--color-bg)"
-						: "border-(--color-border) bg-(--color-surface-raised)",
-					"md:h-8 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:py-0 md:text-sm ",
-					mono ? "" : "md:font-sans",
-					value === "—" ? "text-(--color-text-3)" : "text-(--color-text)",
-				)}
-			>
-				{value}
-			</span>
-			{hint ? (
-				<span className="font-mono text-2xs tracking-wide text-(--color-text-3) md:text-2xs md:tracking-normal">
-					{hint}
+		<div className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:gap-6">
+			<dt className="shrink-0 text-sm text-(--color-text-2) sm:w-48">{label}</dt>
+			<dd className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<span className={cn("text-sm text-(--color-text)", mono && "font-mono text-xs")}>
+					{shown}
 				</span>
-			) : null}
+				{hint ? <span className="font-mono text-xs text-(--color-text-3)">{hint}</span> : null}
+			</dd>
 		</div>
 	);
 }
 
-/**
- * One section of the instance surface. Below md each section is its
- * own radius-md card headed by a `--color-thead` band; at md+ they
- * collapse back into the single shared card with border-b dividers.
- */
-function Section({
+function FactsCard({
 	title,
-	sub,
+	meta,
 	children,
-	last = false,
 }: {
 	title: string;
-	sub: string;
+	meta?: string;
 	children: React.ReactNode;
-	last?: boolean;
 }) {
 	return (
-		<section
-			className={cn(
-				"flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)",
-				"md:gap-3.5 md:overflow-visible md:rounded-none md:border-0 md:p-4",
-				!last && "md:border-b md:border-(--color-border)",
-			)}
-		>
-			<div className="flex flex-col gap-[2px] border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:gap-[3px] md:border-b-0 md:bg-transparent md:px-0 md:py-0">
-				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
-				<p className="text-xs text-(--color-text-3) md:text-sm">{sub}</p>
-			</div>
-			<div className="flex flex-col gap-2.5 px-3 py-[11px] md:gap-3.5 md:px-0 md:py-0">
-				{children}
-			</div>
-		</section>
+		<Card>
+			<CardHeader title={title} meta={meta} />
+			<dl className="divide-y divide-(--color-border)">{children}</dl>
+		</Card>
 	);
 }
 
-/** TOKEN / PUBLIC mode indicator — a read-only display, not a control. */
-function AuthModePills({ mode }: { mode: InstanceFactsResponse["authMode"] }) {
-	return (
-		// Read-only display, not a control: the active mode is highlighted
-		// in the raised surface. The visible "Auth mode" label above it
-		// carries the accessible name.
-		<div className="flex w-max overflow-hidden rounded-(--radius-sm) border border-(--color-border-strong)">
-			{(["token", "public"] as const).map((m) => (
-				<span
-					key={m}
-					className={cn(
-						"px-3 py-1.5 font-mono text-xs  md:py-2",
-						m === mode
-							? "bg-(--color-surface-raised) text-(--color-text)"
-							: "text-(--color-text-3)",
-					)}
-				>
-					{m.toUpperCase()}
-				</span>
-			))}
-		</div>
-	);
+/** Loading, spectator-hidden, or the value. */
+function operatorFact<T>(
+	facts: InstanceFactsResponse | undefined,
+	value: T | undefined,
+	render: (v: T) => React.ReactNode,
+): Fact {
+	if (facts === undefined) return "loading";
+	return value === undefined ? "operator-only" : render(value);
 }
 
-/**
- * Label/value row in the right-rail facts card. Below md the label is
- * a fixed 110px mono column and the value is right-aligned at full
- * strength; at md+ it reverts to the justify-between row.
- */
-function FactRow({ label, value }: { label: string; value: string }) {
+function ServerCard({
+	facts,
+	uptimeSeconds,
+}: {
+	facts: InstanceFactsResponse | undefined;
+	uptimeSeconds: number | undefined;
+}) {
 	return (
-		<div className="flex items-center gap-2 px-3 py-[7px] md:gap-3 md:px-0 md:py-0">
-			<span className="w-[110px] shrink-0 font-mono text-2xs text-(--color-text-3) md:w-auto md:font-sans md:text-sm">
-				{label}
-			</span>
-			<span
-				className={cn(
-					"flex min-w-0 flex-1 justify-end truncate text-right font-mono text-xs ",
-					"md:block md:text-sm ",
-					value === "—" ? "text-(--color-text-3)" : "text-(--color-text) md:text-(--color-text-2)",
+		<FactsCard title="Server">
+			<FactRow label="Version" value={facts ? `v${facts.version}` : "loading"} />
+			<FactRow
+				label="Runtime"
+				value={facts ? RUNTIME_LABELS[facts.runtime] : "loading"}
+				hint="WARREN_RUNTIME"
+			/>
+			<FactRow
+				label="Database"
+				value={operatorFact(facts, facts?.dbBackend ?? undefined, (db) =>
+					db === "postgres" ? "Postgres" : "SQLite",
 				)}
-			>
-				{value}
-			</span>
-		</div>
+				hint="WARREN_DB_URL"
+			/>
+			<FactRow
+				label="Uptime"
+				value={operatorFact(facts, uptimeSeconds, (s) => (
+					<span className="tabular-nums">{formatUptime(s)}</span>
+				))}
+			/>
+		</FactsCard>
 	);
 }
 
-function InstanceSection({ facts }: { facts: InstanceFactsResponse | undefined }) {
-	// Facts undefined = still loading: every field renders "—" rather
-	// than a spinner-shaped hole; the card is quiet, never fabricated.
-	const version = facts ? `v${facts.version}` : "—";
-	const runtime = facts ? RUNTIME_LABELS[facts.runtime] : "—";
-	const dbBackend = facts?.dbBackend ? facts.dbBackend : "—";
-
-	return (
-		<Section title="Instance" sub="Server identity and runtime provider.">
-			<div className="grid w-full grid-cols-[1fr_96px] gap-2.5 sm:flex sm:flex-row sm:gap-3">
-				<FactField
-					label="Runtime provider"
-					value={runtime}
-					hint="WARREN_RUNTIME · RESOLVED AT BOOT · READ-ONLY"
-				/>
-				<FactField label="Version" value={version} hint="READ-ONLY" />
-			</div>
-			<div className="grid w-full grid-cols-2 gap-2.5 sm:flex sm:flex-row sm:gap-3">
-				<FactField label="Database backend" value={dbBackend} hint="WARREN_DB_URL · READ-ONLY" />
-				<FactField
-					label="Instance name / base URL"
-					value="—"
-					variant="editable"
-					hint="NO INSTANCE-NAME API YET · OPS OVERVIEW (WARREN-D903)"
-				/>
-			</div>
-		</Section>
-	);
-}
-
-function AuthenticationSection({ facts }: { facts: InstanceFactsResponse | undefined }) {
-	const authMode = facts?.authMode;
-	return (
-		<Section title="Authentication" sub="How access is authenticated.">
-			<div className="flex flex-col gap-[5px]">
-				<span className="text-xs font-medium text-(--color-text-2)">Auth mode</span>
-				{authMode ? (
-					<AuthModePills mode={authMode} />
-				) : (
-					<span className="h-8 font-mono text-sm text-(--color-text-3)">—</span>
-				)}
-			</div>
-		</Section>
-	);
-}
-
-function AdmissionSection({ facts }: { facts: InstanceFactsResponse | undefined }) {
-	const admission = facts?.admission ?? null;
-	return (
-		<Section title="Admission" sub="Concurrency and spend caps." last>
-			{admission ? (
-				<div className="grid w-full grid-cols-2 gap-2.5 sm:flex sm:flex-row sm:gap-3">
-					<FactField
-						label="Max project concurrency"
-						value={
-							admission.maxProjectConcurrency === null
-								? "unset"
-								: String(admission.maxProjectConcurrency)
-						}
-						hint="WARREN_K8S_MAX_PROJECT_CONCURRENCY"
-					/>
-					<FactField
-						label="Max queue depth"
-						value={String(admission.maxQueueDepth)}
-						hint="WARREN_K8S_MAX_QUEUE_DEPTH"
-					/>
-					<FactField
-						label="Max pending pods"
-						value={String(admission.maxPendingPods)}
-						hint="WARREN_K8S_MAX_PENDING_PODS"
-						className="col-span-2 sm:col-span-1"
-					/>
-				</div>
-			) : (
-				<p className="text-xs text-(--color-text-3)">
-					{facts ? "Admission caps are K8s-only — not active under this runtime provider." : "—"}
-				</p>
-			)}
-			<p className="text-xs text-(--color-text-3)">
-				Set in the environment, resolved at boot. The admission gate reports them in admission
-				events.
-			</p>
-		</Section>
-	);
-}
-
-function FactsRail({ facts }: { facts: InstanceFactsResponse | undefined }) {
-	const version = facts ? `v${facts.version}` : "—";
-	const runtime = facts ? RUNTIME_LABELS[facts.runtime] : "—";
-	const dbBackend = facts?.dbBackend ? facts.dbBackend : "—";
-	const uptime =
-		facts && typeof facts.uptimeSeconds === "number" ? formatUptime(facts.uptimeSeconds) : "—";
-	const admission = facts?.admission ?? null;
+function AccessCard({ facts }: { facts: InstanceFactsResponse | undefined }) {
 	// dbBackend is the first operator-only field: its absence marks the
 	// reduced spectator projection (warren-2eec).
-	const projection = facts
-		? facts.dbBackend === undefined
-			? "reduced (public)"
-			: "full (operator)"
-		: "—";
-
+	const view =
+		facts === undefined
+			? "loading"
+			: facts.dbBackend === undefined
+				? "Public view — operator facts hidden"
+				: "Operator view — all facts shown";
 	return (
-		<aside className="flex w-full shrink-0 flex-col rounded-(--radius-md) border border-(--color-border) bg-(--color-sidebar) md:bg-(--color-surface) lg:w-[380px]">
-			<header className="flex items-center justify-between border-b border-(--color-border) px-3 py-2.5 md:px-4 md:py-3">
-				<h2 className="text-sm font-semibold text-(--color-text) md:text-sm">Instance facts</h2>
-				<span className="font-mono text-2xs tracking-wide text-(--color-success) md:text-xs md:text-(--color-text-3)">
-					LIVE
-				</span>
-			</header>
-			<div className="flex flex-col py-1.5 md:gap-2.5 md:px-4 md:py-3.5">
-				<FactRow label="version" value={version} />
-				<FactRow label="runtime" value={runtime} />
-				<FactRow label="database" value={dbBackend} />
-				<FactRow label="uptime" value={uptime} />
-				<FactRow
-					label="admission caps"
-					value={admission ? "k8s · active" : facts ? "not active" : "—"}
-				/>
-				<FactRow label="spectator projection" value={projection} />
-			</div>
-		</aside>
+		<FactsCard title="Access">
+			<FactRow
+				label="Authentication"
+				value={facts ? AUTH_LABELS[facts.authMode] : "loading"}
+				hint="WARREN_AUTH"
+			/>
+			<FactRow label="This session sees" value={view} />
+		</FactsCard>
 	);
 }
 
-function InstancePageBody({ facts }: { facts: InstanceFactsResponse | undefined }) {
+function capValue(n: number | null): string {
+	return n === null ? "No limit" : n.toLocaleString();
+}
+
+function AdmissionCard({ facts }: { facts: InstanceFactsResponse | undefined }) {
+	const admission = facts?.admission;
+	let rows: React.ReactNode;
+	if (facts !== undefined && admission === null) {
+		rows = (
+			<p className="px-4 py-3 text-sm text-(--color-text-3)">
+				Admission caps apply to Kubernetes pods only; this instance runs on{" "}
+				{RUNTIME_LABELS[facts.runtime].toLowerCase()}.
+			</p>
+		);
+	} else {
+		rows = (
+			<>
+				<FactRow
+					label="Runs per project"
+					value={operatorFact(facts, admission ?? undefined, (a) =>
+						capValue(a.maxProjectConcurrency),
+					)}
+					hint="WARREN_K8S_MAX_PROJECT_CONCURRENCY"
+				/>
+				<FactRow
+					label="Queue depth"
+					value={operatorFact(facts, admission ?? undefined, (a) => capValue(a.maxQueueDepth))}
+					hint="WARREN_K8S_MAX_QUEUE_DEPTH"
+				/>
+				<FactRow
+					label="Pending pods"
+					value={operatorFact(facts, admission ?? undefined, (a) => capValue(a.maxPendingPods))}
+					hint="WARREN_K8S_MAX_PENDING_PODS"
+				/>
+			</>
+		);
+	}
 	return (
-		<div className="flex flex-col items-start gap-4 lg:flex-row">
-			{/* Main card: the boot-resolved configuration sections. Below md
-			 the sections render as separate cards (see Section). */}
-			<div className="flex min-w-0 flex-1 flex-col gap-3.5 md:gap-0 md:overflow-clip md:rounded-(--radius-md) md:border md:border-(--color-border) md:bg-(--color-surface)">
-				<InstanceSection facts={facts} />
-				<AuthenticationSection facts={facts} />
-				<AdmissionSection facts={facts} />
-			</div>
-			{/* Right rail: live facts, one poll. */}
-			<FactsRail facts={facts} />
-		</div>
+		<FactsCard title="Admission" meta="Limits on runs in flight">
+			{rows}
+		</FactsCard>
 	);
 }
 
 export function InstancePage() {
+	// Shared ["instance", "facts"] key: deduped with the shell's runtime
+	// figure. Facts only change on restart, so there is no poll; uptime
+	// ticks forward locally from the answer's timestamp.
 	const facts = useQuery({
-		queryKey: ["meta", "instance"],
-		queryFn: ({ signal }) => metaApi.instance(signal),
-		// Boot-resolved values never change without a restart, but uptime
-		// ticks: a slow poll keeps the rail honest without hammering.
-		refetchInterval: 60_000,
-		staleTime: 30_000,
+		queryKey: ["instance", "facts"],
+		queryFn: ({ signal }) => instanceApi.facts(signal),
+		staleTime: 60_000,
 	});
+	const now = useNow(1000);
+	const data = facts.data;
+	const uptimeSeconds =
+		data && typeof data.uptimeSeconds === "number"
+			? data.uptimeSeconds + Math.max(0, Math.floor((now - facts.dataUpdatedAt) / 1000))
+			: undefined;
 
 	return (
-		<div className="flex min-h-full flex-col gap-3.5 px-3.5 pt-6 pb-12 md:gap-5 md:px-6">
-			<header className="flex flex-col gap-1.5">
-				<h1 className="text-lg font-semibold tracking-tight text-(--color-text) md:text-2xl md:leading-7">
-					Instance
-				</h1>
-				<p className="max-w-prose text-sm text-(--color-text-2) md:text-sm">
-					Server settings, read-only. Configure via environment or a project&apos;s
-					.warren/config.yaml.
-				</p>
-			</header>
-			<InstancePageBody facts={facts.data} />
+		<div className="flex min-h-full flex-col gap-5 px-4 pt-5 pb-12 md:px-6">
+			<PageHeader
+				title="Instance"
+				description="How this server is configured. Change these in the environment or a project's .warren/config.yaml, then restart."
+			/>
+			{facts.isError ? (
+				<Alert variant="danger" title="Couldn't load instance facts">
+					<div className="flex flex-col items-start gap-2">
+						{formatError(facts.error)}
+						<Button variant="outline" size="sm" onClick={() => void facts.refetch()}>
+							Retry
+						</Button>
+					</div>
+				</Alert>
+			) : null}
+			<div className="grid max-w-5xl items-start gap-4 lg:grid-cols-2">
+				<div className="grid min-w-0 content-start gap-4">
+					<ServerCard facts={data} uptimeSeconds={uptimeSeconds} />
+					<AccessCard facts={data} />
+				</div>
+				<AdmissionCard facts={data} />
+			</div>
 		</div>
 	);
 }

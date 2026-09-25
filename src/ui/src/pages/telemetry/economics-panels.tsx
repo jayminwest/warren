@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
 	analyticsApi,
@@ -18,57 +19,97 @@ import {
 	sortBucketsDesc,
 	topCostBuckets,
 } from "@/pages/telemetry/economics-helpers.ts";
-import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
+import { MeterBar, meterWidth } from "@/pages/telemetry/meter-bar.tsx";
+import {
+	PanelEmpty,
+	PanelError,
+	PanelLoading,
+	TelemetryPanel,
+} from "@/pages/telemetry/telemetry-panel.tsx";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
 /**
- * Secondary economics panels (warren-cc6c): every slice the
- * /analytics/cost and /analytics/runs bodies already serve — spend over
+ * Secondary economics panels (warren-cc6c, migrated in warren-9474):
+ * every slice the cost and run analytics already serve — spend over
  * time, spend by model/provider/agent, top runs, token totals with the
- * cache-hit share, and cost per merged PR by model/provider. Render
- * only what the wire carries; every absent field renders an honest
- * empty state (spectators get redacted bodies).
+ * cache-hit share, and cost per merged PR by model/provider. Each renders
+ * only what the response carries; an absent field gets a quiet note.
  */
 
-function PanelError({ error }: { error: Error | null }) {
-	return (
-		<p className="text-sm text-(--color-danger)">
-			Failed to load analytics. {error?.message ?? ""}
-		</p>
-	);
-}
-
-function PanelEmpty({ text }: { text: string }) {
-	return <p className="text-sm text-(--color-text-3)">{text}</p>;
-}
-
-/** One name + cost line. `href` turns the name into a router link. */
+/** One name + figure line. `href` links the name; `mono` for machine ids. */
 export function SpendRow({
 	name,
 	costUsd,
 	href,
+	mono = false,
 }: {
 	name: string;
 	costUsd: string;
 	href?: string;
+	mono?: boolean;
 }) {
-	const label =
-		href === undefined ? (
-			<span className="min-w-0 truncate font-mono text-sm text-(--color-text-2)">{name}</span>
-		) : (
-			<Link
-				to={href}
-				className="min-w-0 truncate font-mono text-sm text-(--color-text-2) underline-offset-2 hover:underline"
-			>
-				{name}
-			</Link>
-		);
+	const nameClass = cn(
+		"min-w-0 truncate text-(--color-text-2)",
+		mono ? "font-mono text-xs" : "text-sm",
+	);
 	return (
-		<div className="flex w-full items-center justify-between gap-3">
-			{label}
-			<span className="shrink-0 font-mono text-sm text-(--color-text)">{costUsd}</span>
+		<div className="flex w-full items-baseline justify-between gap-3">
+			{href === undefined ? (
+				<span className={nameClass}>{name}</span>
+			) : (
+				<Link to={href} className={cn(nameClass, "hover:text-(--color-primary) hover:underline")}>
+					{name}
+				</Link>
+			)}
+			<span className="shrink-0 text-sm text-(--color-text) tabular-nums">{costUsd}</span>
 		</div>
 	);
+}
+
+function useCostAnalytics() {
+	const { from, to } = useTelemetryWindow();
+	return useQuery({
+		queryKey: ["analytics", "cost", { projectId: null, from, to }],
+		queryFn: ({ signal }) => analyticsApi.cost({ from, to }, signal),
+	});
+}
+
+function useRunAnalytics() {
+	const { from, to } = useTelemetryWindow();
+	return useQuery({
+		queryKey: ["analytics", "runs", { projectId: null, from, to }],
+		queryFn: ({ signal }) => runAnalyticsApi.runs({ from, to }, signal),
+	});
+}
+
+type AnalyticsQuery = ReturnType<typeof useCostAnalytics> | ReturnType<typeof useRunAnalytics>;
+
+/**
+ * The shared body-state ladder: error → loading → absent → content.
+ * `content` returns null when the slice is missing from the response.
+ */
+function PanelBody({
+	query,
+	what,
+	absent,
+	content,
+}: {
+	query: AnalyticsQuery;
+	what: string;
+	absent: string;
+	content: () => ReactNode | null;
+}) {
+	if (query.isError) {
+		return <PanelError what={what} error={query.error} onRetry={() => void query.refetch()} />;
+	}
+	if (query.isLoading) return <PanelLoading rows={3} />;
+	return content() ?? <PanelEmpty>{absent}</PanelEmpty>;
+}
+
+function bucketName(key: string): string {
+	if (key === COST_ANALYTICS_NONE_KEY || key === RUN_ANALYTICS_NONE_KEY) return "Unattributed";
+	if (key === RUN_ANALYTICS_OTHER_KEY) return "Other";
+	return key;
 }
 
 /** Top spend rows with the tail folded into one "N more" line. */
@@ -82,395 +123,265 @@ function TopSpendRows({
 	limit?: number;
 }) {
 	const sorted = sortBucketsDesc(buckets);
-	const visible = sorted.slice(0, limit);
 	const hidden = sorted.slice(limit);
-	const hiddenCost = hidden.reduce((sum, b) => sum + b.costUsd, 0);
 	return (
 		<>
-			{visible.map((b) => (
+			{sorted.slice(0, limit).map((b) => (
 				<SpendRow
 					key={b.key}
-					name={b.key === COST_ANALYTICS_NONE_KEY ? "(unattributed)" : b.key}
+					name={bucketName(b.key)}
 					costUsd={formatCostUsd(b.costUsd)}
 					href={hrefFor?.(b.key)}
 				/>
 			))}
 			{hidden.length > 0 ? (
-				<SpendRow name={`${String(hidden.length)} more`} costUsd={formatCostUsd(hiddenCost)} />
+				<SpendRow
+					name={`${hidden.length} more`}
+					costUsd={formatCostUsd(hidden.reduce((sum, b) => sum + b.costUsd, 0))}
+				/>
 			) : null}
 		</>
 	);
 }
 
-function useCostAnalytics(from: string, to: string) {
-	return useQuery({
-		queryKey: ["analytics", "cost", { projectId: null, from, to }],
-		queryFn: ({ signal }) => analyticsApi.cost({ from, to }, signal),
-	});
-}
-
-function useRunAnalytics(from: string, to: string) {
-	return useQuery({
-		queryKey: ["analytics", "runs", { projectId: null, from, to }],
-		queryFn: ({ signal }) => runAnalyticsApi.runs({ from, to }, signal),
-	});
-}
-
-const ECONOMICS_FILL_RAMP = ["opacity-80", "opacity-60", "opacity-50", "opacity-45"] as const;
-
-/**
- * Spend over time: one meter row per calendar day from
- * /analytics/cost breakdowns.date, oldest first, honoring the tab's
- * range selector via from/to.
- */
-function SpendOverTimePanel({ from, to }: { from: string; to: string }) {
-	const cost = useCostAnalytics(from, to);
-	const series = dateSpendSeries(cost.data?.breakdowns?.date ?? []);
-	const max = series.reduce((m, b) => Math.max(m, b.costUsd), 0);
-
+function SpendOverTimePanel() {
+	const cost = useCostAnalytics();
 	return (
-		<TelemetryPanel title="Spend over time" meta="COST USD BY DAY">
-			{cost.isError ? (
-				<PanelError error={cost.error as Error | null} />
-			) : series.length === 0 && !cost.isLoading ? (
-				<PanelEmpty text="No dated spend in this window." />
-			) : (
-				series.map((b, i) => (
-					<div key={b.key} className="flex w-full min-w-0 items-center justify-between gap-2.5">
-						<span className="w-[46px] shrink-0 font-mono text-sm text-(--color-text-2)">
-							{dateBucketLabel(b.key)}
-						</span>
-						<div className="min-w-0 flex-1">
-							<div
-								className={cnRamp(i)}
-								style={{
-									width: max > 0 ? `${Math.max(4, Math.round((b.costUsd / max) * 100))}%` : "4px",
-								}}
-								title={dateBucketLabel(b.key)}
-							/>
-						</div>
-						<span className="w-[52px] shrink-0 text-right font-mono text-sm text-(--color-text)">
-							{formatCostUsd(b.costUsd)}
-						</span>
-					</div>
-				))
-			)}
+		<TelemetryPanel title="Spend by day">
+			<PanelBody
+				query={cost}
+				what="daily spend"
+				absent="No dated spend in this window."
+				content={() => {
+					const series = dateSpendSeries(cost.data?.breakdowns?.date ?? []);
+					if (series.length === 0) return null;
+					const max = series.reduce((m, b) => Math.max(m, b.costUsd), 0);
+					return series.map((b) => (
+						<MeterBar
+							key={b.key}
+							label={dateBucketLabel(b.key)}
+							labelClass="w-14"
+							width={meterWidth(b.costUsd, max)}
+							markClass="h-2 bg-(--color-success) opacity-70"
+							value={formatCostUsd(b.costUsd)}
+							valueClass="w-16"
+						/>
+					));
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
-/** Meter-mark color ramp, same shape as the agent economics rows. */
-function cnRamp(i: number): string {
-	return `h-2 rounded-[1px] bg-(--color-success) ${ECONOMICS_FILL_RAMP[i] ?? "opacity-45"}`;
-}
-
-/**
- * Spend by one dimension (model / provider / agent) from
- * /analytics/cost breakdowns — top 5 rows + folded remainder.
- */
 function SpendByPanel({
-	from,
-	to,
 	dimension,
 	title,
-	emptyText,
 	hrefFor,
 }: {
-	from: string;
-	to: string;
 	dimension: "model" | "provider" | "agent";
 	title: string;
-	emptyText: string;
 	hrefFor?: (key: string) => string | undefined;
 }) {
-	const cost = useCostAnalytics(from, to);
-	const buckets: readonly CostBucket[] | undefined = cost.data?.breakdowns?.[dimension];
-
+	const cost = useCostAnalytics();
 	return (
-		<TelemetryPanel title={title} meta="COST USD">
-			{cost.isError ? (
-				<PanelError error={cost.error as Error | null} />
-			) : buckets === undefined ? (
-				<PanelEmpty text="Cost analytics unavailable for this view." />
-			) : buckets.length === 0 ? (
-				<PanelEmpty text={emptyText} />
-			) : (
-				<TopSpendRows buckets={buckets} hrefFor={hrefFor} />
-			)}
+		<TelemetryPanel title={title}>
+			<PanelBody
+				query={cost}
+				what={title.toLowerCase()}
+				absent={`No ${dimension} spend in this window.`}
+				content={() => {
+					const buckets = cost.data?.breakdowns?.[dimension];
+					if (buckets === undefined || buckets.length === 0) return null;
+					return <TopSpendRows buckets={buckets} hrefFor={hrefFor} />;
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
-/**
- * Top-10 most expensive runs from /analytics/cost breakdowns.run —
- * bucket keys are run ids, linked to /runs/:id.
- */
-function TopRunsPanel({ from, to }: { from: string; to: string }) {
-	const cost = useCostAnalytics(from, to);
-	const buckets = topCostBuckets(cost.data?.breakdowns.run ?? [], 10);
-
+function TopRunsPanel() {
+	const cost = useCostAnalytics();
 	return (
-		<TelemetryPanel title="Top 10 most expensive runs" meta="COST USD PER RUN">
-			{cost.isError ? (
-				<PanelError error={cost.error as Error | null} />
-			) : buckets.length === 0 && !cost.isLoading ? (
-				<PanelEmpty text="No priced runs in this window." />
-			) : (
-				buckets.map((b) => (
-					<SpendRow
-						key={b.key}
-						name={b.key === COST_ANALYTICS_NONE_KEY ? "(unattributed)" : b.key}
-						costUsd={formatCostUsd(b.costUsd)}
-						href={
-							b.key === COST_ANALYTICS_NONE_KEY ? undefined : `/runs/${encodeURIComponent(b.key)}`
-						}
-					/>
-				))
-			)}
+		<TelemetryPanel title="Most expensive runs" meta="Top 10">
+			<PanelBody
+				query={cost}
+				what="run costs"
+				absent="No priced runs in this window."
+				content={() => {
+					const buckets = topCostBuckets(cost.data?.breakdowns.run ?? [], 10);
+					if (buckets.length === 0) return null;
+					return buckets.map((b) => (
+						<SpendRow
+							key={b.key}
+							mono={b.key !== COST_ANALYTICS_NONE_KEY}
+							name={bucketName(b.key)}
+							costUsd={formatCostUsd(b.costUsd)}
+							href={
+								b.key === COST_ANALYTICS_NONE_KEY ? undefined : `/runs/${encodeURIComponent(b.key)}`
+							}
+						/>
+					));
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
-/**
- * Token totals from /analytics/runs tokens.totals plus the cache-hit
- * share cacheRead / (input + cacheRead). The section is public, but the
- * guard stays: an absent breakdown renders an honest empty state.
- */
 function TokenTotalsPanel() {
-	const { from, to } = useTelemetryWindow();
-	const runs = useRunAnalytics(from, to);
-	const totals = runs.data?.tokens?.totals;
-
+	const runs = useRunAnalytics();
 	return (
-		<TelemetryPanel title="Token totals" meta="WINDOW TOTALS">
-			{runs.isError ? (
-				<PanelError error={runs.error as Error | null} />
-			) : totals === undefined && !runs.isLoading ? (
-				<PanelEmpty text="Token usage unavailable for this view." />
-			) : totals === undefined ? null : (
-				<>
-					<SpendRow name="Input" costUsd={String(totals.input)} />
-					<SpendRow name="Output" costUsd={String(totals.output)} />
-					<SpendRow name="Cache read" costUsd={String(totals.cacheRead)} />
-					<SpendRow name="Cache write" costUsd={String(totals.cacheWrite)} />
-					<SpendRow name="Total" costUsd={String(totals.total)} />
-					<p className="text-sm text-(--color-text-2)">
-						{cacheHitShare(totals) === null
-							? "No prompt tokens recorded, so no cache-hit share."
-							: `Cache-hit share: ${Math.round((cacheHitShare(totals) ?? 0) * 100)}% of prompt tokens served from cache.`}
-					</p>
-				</>
-			)}
+		<TelemetryPanel title="Tokens">
+			<PanelBody
+				query={runs}
+				what="token totals"
+				absent="Token usage isn't available here."
+				content={() => {
+					const totals = runs.data?.tokens?.totals;
+					if (totals === undefined) return null;
+					const share = cacheHitShare(totals);
+					return (
+						<>
+							<SpendRow name="Input" costUsd={totals.input.toLocaleString()} />
+							<SpendRow name="Output" costUsd={totals.output.toLocaleString()} />
+							<SpendRow name="Cache read" costUsd={totals.cacheRead.toLocaleString()} />
+							<SpendRow name="Cache write" costUsd={totals.cacheWrite.toLocaleString()} />
+							<SpendRow name="Total" costUsd={totals.total.toLocaleString()} />
+							<p className="text-xs text-(--color-text-3)">
+								{share === null
+									? "No prompt tokens recorded, so no cache-hit share."
+									: `${Math.round(share * 100)}% of prompt tokens came from cache.`}
+							</p>
+						</>
+					);
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
-/** Human label for a cost-per-merged-PR bucket key (sentinels fold). */
-function mergedPrBucketLabel(key: string): string {
-	if (key === RUN_ANALYTICS_NONE_KEY) return "(unattributed)";
-	if (key === RUN_ANALYTICS_OTHER_KEY) return "(other)";
-	return key;
-}
-
-function CostPerRunContent({ costUsd }: { costUsd: RunStatSummary | undefined }) {
-	if (costUsd === undefined) return null;
-	if (costUsd.count === 0) return <PanelEmpty text="No priced runs in this window." />;
+function CostPerRunContent({ costUsd }: { costUsd: RunStatSummary }) {
+	if (costUsd.count === 0) return <PanelEmpty>No priced runs in this window.</PanelEmpty>;
 	return (
 		<>
 			<SpendRow name="Median" costUsd={formatCostUsd(costUsd.median ?? 0)} />
-			<SpendRow name="p95" costUsd={formatCostUsd(costUsd.p95 ?? 0)} />
-			<p className="text-sm text-(--color-text-2)">
-				{`${String(costUsd.count)} priced ${costUsd.count === 1 ? "run" : "runs"} in this window.`}
+			<SpendRow name="95th percentile" costUsd={formatCostUsd(costUsd.p95 ?? 0)} />
+			<p className="text-xs text-(--color-text-3)">
+				{`Across ${costUsd.count.toLocaleString()} priced ${costUsd.count === 1 ? "run" : "runs"}.`}
 			</p>
 		</>
 	);
 }
 
-/**
- * Per-run cost distribution (warren-ea4e) from /analytics/runs
- * totals.costUsd — median and p95 across the window's priced runs.
- */
-function CostPerRunPanel({ from, to }: { from: string; to: string }) {
-	const runs = useRunAnalytics(from, to);
-	const costUsd = runs.data?.totals?.costUsd;
-
-	return (
-		<TelemetryPanel title="Cost per run" meta="PRICED RUNS ONLY">
-			{runs.isError ? (
-				<PanelError error={runs.error as Error | null} />
-			) : costUsd === undefined && !runs.isLoading ? (
-				<PanelEmpty text="Cost figures unavailable for this view." />
-			) : (
-				<CostPerRunContent costUsd={costUsd} />
-			)}
-		</TelemetryPanel>
-	);
-}
-
-function CapHitsContent({ capHits }: { capHits: number }) {
-	return (
-		<>
-			<div
-				className={cn(
-					"font-mono text-2xl ",
-					capHits === 0 ? "text-(--color-text-3)" : "text-(--color-text)",
-				)}
-			>
-				{String(capHits)}
-			</div>
-			<p className="text-sm text-(--color-text-2)">
-				{capHits === 0
-					? "No run stopped on its spend cap in this window's history."
-					: `${String(capHits)} ${capHits === 1 ? "run" : "runs"} stopped on their spend cap.`}
-			</p>
-		</>
-	);
-}
-
-/**
- * Budget-cap hits (warren-ea4e) from /analytics/runs capHits — the count
- * of `budget.exceeded` events, the only cost-cap stop signal on the wire.
- */
-function CapHitsPanel({ from, to }: { from: string; to: string }) {
-	const runs = useRunAnalytics(from, to);
+function CostPerRunPanel() {
+	const runs = useRunAnalytics();
 	const capHits = runs.data?.capHits;
-
 	return (
-		<TelemetryPanel title="Budget cap hits" meta="BUDGET.EXCEEDED EVENTS">
-			{runs.isError ? (
-				<PanelError error={runs.error as Error | null} />
-			) : capHits === undefined && !runs.isLoading ? (
-				<PanelEmpty text="Cap-hit count unavailable for this view." />
-			) : capHits === undefined ? null : (
-				<CapHitsContent capHits={capHits} />
-			)}
+		<TelemetryPanel title="Cost per run">
+			<PanelBody
+				query={runs}
+				what="run costs"
+				absent="Cost figures aren't available here."
+				content={() => {
+					const costUsd = runs.data?.totals?.costUsd;
+					if (costUsd === undefined) return null;
+					return (
+						<>
+							<CostPerRunContent costUsd={costUsd} />
+							{capHits !== undefined ? (
+								<p className="text-xs text-(--color-text-3)">
+									{capHits === 0
+										? "No run hit its spend cap."
+										: `${capHits.toLocaleString()} ${capHits === 1 ? "run" : "runs"} stopped at the spend cap.`}
+								</p>
+							) : null}
+						</>
+					);
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
-/** Human label for a byCostBasis bucket key. */
 function costBasisLabel(key: string): string {
-	if (key === "api") return "API (billed)";
+	if (key === "api") return "Billed by API";
 	if (key === "subscription_estimate") return "Subscription (estimated)";
 	return "Unpriced";
 }
 
-/**
- * Spend by cost basis (warren-ea4e) from /analytics/cost byCostBasis —
- * API-billed vs subscription-estimated vs unpriced runs in the window.
- */
-function CostBasisPanel({ from, to }: { from: string; to: string }) {
-	const cost = useCostAnalytics(from, to);
-	const buckets = cost.data?.byCostBasis;
-
+function CostBasisPanel() {
+	const cost = useCostAnalytics();
 	return (
-		<TelemetryPanel title="Spend by cost basis" meta="API VS SUBSCRIPTION">
-			{cost.isError ? (
-				<PanelError error={cost.error as Error | null} />
-			) : buckets === undefined && !cost.isLoading ? (
-				<PanelEmpty text="Cost basis unavailable for this view." />
-			) : buckets === undefined ? null : buckets.length === 0 ? (
-				<PanelEmpty text="No spend recorded in this window." />
-			) : (
-				buckets.map((b) => (
-					<SpendRow
-						key={b.key}
-						name={`${costBasisLabel(b.key)} · ${String(b.runs)}`}
-						costUsd={formatCostUsd(b.costUsd)}
-					/>
-				))
-			)}
+		<TelemetryPanel title="Spend by billing">
+			<PanelBody
+				query={cost}
+				what="billing basis"
+				absent="No spend recorded in this window."
+				content={() => {
+					const buckets = cost.data?.byCostBasis;
+					if (buckets === undefined || buckets.length === 0) return null;
+					return buckets.map((b) => (
+						<SpendRow
+							key={b.key}
+							name={`${costBasisLabel(b.key)} · ${b.runs.toLocaleString()} runs`}
+							costUsd={formatCostUsd(b.costUsd)}
+						/>
+					));
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
-/** Cost per merged PR for one dimension (byModel / byProvider). */
 function CostPerMergedPrPanel({
-	from,
-	to,
 	dimension,
 	title,
-	emptyText,
 }: {
-	from: string;
-	to: string;
 	dimension: "byModel" | "byProvider";
 	title: string;
-	emptyText: string;
 }) {
-	const runs = useRunAnalytics(from, to);
-	const buckets: readonly CostPerMergedPrBucket[] | undefined =
-		runs.data?.outcomes?.costPerMergedPr?.[dimension];
-
+	const runs = useRunAnalytics();
 	return (
-		<TelemetryPanel title={title} meta="COST USD PER MERGED PR">
-			{runs.isError ? (
-				<PanelError error={runs.error as Error | null} />
-			) : buckets === undefined ? (
-				<PanelEmpty text="Outcome rollup unavailable for this view." />
-			) : buckets.length === 0 ? (
-				<PanelEmpty text={emptyText} />
-			) : (
-				buckets.map((b) => (
-					<SpendRow
-						key={b.key}
-						name={mergedPrBucketLabel(b.key)}
-						costUsd={b.costPerMergedPrUsd == null ? "—" : formatCostUsd(b.costPerMergedPrUsd)}
-					/>
-				))
-			)}
+		<TelemetryPanel title={title}>
+			<PanelBody
+				query={runs}
+				what={title.toLowerCase()}
+				absent="No merged pull requests in this window."
+				content={() => {
+					const buckets: readonly CostPerMergedPrBucket[] | undefined =
+						runs.data?.outcomes?.costPerMergedPr?.[dimension];
+					if (buckets === undefined || buckets.length === 0) return null;
+					return buckets.map((b) => (
+						<SpendRow
+							key={b.key}
+							name={bucketName(b.key)}
+							costUsd={b.costPerMergedPrUsd == null ? "—" : formatCostUsd(b.costPerMergedPrUsd)}
+						/>
+					));
+				}}
+			/>
 		</TelemetryPanel>
 	);
 }
 
 export function TelemetryEconomicsSidePanels() {
-	const { from, to } = useTelemetryWindow();
 	return (
 		<>
-			<CostPerRunPanel from={from} to={to} />
-			<CapHitsPanel from={from} to={to} />
-			<CostBasisPanel from={from} to={to} />
-			<SpendOverTimePanel from={from} to={to} />
+			<CostPerRunPanel />
+			<CostBasisPanel />
+			<SpendOverTimePanel />
+			<TopRunsPanel />
+			<SpendByPanel dimension="model" title="Spend by model" />
+			<SpendByPanel dimension="provider" title="Spend by provider" />
 			<SpendByPanel
-				from={from}
-				to={to}
-				dimension="model"
-				title="Spend by model"
-				emptyText="No model spend in this window."
-			/>
-			<SpendByPanel
-				from={from}
-				to={to}
-				dimension="provider"
-				title="Spend by provider"
-				emptyText="No provider spend in this window."
-			/>
-			<SpendByPanel
-				from={from}
-				to={to}
 				dimension="agent"
 				title="Spend by agent"
-				emptyText="No agent spend in this window."
 				hrefFor={(key) =>
 					key === COST_ANALYTICS_NONE_KEY ? undefined : `/agents/${encodeURIComponent(key)}`
 				}
 			/>
-			<TopRunsPanel from={from} to={to} />
 			<TokenTotalsPanel />
-			<CostPerMergedPrPanel
-				from={from}
-				to={to}
-				dimension="byModel"
-				title="Cost per merged PR · model"
-				emptyText="No merged-PR outcome in this window."
-			/>
-			<CostPerMergedPrPanel
-				from={from}
-				to={to}
-				dimension="byProvider"
-				title="Cost per merged PR · provider"
-				emptyText="No merged-PR outcome in this window."
-			/>
+			<CostPerMergedPrPanel dimension="byModel" title="Cost per merged PR by model" />
+			<CostPerMergedPrPanel dimension="byProvider" title="Cost per merged PR by provider" />
 		</>
 	);
 }

@@ -1,68 +1,71 @@
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button.tsx";
+import { Card, CardBody, CardHeader } from "@/components/ui/card.tsx";
+import { SkeletonRows } from "@/components/ui/skeleton.tsx";
+import { formatError } from "@/lib/format-error.ts";
 import { cn } from "@/lib/utils.ts";
-import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
 /**
- * Direction C panel primitive for the Telemetry page (warren-7197):
- * the bordered surface card every tab renders — a title row with mono
- * meta on the right, content below. Token variables only, so dark and
- * light themes both render from the same classes.
- *
- * Mobile chrome (warren-93cc): below md the header is a --color-thead
- * band with a mono 10px .08em uppercase title and a mono 9px right
- * meta slot, and the body tightens to 12px padding / 9px gap. The
- * hidden range selector's window surfaces here: the window label
- * ("14D") prefixes the meta below md. md+ renders exactly as before.
+ * The Telemetry panel (warren-7197, migrated in warren-9474): a Card with
+ * a sentence-case title, a quiet meta line, and a padded body. `flush`
+ * drops the body padding for a Table or a divided list, which bring
+ * their own gutters. Cards size to their content.
  */
 export function TelemetryPanel({
 	title,
 	meta,
+	actions,
 	children,
 	className,
+	flush = false,
 }: {
 	title: string;
-	/** Mono uppercase right-hand figure ("213 RUNS · 14 DAYS"). */
-	meta?: string;
+	/** Quiet context beside the title ("57 runs"). */
+	meta?: ReactNode;
+	actions?: ReactNode;
 	children: ReactNode;
 	className?: string;
+	flush?: boolean;
 }) {
-	const { days } = useTelemetryWindow();
-	const mobileMeta = `${String(days)}D${meta !== undefined ? ` · ${meta}` : ""}`;
 	return (
-		<section
-			className={cn(
-				"flex min-w-0 flex-col rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)",
-				className,
-			)}
-		>
-			<header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:bg-transparent md:px-4 md:py-3">
-				<h2 className="font-mono text-xs tracking-wide uppercase text-(--color-text) md:font-sans md:text-sm md:font-semibold md:normal-case md:tracking-normal">
-					{title}
-				</h2>
-				{meta !== undefined ? (
-					<span className="hidden font-mono text-xs tracking-wide text-(--color-text-3) md:inline">
-						{meta}
-					</span>
-				) : null}
-				<span className="font-mono text-2xs text-(--color-text-3) md:hidden">{mobileMeta}</span>
-			</header>
-			<div className="flex w-full flex-col gap-[9px] p-3 md:gap-3 md:p-4">{children}</div>
-		</section>
+		<Card className={className}>
+			<CardHeader title={title} meta={meta} actions={actions} />
+			{flush ? children : <CardBody className="flex flex-col gap-3">{children}</CardBody>}
+		</Card>
 	);
 }
 
-/**
- * The quiet placeholder every metric without an API surface renders —
- * a figure is never fabricated (pl-7e38 approach; see the topbar's
- * identical pattern). `title` names what will land the real figure.
- */
-export function QuietFigure({ note, title }: { note?: string; title?: string }) {
+/** What failed, and a retry. Inside a padded panel body. */
+export function PanelError({
+	what,
+	error,
+	onRetry,
+}: {
+	what: string;
+	error: unknown;
+	onRetry?: () => void;
+}) {
+	const detail = formatError(error);
 	return (
-		<span
-			className="font-mono text-2xl font-medium leading-7 text-(--color-text-3)"
-			{...(title ? { title } : {})}
-		>
-			—{note !== undefined ? <span className="ml-1 text-xs">{note}</span> : null}
-		</span>
+		<div className="flex flex-col items-start gap-2">
+			<p className="text-sm text-(--color-danger)">
+				Couldn't load {what}.{detail ? ` ${detail}` : ""}
+			</p>
+			{onRetry ? (
+				<Button variant="outline" size="sm" onClick={onRetry}>
+					Retry
+				</Button>
+			) : null}
+		</div>
 	);
+}
+
+/** A quiet one-line empty note inside a padded panel body. */
+export function PanelEmpty({ children }: { children: ReactNode }) {
+	return <p className="text-sm text-(--color-text-3)">{children}</p>;
+}
+
+/** Loading rows in a padded panel body: the list's shape, not a spinner. */
+export function PanelLoading({ rows = 4, className }: { rows?: number; className?: string }) {
+	return <SkeletonRows rows={rows} className={cn("-mx-4 -my-2", className)} />;
 }

@@ -5,7 +5,7 @@
 /* projection, a `WARREN_AUTH=public` spectator gets the reduced static   */
 /* one (`version`, `runtime`, `authMode`). The operator-only fields are   */
 /* therefore optional on the wire type, and the Instance page renders     */
-/* them as quiet "—" placeholders when absent — never fabricated.         */
+/* them as a quiet "Operator only" when absent — never fabricated.        */
 /* ----------------------------------------------------------------------- */
 
 export interface InstanceAdmissionFacts {

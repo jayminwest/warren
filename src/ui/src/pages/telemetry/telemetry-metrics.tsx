@@ -1,183 +1,98 @@
-import { cn } from "@/lib/utils.ts";
+import { type StatCell, StatStrip } from "@/pages/operations/stat-strip.tsx";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import { formatDuration } from "@/pages/telemetry/format.ts";
 import { summarizeJudgeVerdicts, useJudgeVerdicts } from "@/pages/telemetry/judge-verdicts.ts";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
 /**
- * The shared metric strip (warren-7197): four joined figures above the
- * tab content, from the Paper artboards. Cost per merged PR comes from
- * `GET /analytics/runs` outcomes (spectator-redacted → "—"); judge pass
- * comes from the judge extension's verdict export (absent → "—").
- * Autonomy and dispatch→merge come from `GET /analytics/runs` (warren-bc9c).
+ * The Telemetry headline figures (warren-7197, migrated in warren-9474):
+ * cost per merged PR, autonomy, dispatch-to-merge time, and judge pass.
+ * Cost per merged PR is public (warren-97ae); judge pass comes from the
+ * judge extension and reads "—" when it is absent. A figure is never
+ * invented.
  */
-function MetricCell({
-	label,
-	value,
-	valueClassName,
-	note,
-	title,
-	mobileBottom,
-	mobileRight,
-	hasRightBorder,
-}: {
-	label: string;
-	value: string;
-	valueClassName?: string;
-	note: string;
-	title?: string;
-	/** Below-md 2x2 grid hairlines: bottom (row 1) and/or right (column 1). */
-	mobileBottom?: boolean;
-	mobileRight?: boolean;
-	hasRightBorder: boolean;
-}) {
-	return (
-		<div
-			{...(title ? { title } : {})}
-			className={cn(
-				"flex min-w-0 flex-1 flex-col gap-1 border-(--color-border) p-3 md:gap-2 md:px-5 md:py-4",
-				mobileBottom ? "border-b md:border-b-0" : undefined,
-				mobileRight ? "border-r" : undefined,
-				hasRightBorder ? "md:border-r md:border-r-(--color-border)" : undefined,
-			)}
-		>
-			<span className="font-mono text-2xs tracking-wide text-(--color-text-3) md:text-xs">
-				{label}
-			</span>
-			<span
-				className={cn(
-					"font-mono text-lg font-semibold  md:text-2xl md:font-medium md:leading-7",
-					valueClassName ?? "text-(--color-text)",
-				)}
-			>
-				{value}
-			</span>
-			<span className="hidden font-mono text-xs text-(--color-text-3) md:inline">{note}</span>
-		</div>
-	);
-}
 
-interface AutonomyShape {
-	merged: number;
-	autonomous: number;
-	rate: number | null;
-}
+type RunAnalytics = NonNullable<ReturnType<typeof useTelemetryWindow>["runs"]["data"]>;
 
-function autonomyCell(autonomy: AutonomyShape | undefined) {
-	return (
-		<MetricCell
-			label="AUTONOMY"
-			value={
-				autonomy === undefined || autonomy.rate === null
-					? "—"
-					: `${Math.round(autonomy.rate * 100)}%`
-			}
-			note={
-				autonomy === undefined
-					? "loading run outcomes…"
-					: autonomy.rate === null
-						? "no merged runs in this window"
-						: `${String(autonomy.autonomous)} of ${String(autonomy.merged)} merges unsteered, first attempt`
-			}
-			title="GET /analytics/runs outcomes.autonomy — merged runs with no steering and no retry/continuation"
-			mobileBottom
-			hasRightBorder
-		/>
-	);
-}
-
-function dispatchMergeCell(medianMs: number | undefined | null) {
-	return (
-		<MetricCell
-			label="DISPATCH → MERGE"
-			value={medianMs == null ? "—" : formatDuration(medianMs)}
-			note={
-				medianMs === undefined
-					? "loading delivery timings…"
-					: medianMs === null
-						? "no merged runs in this window"
-						: "median dispatch-to-merge lead time"
-			}
-			title="GET /analytics/runs delivery.dispatchToMergeMs (median)"
-			mobileRight
-			hasRightBorder
-		/>
-	);
-}
-
-/** Copy + tone for the JUDGE PASS cell (warren-f282): the pass rate is
- * neutral (default text colour) when judged coverage is below 80%, and
- * the note carries the 'N of M judged' denominator honestly. */
-function judgePassCell(judgeSummary: ReturnType<typeof summarizeJudgeVerdicts> | null): {
-	value: string;
-	valueClassName?: string;
-	note: string;
-} {
-	if (judgeSummary === null) {
-		return { value: "—", note: "judge extension not deployed" };
-	}
-	const judged = judgeSummary.pass + judgeSummary.fail;
-	if (judgeSummary.passRate === null) {
-		return { value: "—", note: "no verdicts recorded yet" };
-	}
+function costCell(outcomes: RunAnalytics["outcomes"] | undefined): StatCell {
+	const costPerMergedPr = outcomes?.costPerMergedPr.overall.costPerMergedPrUsd;
+	const unknown = costPerMergedPr === null || costPerMergedPr === undefined;
 	return {
-		value: `${String(Math.round(judgeSummary.passRate * 100))}%`,
-		valueClassName:
-			judgeSummary.judgedRate !== null && judgeSummary.judgedRate >= 0.8
-				? "text-(--color-primary)"
-				: undefined,
-		note: `${String(judged)} of ${String(judged + judgeSummary.unjudged)} judged against rubric v1`,
+		key: "cost",
+		label: "Cost per merged PR",
+		value: outcomes === undefined ? null : unknown ? "—" : formatCostUsd(costPerMergedPr),
+		detail: unknown ? "No priced runs in this window" : "All spend, failed runs included",
+		title: "Spend in the window divided by pull requests merged",
+	};
+}
+
+function autonomyCell(autonomy: RunAnalytics["outcomes"]["autonomy"] | undefined): StatCell {
+	const rate = autonomy?.rate ?? null;
+	return {
+		key: "autonomy",
+		label: "Autonomy",
+		value: autonomy === undefined ? null : rate === null ? "—" : `${Math.round(rate * 100)}%`,
+		detail:
+			autonomy === undefined || rate === null
+				? "No merged runs in this window"
+				: `${autonomy.autonomous} of ${autonomy.merged} merges with no steering or retry`,
+	};
+}
+
+function leadTimeCell(delivery: RunAnalytics["delivery"] | undefined): StatCell {
+	const median = delivery?.dispatchToMergeMs.median ?? null;
+	return {
+		key: "lead",
+		label: "Dispatch to merge",
+		value: delivery === undefined ? null : median === null ? "—" : formatDuration(median),
+		detail: median === null ? "No merged runs in this window" : "Median lead time",
+	};
+}
+
+function judgeCell(verdicts: ReturnType<typeof useJudgeVerdicts>): StatCell {
+	const base = { key: "judge", label: "Judge pass" } as const;
+	if (verdicts.isLoading) return { ...base, value: null };
+	if (verdicts.data?.available !== true) {
+		return {
+			...base,
+			value: "—",
+			valueClassName: "text-(--color-text-3)",
+			detail: "Judge not connected",
+		};
+	}
+	const summary = summarizeJudgeVerdicts(verdicts.data.rows);
+	if (summary.passRate === null) {
+		return {
+			...base,
+			value: "—",
+			valueClassName: "text-(--color-text-3)",
+			detail: "No verdicts yet",
+		};
+	}
+	const judged = summary.pass + summary.fail;
+	// Coloured only once coverage is strong enough to trust (warren-f282).
+	const strong = summary.judgedRate !== null && summary.judgedRate >= 0.8;
+	return {
+		...base,
+		value: `${Math.round(summary.passRate * 100)}%`,
+		valueClassName: strong ? "text-(--color-success)" : undefined,
+		detail: `${judged} of ${judged + summary.unjudged} runs judged`,
 	};
 }
 
 export function TelemetryMetricStrip() {
 	const { runs } = useTelemetryWindow();
 	const verdicts = useJudgeVerdicts();
-
-	const outcomes = runs.data?.outcomes;
-	// warren-97ae: the instance-wide ratio is public for spectators (the
-	// per-agent/per-model/per-provider buckets keep their USD figures
-	// redacted), so overall.costPerMergedPrUsd is always present once
-	// outcomes load.
-	const costPerMergedPr = outcomes?.costPerMergedPr.overall.costPerMergedPrUsd;
-
-	const judgeSummary =
-		verdicts.data?.available === true ? summarizeJudgeVerdicts(verdicts.data.rows) : null;
-	const judgeCell = judgePassCell(judgeSummary);
-
-	return (
-		<div className="grid w-full grid-cols-2 overflow-hidden rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:flex">
-			<MetricCell
-				label="COST / MERGED PR"
-				value={
-					outcomes === undefined
-						? "—"
-						: costPerMergedPr === null || costPerMergedPr === undefined
-							? "—"
-							: formatCostUsd(costPerMergedPr)
-				}
-				note={
-					outcomes === undefined
-						? "loading run outcomes…"
-						: costPerMergedPr === undefined || costPerMergedPr === null
-							? "no priced runs in window"
-							: "all spend over merges · failed runs included"
-				}
-				title="Windowed USD rollup divided by merged PRs (GET /analytics/runs outcomes)"
-				mobileBottom
-				mobileRight
-				hasRightBorder
-			/>
-			{autonomyCell(outcomes?.autonomy)}
-			{dispatchMergeCell(runs.data?.delivery.dispatchToMergeMs.median)}
-			<MetricCell
-				label="JUDGE PASS"
-				value={judgeCell.value}
-				valueClassName={judgeCell.valueClassName}
-				note={judgeCell.note}
-				title="Verdict export GET /verdicts.jsonl (judge extension)"
-				hasRightBorder={false}
-			/>
-		</div>
-	);
+	const data = runs.data;
+	const cells = [
+		costCell(data?.outcomes),
+		autonomyCell(data?.outcomes.autonomy),
+		leadTimeCell(data?.delivery),
+		judgeCell(verdicts),
+	];
+	// A failed load must not leave skeletons shimmering forever.
+	const settled = runs.isError
+		? cells.map((c) => (c.value === null ? { ...c, value: "—", detail: "Couldn't load" } : c))
+		: cells;
+	return <StatStrip cells={settled} />;
 }

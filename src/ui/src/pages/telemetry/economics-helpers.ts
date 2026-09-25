@@ -25,20 +25,14 @@ export function dateSpendSeries(buckets: readonly CostBucket[]): CostBucket[] {
 	return [...buckets].sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/** Human label for a date key (`2026-09-03` → `09-03`, sentinel → text). */
+/** Human label for a UTC date key (`2026-09-03` → `Sep 3`, sentinel → text). */
 export function dateBucketLabel(key: string): string {
-	if (key === COST_ANALYTICS_NONE_KEY) return "(unattributed)";
-	const m = /^\d{4}-(\d{2}-\d{2})$/.exec(key);
-	return m?.[1] ?? key;
+	if (key === COST_ANALYTICS_NONE_KEY) return "No date";
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return key;
+	const d = new Date(`${key}T00:00:00Z`);
+	if (Number.isNaN(d.getTime())) return key;
+	return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
-
-/** Meter-row fill ramp shared with the economics side panels. */
-export const ECONOMICS_FILL_RAMP = [
-	"opacity-80",
-	"opacity-60",
-	"opacity-50",
-	"opacity-45",
-] as const;
 
 /**
  * Cache-hit share: cacheRead / (input + cacheRead). Null when the
