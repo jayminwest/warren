@@ -75,12 +75,17 @@ export function shortSha(sha: string | null | undefined): string {
 }
 
 /**
- * Runtime handle as it renders on the cell's second line (warren-a0f4):
- * truncated to ~10 chars with a trailing ellipsis when longer, verbatim
- * otherwise — the full value rides on the element's `title`.
+ * Runtime facts for an operator tooltip on the run id (warren-9474):
+ * "k8s · warren-run-abcdef123456". The list no longer spends a column on
+ * the handle; the run detail page shows it in full. Undefined when the
+ * row carries neither fact (always so for a spectator's projection).
  */
-export function truncateRuntimeHandle(handle: string): string {
-	return handle.length > 10 ? `${handle.slice(0, 10)}…` : handle;
+export function runtimeTitleOf(row: RunRow): string | undefined {
+	const handle = row.sandboxRunId ?? row.sandboxId ?? null;
+	const parts = [row.runtimeBackend ?? null, handle].filter(
+		(p): p is string => p !== null && p.length > 0,
+	);
+	return parts.length > 0 ? `Runtime: ${parts.join(" · ")}` : undefined;
 }
 
 /**

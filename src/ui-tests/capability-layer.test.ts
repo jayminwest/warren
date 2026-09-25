@@ -287,7 +287,7 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 		// the hint is still the copy-level gate.
 		const runs = read("pages", "runs.tsx");
 		expect(runs).toMatch(/useOperatorHint\("Dispatch one above\."\)/);
-		expect(runs).toMatch(/description=\{emptyHint\}/);
+		expect(runs).toMatch(/description=\{[^}]*emptyHint\}/);
 		const planRuns = read("pages", "plan-runs.tsx");
 		expect(planRuns).toMatch(/useOperatorHint\(/);
 	});

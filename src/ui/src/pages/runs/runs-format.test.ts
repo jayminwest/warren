@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RunRow } from "@/api/types.ts";
-import { branchLabelOf, truncateRuntimeHandle } from "./runs-format.ts";
+import { branchLabelOf, runtimeTitleOf } from "./runs-format.ts";
 
 /** Minimal run-shaped fixture — only the fields branchLabelOf reads. */
 function run(overrides: Partial<RunRow>): RunRow {
@@ -73,13 +73,21 @@ describe("branchLabelOf", () => {
 	});
 });
 
-describe("truncateRuntimeHandle (warren-a0f4)", () => {
-	test("truncates a long handle to 10 chars plus an ellipsis", () => {
-		expect(truncateRuntimeHandle("warren-run-abcdef123456")).toBe("warren-run…");
+describe("runtimeTitleOf (warren-9474)", () => {
+	test("joins the backend kind and the full runtime handle", () => {
+		expect(
+			runtimeTitleOf(run({ runtimeBackend: "k8s", sandboxRunId: "warren-run-abcdef123456" })),
+		).toBe("Runtime: k8s · warren-run-abcdef123456");
 	});
 
-	test("keeps a short handle verbatim", () => {
-		expect(truncateRuntimeHandle("pod-xyz")).toBe("pod-xyz");
-		expect(truncateRuntimeHandle("1234567890")).toBe("1234567890");
+	test("falls back to the sandbox id, then to the kind alone", () => {
+		expect(runtimeTitleOf(run({ runtimeBackend: null, sandboxId: "sbx-1" }))).toBe(
+			"Runtime: sbx-1",
+		);
+		expect(runtimeTitleOf(run({ runtimeBackend: "local" }))).toBe("Runtime: local");
+	});
+
+	test("is undefined when the row carries neither fact (a spectator's view)", () => {
+		expect(runtimeTitleOf(run({}))).toBeUndefined();
 	});
 });

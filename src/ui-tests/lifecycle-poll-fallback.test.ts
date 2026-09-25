@@ -24,28 +24,24 @@ const read = (file: string): string => readFileSync(join(UI_PAGES, file), "utf8"
 const SURFACES = [
 	{ file: "runs.tsx", what: "the runs list" },
 	{ file: "plan-runs.tsx", what: "the plan-runs list" },
-	{ file: "plan-runs/walk-row.tsx", what: "the walk rows" },
 ] as const;
 
 describe("warren-f566 polling fallback (GH #847)", () => {
 	for (const { file, what } of SURFACES) {
-		test(`${what} keeps the 45s fallback and no fast timer`, () => {
+		test(`${what} keeps the 60s fallback and no fast timer`, () => {
 			const source = read(file);
-			expect(source).toMatch(/refetchInterval: 45_000/);
+			expect(source).toMatch(/refetchInterval: 60_000/);
 			// Any literal under 45s means a surface went back to polling as its
 			// primary freshness mechanism instead of the stream.
 			expect(source).not.toMatch(/refetchInterval: (?:5000|5_000|3000|3_000)\b/);
 		});
 	}
 
-	test("the per-row plan-run query polls on the fallback cadence, not per-row fast", () => {
+	test("the walk rows carry no query of their own (warren-b2d6)", () => {
+		// Child progress rides the GET /plan-runs row, so there is no
+		// per-row fetch and no per-row timer left to regress.
 		const source = read("plan-runs/walk-row.tsx");
-		// The row key is a PREFIX match for the `["plan-runs"]` key the
-		// invalidation hook busts, so the stream already refreshes these rows;
-		// the timer is the public-mode fallback only.
-		expect(source).toMatch(/queryKey: \["plan-runs", planRun\.id\]/);
-		const row = source.slice(source.indexOf('queryKey: ["plan-runs", planRun.id]'));
-		expect(row).toMatch(/refetchInterval: 45_000/);
+		expect(source).not.toMatch(/useQuery|refetchInterval/);
 	});
 
 	test("the invalidation hook busts every key the fallback surfaces read", () => {

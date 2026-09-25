@@ -9,23 +9,18 @@ import { costNoteToneOf, stateCellOf, sublineOf } from "@/pages/runs/runs-card.h
 import { formatDuration, projectLabel, runCostLabel } from "@/pages/runs/runs-format.ts";
 
 /**
- * The mobile arm of the Runs inventory (warren-dea8 / pl-7e38 step 20):
- * the table degrades to the artboard row-card pattern
- * (docs/ui-revamp/screens/mobile/runs.jsx) below `md`. Same rows, same
- * data, token colors only; the desktop table stays untouched.
- *
- * warren-f8a2 collapsed the card to the mock's two-line anatomy: no meta
- * row, one-contextual-extra subline, cancelled on the neutral tone, and a
- * warning-tinted cost note near the cap. The cell/subline decisions live
- * in runs-card.helpers.ts (pure, tested there).
+ * The phone arm of the runs inventory (warren-dea8 / warren-f8a2): below
+ * `md` the table becomes two-line row cards — status, run id, agent ·
+ * project · one contextual extra, and elapsed over cost. The cell and
+ * subline decisions live in runs-card.helpers.ts.
  */
 
 function RunCard({ row, projectName, now }: { row: RunRow; projectName: string; now: number }) {
-	const state = stateCellOf(row);
+	const cell = stateCellOf(row);
 	return (
 		<InventoryRowCard
-			tone={state.tone}
-			stateLabel={state.label}
+			state={cell.state}
+			stateLabel={cell.label}
 			title={row.id}
 			titleTo={`/runs/${encodeURIComponent(row.id)}`}
 			subline={sublineOf(row, projectName)}
@@ -57,7 +52,7 @@ export function RunsCardList({
 					row={row}
 					projectName={
 						row.projectId === null
-							? "deleted project"
+							? "Deleted project"
 							: projectLabel(projectIndex.get(row.projectId), row.projectId)
 					}
 				/>
