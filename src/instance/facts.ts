@@ -37,6 +37,19 @@ export interface InstanceAdmissionFacts {
 /** The full operator projection. */
 export interface InstanceFacts {
 	readonly version: string;
+	/**
+	 * Operator-chosen display name (`WARREN_INSTANCE_NAME`, warren-a112).
+	 * Null when unset or blank. Capped at {@link INSTANCE_NAME_MAX_LENGTH}.
+	 */
+	readonly name: string | null;
+	/**
+	 * The instance's public UI base URL (warren-a112), read from the same
+	 * server-side `WARREN_BASE_URL` knob reap already embeds in PR bodies as
+	 * the run back-link (`src/runs/pr.ts`). Null when unset or not an
+	 * absolute http(s) URL. Origin + path only: credentials, query, and
+	 * fragment are stripped, and a trailing slash is trimmed.
+	 */
+	readonly publicUrl: string | null;
 	readonly runtime: RuntimeKind;
 	readonly authMode: InstanceAuthMode;
 	readonly dbBackend: InstanceDbBackend | null;
@@ -65,6 +78,8 @@ export function buildInstanceFacts(input: InstanceFactsInput): InstanceFacts {
 	const runtime = resolveRuntimeKind(input.env);
 	return {
 		version: VERSION,
+		name: resolveInstanceName(input.env),
+		publicUrl: resolvePublicUrl(input.env),
 		runtime,
 		authMode: input.authMode,
 		dbBackend: input.dbBackend,
@@ -73,19 +88,54 @@ export function buildInstanceFacts(input: InstanceFactsInput): InstanceFacts {
 	};
 }
 
+/** Longest `WARREN_INSTANCE_NAME` surfaced; longer values are truncated. */
+export const INSTANCE_NAME_MAX_LENGTH = 64;
+
+/** `WARREN_INSTANCE_NAME`, trimmed and capped; blank or unset → null. */
+export function resolveInstanceName(env: InstanceEnv): string | null {
+	const raw = env.WARREN_INSTANCE_NAME?.trim();
+	if (raw === undefined || raw === "") return null;
+	return raw.slice(0, INSTANCE_NAME_MAX_LENGTH);
+}
+
+/**
+ * `WARREN_BASE_URL` as a normalized public URL, or null. Only absolute
+ * http(s) URLs pass; userinfo, query, and fragment are dropped so a
+ * credential pasted into the knob can never reach the wire.
+ */
+export function resolvePublicUrl(env: InstanceEnv): string | null {
+	const raw = env.WARREN_BASE_URL?.trim();
+	if (raw === undefined || raw === "") return null;
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		return null;
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+	return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
+}
+
 /**
  * The reduced `WARREN_AUTH=public` spectator projection. Same shape rules
  * as `src/server/projection.ts`: an allowlist, never a denylist, so a fact
  * added to InstanceFacts tomorrow is absent here until it is deliberately
- * cleared for spectators. Only the three static facts the login/demo
- * surface needs; db backend, uptime, and admission topology stay
- * operator-only.
+ * cleared for spectators. The static facts the login/demo surface needs;
+ * db backend, uptime, and admission topology stay operator-only.
+ *
+ * warren-a112 clears `name` and `publicUrl` for spectators. The name is a
+ * display label the operator chose to show. The public URL is the address
+ * the spectator is already browsing, and reap already publishes it in
+ * every PR body's run back-link, so it discloses nothing new. The
+ * normalizer strips userinfo/query/fragment before either projection.
  */
 export function publicInstanceFacts(
 	facts: InstanceFacts,
-): Pick<InstanceFacts, "version" | "runtime" | "authMode"> {
+): Pick<InstanceFacts, "version" | "name" | "publicUrl" | "runtime" | "authMode"> {
 	return {
 		version: facts.version,
+		name: facts.name,
+		publicUrl: facts.publicUrl,
 		runtime: facts.runtime,
 		authMode: facts.authMode,
 	};
