@@ -200,6 +200,26 @@ describe("startServer — lifecycle", () => {
 		expect(agents.status).toBe(401);
 	});
 
+	test("a browser refresh on a UI page the API also claims gets the SPA (warren-0a17)", async () => {
+		const distDir = setupUiDist();
+		handle = startServer(
+			await depsFor(repos, undefined, { uiDistDir: distDir }),
+			tcpOpts({ auth: bearerAuth("secret") }),
+		);
+		const base = tcpUrl(handle);
+		const nav = { "sec-fetch-mode": "navigate", accept: "text/html" };
+		for (const path of ["/runs", "/runs/run_abc", "/projects/prj_abc", "/plan-runs"]) {
+			const res = await fetch(`${base}${path}`, { headers: nav });
+			expect(res.status).toBe(200);
+			expect(await res.text()).toContain("warren ui");
+		}
+		// The same paths stay gated for API clients and non-page routes.
+		const api = await fetch(`${base}/runs`, { headers: { accept: "application/json" } });
+		expect(api.status).toBe(401);
+		const events = await fetch(`${base}/runs/run_abc/events`, { headers: nav });
+		expect(events.status).toBe(401);
+	});
+
 	test("unknown path → 404 not_found envelope", async () => {
 		handle = startServer(await depsFor(repos), tcpOpts());
 		const res = await fetch(`${tcpUrl(handle)}/nope`);

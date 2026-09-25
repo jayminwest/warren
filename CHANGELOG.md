@@ -36,6 +36,13 @@ Releases **0.9.10 and earlier** live in
 - **Event scrubber redacts bare run tokens (warren-3f97).** A `wrs1.` run
   token in agent output is now redacted like other secrets.
 
+### Fixed
+
+- **Refreshing a UI page no longer shows a 401 envelope (warren-0a17).**
+  UI pages such as `/runs/:id` and `/projects` share their path with an API
+  route. A browser refresh or a pasted link now gets the app shell. API
+  clients on the same paths still get JSON behind the auth gate.
+
 ## [0.19.2] — 2026-09-19
 
 The auto-merge release. A project can now let warren arm GitHub
