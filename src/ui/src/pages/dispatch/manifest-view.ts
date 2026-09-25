@@ -62,7 +62,7 @@ export function buildManifestLines(input: ManifestInput): readonly ManifestLine[
 		{ key: "workspace:" },
 		{ indent: true, key: "repository: ", value: repository },
 		{ indent: true, key: "ref: ", value: ref },
-		{ indent: true, key: "branch: ", value: `${input.runBranchPrefix ?? "burrow"}/<new run>` },
+		{ indent: true, key: "branch: ", value: `${input.runBranchPrefix ?? "warren"}/<new run>` },
 		{ key: "runtime:" },
 		{ indent: true, key: "provider: ", value: input.runtime ?? "—" },
 		{ indent: true, key: "adapter: ", value: input.agent.length > 0 ? input.agent : "—" },
@@ -87,7 +87,7 @@ export function buildManifestSummaryLines(input: ManifestInput): readonly Manife
 			key: "tracker: ",
 			value: input.seedId.trim().length > 0 ? input.seedId.trim() : "—",
 		},
-		{ key: "branch: ", value: `${input.runBranchPrefix ?? "burrow"}/<new run>` },
+		{ key: "branch: ", value: `${input.runBranchPrefix ?? "warren"}/<new run>` },
 		{ key: "costUsd: ", value: costValue(input.costCap) },
 		{ key: "openPullRequest: ", value: "configured" },
 	];

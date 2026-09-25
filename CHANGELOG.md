@@ -36,6 +36,12 @@ Releases **0.9.10 and earlier** live in
 - **Event scrubber redacts bare run tokens (warren-3f97).** A `wrs1.` run
   token in agent output is now redacted like other secrets.
 
+### Fixed
+
+- **The dispatch manifest preview shows the real branch prefix.** With no
+  project `runBranchPrefix`, it read `burrow/<new run>`. Runs push
+  `warren/<run id>` (`DEFAULT_RUN_BRANCH_PREFIX`), and the preview now says so.
+
 ## [0.19.2] — 2026-09-19
 
 The auto-merge release. A project can now let warren arm GitHub
