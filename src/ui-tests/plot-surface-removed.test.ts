@@ -93,7 +93,7 @@ describe("route-level error boundary (warren-1f12)", () => {
 		// Inside the chrome, not outside: a page-level throw must cost the
 		// page, not the sidebar the user needs to navigate away with.
 		expect(layout).toMatch(
-			/<ErrorBoundary resetKey=\{location\.pathname\}>\s*<Outlet \/>\s*<\/ErrorBoundary>/,
+			/<ErrorBoundary resetKey=\{location\.pathname\}>\s*<Suspense fallback=\{<RouteFallback \/>\}>\s*<Outlet \/>\s*<\/Suspense>\s*<\/ErrorBoundary>/,
 		);
 	});
 });

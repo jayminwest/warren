@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleCheck, CircleHelp, Lock } from "lucide-react";
-import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { type ReactElement, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { projectsApi, runsApi } from "@/api/client.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
@@ -186,9 +186,9 @@ export function SetupPage() {
  * The index route's gate (warren-a911): a zero-project instance lands
  * an undismissed operator on the checklist; everyone else — including
  * every spectator under `WARREN_AUTH=public` — gets the operator
- * console exactly as before.
+ * console: the `children` landing (Home, warren-44a2).
  */
-export function SetupLandingRoute() {
+export function SetupLandingRoute({ children }: { children: ReactElement }) {
 	const caps = useCapabilities();
 	const [dismissed] = useState(() => readSetupDismissed());
 	const projects = useQuery({
@@ -218,6 +218,6 @@ export function SetupLandingRoute() {
 			</div>
 		);
 	}
-	if (decision === "console") return <Navigate to="/operations" replace />;
+	if (decision === "console") return children;
 	return <SetupPage />;
 }

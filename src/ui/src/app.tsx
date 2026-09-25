@@ -1,32 +1,50 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/auth-gate.tsx";
-import { ConsoleShell } from "@/components/console/console-shell.tsx";
+import { ConsoleShell, RouteFallback } from "@/components/console/console-shell.tsx";
 import { OperatorRoute } from "@/components/operator-only.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
 import { useLifecycleStreamInvalidation } from "@/hooks/use-lifecycle-stream-invalidation.ts";
-import { AgentsPage } from "@/pages/agents.tsx";
-import { DispatchPage } from "@/pages/dispatch.tsx";
-import { DispatchPlanPage } from "@/pages/dispatch-plan.tsx";
-import { EventExplorerPage } from "@/pages/event-explorer.tsx";
-import { InstancePage } from "@/pages/instance.tsx";
-import { LoginPage } from "@/pages/login.tsx";
-import { OperationsPage } from "@/pages/operations.tsx";
-import { PlanRunDetailPage } from "@/pages/plan-run-detail.tsx";
-import { PlanRunsPage } from "@/pages/plan-runs.tsx";
-import { ProjectDetailPage } from "@/pages/project-detail.tsx";
-import { ProjectsPage } from "@/pages/projects.tsx";
-import { RunDetailPage } from "@/pages/run-detail/index.tsx";
-import { RunsPage } from "@/pages/runs.tsx";
-import { SetupLandingRoute, SetupPage } from "@/pages/setup.tsx";
-import {
-	TelemetryBehaviorTab,
-	TelemetryEconomicsTab,
-	TelemetryIndexRedirect,
-	TelemetryJudgeTab,
-	TelemetryLoopTab,
-	TelemetryPage,
-} from "@/pages/telemetry.tsx";
+import { lazyNamed } from "@/lib/lazy-named.ts";
+import { SetupLandingRoute } from "@/pages/setup.tsx";
+
+/*
+ * Route-level code splitting (warren-b2d6): every page is its own chunk,
+ * so the first load ships the shell plus the page it lands on. The
+ * shell's Suspense boundary shows a skeleton while a chunk arrives.
+ */
+const HomePage = lazyNamed(() => import("@/pages/home/index.tsx"), "HomePage");
+const AgentsPage = lazyNamed(() => import("@/pages/agents.tsx"), "AgentsPage");
+const DispatchPage = lazyNamed(() => import("@/pages/dispatch.tsx"), "DispatchPage");
+const DispatchPlanPage = lazyNamed(() => import("@/pages/dispatch-plan.tsx"), "DispatchPlanPage");
+const EventExplorerPage = lazyNamed(
+	() => import("@/pages/event-explorer.tsx"),
+	"EventExplorerPage",
+);
+const InstancePage = lazyNamed(() => import("@/pages/instance.tsx"), "InstancePage");
+const LoginPage = lazyNamed(() => import("@/pages/login.tsx"), "LoginPage");
+const OperationsPage = lazyNamed(() => import("@/pages/operations.tsx"), "OperationsPage");
+const PlanRunDetailPage = lazyNamed(
+	() => import("@/pages/plan-run-detail.tsx"),
+	"PlanRunDetailPage",
+);
+const PlanRunsPage = lazyNamed(() => import("@/pages/plan-runs.tsx"), "PlanRunsPage");
+const ProjectDetailPage = lazyNamed(
+	() => import("@/pages/project-detail.tsx"),
+	"ProjectDetailPage",
+);
+const ProjectsPage = lazyNamed(() => import("@/pages/projects.tsx"), "ProjectsPage");
+const RunDetailPage = lazyNamed(() => import("@/pages/run-detail/index.tsx"), "RunDetailPage");
+const RunsPage = lazyNamed(() => import("@/pages/runs.tsx"), "RunsPage");
+const SetupPage = lazyNamed(() => import("@/pages/setup.tsx"), "SetupPage");
+const telemetry = () => import("@/pages/telemetry.tsx");
+const TelemetryPage = lazyNamed(telemetry, "TelemetryPage");
+const TelemetryIndexRedirect = lazyNamed(telemetry, "TelemetryIndexRedirect");
+const TelemetryLoopTab = lazyNamed(telemetry, "TelemetryLoopTab");
+const TelemetryBehaviorTab = lazyNamed(telemetry, "TelemetryBehaviorTab");
+const TelemetryJudgeTab = lazyNamed(telemetry, "TelemetryJudgeTab");
+const TelemetryEconomicsTab = lazyNamed(telemetry, "TelemetryEconomicsTab");
 
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -57,11 +75,8 @@ function LifecycleStreamBridge() {
 }
 
 /**
- * Direction C route skeleton (warren-4ed7 / pl-7e38 step 2). The IA
- * follows the canvas index (docs/ui-revamp/README.md): Operations is the
- * index route. Pages whose Direction C redesign has not landed mount the
- * existing legacy page inside the new shell — the co-mounted migration —
- * and stubs name the issue that builds the coming page.
+ * Console routes (warren-4ed7; Home index and lazy pages, plan pl-fae9).
+ * Every page is top-level in the sidebar; Home is the index route.
  */
 export function App() {
 	return (
@@ -70,7 +85,14 @@ export function App() {
 			<ToastProvider>
 				<HashRouter>
 					<Routes>
-						<Route path="/login" element={<LoginPage />} />
+						<Route
+							path="/login"
+							element={
+								<Suspense fallback={<RouteFallback />}>
+									<LoginPage />
+								</Suspense>
+							}
+						/>
 						<Route
 							element={
 								<AuthGate>
@@ -78,12 +100,18 @@ export function App() {
 								</AuthGate>
 							}
 						>
-							{/* Operations is the index route (c-operations), except
-								    on a zero-project instance where an undismissed
-								    operator lands on the first-run setup checklist
-								    instead (warren-a911 / pl-26f3 step 9). Spectators
-								    always get the console. */}
-							<Route index element={<SetupLandingRoute />} />
+							{/* Home is the index route (warren-44a2), except on a
+								    zero-project instance where an undismissed operator
+								    lands on the first-run setup checklist instead
+								    (warren-a911). Spectators always get Home. */}
+							<Route
+								index
+								element={
+									<SetupLandingRoute>
+										<HomePage />
+									</SetupLandingRoute>
+								}
+							/>
 							{/* Manual entry point back to the checklist.
 								    Operator-gated like every mutating surface. */}
 							<Route
@@ -162,7 +190,7 @@ export function App() {
 							<Route path="/events" element={<EventExplorerPage />} />
 							<Route path="/instance" element={<InstancePage />} />
 						</Route>
-						<Route path="*" element={<Navigate to="/operations" replace />} />
+						<Route path="*" element={<Navigate to="/" replace />} />
 					</Routes>
 				</HashRouter>
 			</ToastProvider>

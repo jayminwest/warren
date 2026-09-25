@@ -4,6 +4,7 @@ export type Theme = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 const STORAGE_KEY = "warren.theme";
+const THEME_EVENT = "warren:theme";
 
 function isTheme(value: unknown): value is Theme {
 	return value === "light" || value === "dark" || value === "system";
@@ -89,6 +90,15 @@ export function useTheme(): {
 	const setTheme = useCallback((next: Theme): void => {
 		persistTheme(next);
 		setThemeState(next);
+		// Several components hold this hook (the sidebar toggle, the global
+		// keys, the palette); tell the others so they never drift apart.
+		window.dispatchEvent(new Event(THEME_EVENT));
+	}, []);
+
+	useEffect(() => {
+		const onChange = (): void => setThemeState(readStoredTheme());
+		window.addEventListener(THEME_EVENT, onChange);
+		return () => window.removeEventListener(THEME_EVENT, onChange);
 	}, []);
 
 	const resolvedTheme: ResolvedTheme = theme === "system" ? systemTheme : theme;

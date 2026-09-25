@@ -18,19 +18,20 @@
 	"$comment_rescue_dispatch_2026_09_21": "BOUNDED AUTO-RAISE, RAW JS ONLY (warren-1db0 / #1241): the run-detail Runtime panel gains the RescueRows block (salvage rescue ref + bundle path rows, the copy-ready re-dispatch hint, and the operator-gated Dispatch from rescue button riding readRescueFacts in run-detail-format.ts), plus the rescued-from chain label in RunDefinitionPanel. Net +531 B raw js, measured via check-bundle-size (raw is toolchain-independent). Issued inside a warren run, where --update refuses to write ANY budget because gzip measures ~1.3-1.5KB cooler; per the warren-4e7a/warren-25b7 precedent only totals.raw.js takes the re-baselined figure (measured + HEADROOM_RAW) and the four gzip budgets keep their existing floors \u2014 they were never exceeded. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 604538,
-			"css": 55752
+			"js": 663826,
+			"css": 60238
 		},
 		"gzip": {
-			"js": 170479,
-			"css": 10744
+			"js": 210497,
+			"css": 11265
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 170479,
-			"css": 10744
+			"js": 116315,
+			"css": 11265
 		}
 	},
-	"$comment_ui_polish_2026_09": "warren-9474 / pl-fae9: framer-motion and the unused motion layer were removed (CSS keyframes replace them), so the js floor dropped ~88KB raw / ~30KB gzip. The earlier comments that attribute the js floor to the Phase 5 motion layer and to lazy-loaded analytics routes are historical."
+	"$comment_ui_polish_2026_09": "warren-9474 / pl-fae9: framer-motion and the unused motion layer were removed (CSS keyframes replace them), so the js floor dropped ~88KB raw / ~30KB gzip. The earlier comments that attribute the js floor to the Phase 5 motion layer and to lazy-loaded analytics routes are historical.",
+	"$comment_route_split_2026_09_25": "DELIBERATE RAISE OF TOTALS, LARGEST DOWN (warren-b2d6 / pl-fae9): every route is now a React.lazy chunk and the \u2318K palette (cmdk, new dependency) loads on first open, so first-load JS is the entry chunk only \u2014 largest gzip js drops ~170KB -> ~115KB. Totals rise because per-chunk gzip compresses worse than one bundle, plus cmdk (~7KB gzip, lazy) and the new Home page. Re-baselined with WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 via `bun run check:bundle-size --update` on a laptop build. Watch largest.gzip.js as the first-load metric from here; the 'ratchet only goes down' rule resumes."
 }

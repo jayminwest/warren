@@ -1,54 +1,37 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Search, X } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { ConsoleBottomNav } from "@/components/console/console-bottom-nav.tsx";
 import { ConsoleSidebar, ConsoleSidebarBody } from "@/components/console/console-sidebar.tsx";
 import { ConsoleMobileStatusStrip, ConsoleTopbar } from "@/components/console/console-topbar.tsx";
-import { type ConsoleStats, useConsoleStats } from "@/components/console/use-console-stats.ts";
+import { ShortcutHelp } from "@/components/console/shortcut-help.tsx";
+import { useConsoleStats } from "@/components/console/use-console-stats.ts";
+import { useGlobalKeys } from "@/components/console/use-global-keys.ts";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { SkeletonRows } from "@/components/ui/skeleton.tsx";
 import { WarrenLogo } from "@/components/warren-logo.tsx";
-import { useCapabilities } from "@/hooks/use-capabilities.ts";
-import { cn } from "@/lib/utils.ts";
 
 /**
- * The Direction C operator-console shell (warren-4ed7, pl-7e38 step 2):
- * fixed 224px sidebar + 42px status strip, with the routed page below.
- * Every later page issue mounts inside this shell via the Outlet.
+ * The operator-console shell (warren-4ed7, polished in warren-a8c9): the
+ * 224px sidebar and the status strip, with the routed page below. The
+ * shell owns the ⌘K palette, the shortcut sheet, and the global keys.
  *
- * Below md the chrome splits into the mock's two phone bands (warren-3290,
- * docs/ui-revamp/screens/mobile/operations.jsx): a 48px brand bar (mark +
- * wordmark + environment/identity chip) and a standalone 34px status strip.
- * Navigation lives in the mock's 54px bottom tab bar (warren-4d4a); its
- * "·· More" tab opens the slide-over drawer the hamburger used to.
+ * Below md the chrome splits into a brand bar, a status strip, and a
+ * bottom tab bar whose "More" tab opens the sidebar as a drawer.
  */
 
-/**
- * Environment/identity chip in the mobile brand bar (warren-3290). Same data
- * as the drawer's InstanceCard: access mode as the label, health as the dot.
- */
-function MobileIdentityChip({ stats }: { stats: ConsoleStats }) {
-	const caps = useCapabilities();
-	const isOperator = caps.can("readOperator");
+// cmdk loads on first open, so it stays out of the first-load bundle.
+const CommandPalette = lazy(() => import("@/components/console/command-palette.tsx"));
+
+/** Page-level loading state while a lazy route chunk arrives. */
+export function RouteFallback() {
 	return (
-		<span className="flex shrink-0 items-center gap-1.5 rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) py-[5px] pr-2 pl-2">
-			<span
-				className={cn(
-					"h-1.5 w-1.5 shrink-0 rounded-full",
-					stats.health === "ok" && "bg-(--color-success)",
-					stats.health === "down" && "bg-(--color-danger)",
-					stats.health === "unknown" && "bg-(--color-text-3)",
-				)}
-				aria-hidden
-			/>
-			<span className="text-sm font-medium text-(--color-text)">
-				{isOperator ? "operator" : "read-only"}
-			</span>
-			<span className="text-xs text-(--color-text-3)" aria-hidden>
-				⌄
-			</span>
-		</span>
+		<div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+			<div className="skeleton mb-6 h-7 w-48 rounded-sm" />
+			<SkeletonRows rows={8} />
+		</div>
 	);
 }
 
@@ -56,9 +39,21 @@ export function ConsoleShell() {
 	const stats = useConsoleStats();
 	const location = useLocation();
 	const [mobileNavOpen, setMobileNavOpen] = useState(false);
+	const [paletteOpen, setPaletteOpen] = useState(false);
+	// Mount the lazy palette only after its first open.
+	const [paletteLoaded, setPaletteLoaded] = useState(false);
+	const [helpOpen, setHelpOpen] = useState(false);
+
+	const openPalette = useCallback(() => {
+		setPaletteLoaded(true);
+		setPaletteOpen(true);
+		setMobileNavOpen(false);
+	}, []);
+	const openHelp = useCallback(() => setHelpOpen(true), []);
+	useGlobalKeys({ onOpenPalette: openPalette, onOpenHelp: openHelp });
 
 	// Close the drawer on route change so a mobile → desktop resize never
-	// leaves a stale open flag (same pattern the legacy layout used).
+	// leaves a stale open flag.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not a read
 	useEffect(() => {
 		setMobileNavOpen(false);
@@ -66,71 +61,87 @@ export function ConsoleShell() {
 
 	return (
 		<div className="flex h-dvh flex-col md:flex-row">
-			<ConsoleSidebar stats={stats} />
+			<ConsoleSidebar stats={stats} onOpenPalette={openPalette} />
 
-			{/* Mobile header + main column. */}
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-				{/* Mobile chrome — visible only < md (warren-3290): the mock's two
-				    stacked bands, a 48px brand bar then the 34px status strip. */}
-				<div className="flex h-12 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-sidebar) px-3.5 md:hidden">
+				{/* Phone chrome, below md: brand bar then status strip. */}
+				<div className="flex h-12 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-sidebar) px-4 md:hidden">
 					<Link
 						to="/"
 						aria-label="Warren home"
-						className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
+						className="flex min-w-0 items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
 					>
-						<WarrenLogo className="h-5 w-5 shrink-0" />
+						<WarrenLogo className="size-5 shrink-0" />
 						<span className="text-sm font-semibold tracking-tight text-(--color-text)">warren</span>
+						{stats.instanceName ? (
+							<span className="truncate text-xs text-(--color-text-3)">{stats.instanceName}</span>
+						) : null}
 					</Link>
 					<span className="flex-1" />
-					<MobileIdentityChip stats={stats} />
+					<button
+						type="button"
+						onClick={openPalette}
+						aria-label="Search"
+						className="flex size-9 items-center justify-center rounded-sm text-(--color-text-2) hover:bg-(--color-surface-raised)"
+					>
+						<Search className="size-4.5" />
+					</button>
 				</div>
 				<div className="md:hidden">
 					<ConsoleMobileStatusStrip stats={stats} />
 				</div>
 
-				{/* Desktop status strip. */}
 				<div className="hidden md:block">
-					<ConsoleTopbar stats={stats} />
+					<ConsoleTopbar stats={stats} onOpenHelp={openHelp} />
 				</div>
 
 				<main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
 					{/* Boundary sits INSIDE the chrome so a page-level throw costs
 					    the page, not the shell (warren-1f12). */}
 					<ErrorBoundary resetKey={location.pathname}>
-						<Outlet />
+						<Suspense fallback={<RouteFallback />}>
+							<Outlet />
+						</Suspense>
 					</ErrorBoundary>
 				</main>
 
-				{/* Mobile bottom tab bar (warren-4d4a): in-flow sibling of <main>,
-				    so pages scroll above it and nothing hides under the bar. */}
 				<ConsoleBottomNav onOpenMore={() => setMobileNavOpen(true)} />
 			</div>
 
-			{/* Mobile slide-over drawer: same sidebar body as the desktop rail. */}
+			{/* Phone slide-over drawer: same sidebar body as the desktop rail. */}
 			<DialogPrimitive.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
 				<DialogPrimitive.Portal>
 					<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm md:hidden" />
 					<DialogPrimitive.Content
 						aria-label="Navigation"
-						className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-(--color-border) bg-(--color-sidebar) shadow-lg md:hidden"
+						className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-(--color-border) bg-(--color-sidebar) shadow-lg animate-fade-in md:hidden"
 					>
 						<DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
-						<div className="relative">
-							<ConsoleSidebarBody stats={stats} onNavigate={() => setMobileNavOpen(false)} />
-						</div>
+						<ConsoleSidebarBody
+							stats={stats}
+							onNavigate={() => setMobileNavOpen(false)}
+							onOpenPalette={openPalette}
+						/>
 						<DialogPrimitive.Close asChild>
 							<Button
 								variant="ghost"
-								size="sm"
+								size="icon"
 								aria-label="Close navigation menu"
-								className="absolute top-2 right-2 h-8 w-8 p-0"
+								className="absolute top-2.5 right-2"
 							>
-								<X className="h-4 w-4" />
+								<X className="size-4" />
 							</Button>
 						</DialogPrimitive.Close>
 					</DialogPrimitive.Content>
 				</DialogPrimitive.Portal>
 			</DialogPrimitive.Root>
+
+			{paletteLoaded ? (
+				<Suspense fallback={null}>
+					<CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onOpenHelp={openHelp} />
+				</Suspense>
+			) : null}
+			<ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
 		</div>
 	);
 }

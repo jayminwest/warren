@@ -1,161 +1,126 @@
+import { Keyboard } from "lucide-react";
+import type * as React from "react";
 import {
 	burnValue,
 	healthLabel,
 	runtimeValue,
 } from "@/components/console/console-topbar.helpers.ts";
 import type { ConsoleStats } from "@/components/console/use-console-stats.ts";
-import { useCapabilities } from "@/hooks/use-capabilities.ts";
+import { StatusDot } from "@/components/ui/status.tsx";
 import { cn } from "@/lib/utils.ts";
 
 /**
- * The 42px Direction C status strip (warren-4ed7): health, RUNNING, QUEUE,
- * BURN, RUNTIME, identity. Mono 10px figures; labels in text-3, values in
- * text-2. Figures whose data is unavailable render a quiet "—" placeholder —
- * never a fabricated number.
+ * The console status strip (warren-4ed7, polished in warren-a8c9):
+ * health, running, queued, spend rate, runtime. Sentence-case labels in
+ * text-3, tabular values in text-2. A figure whose data is unavailable
+ * renders a quiet "—" — never a fabricated number.
  */
 
 function Stat({
 	label,
-	shortLabel,
 	value,
 	title,
 	hideOnNarrow = false,
+	children,
 }: {
 	label: string;
-	/** Compact artboard spelling below sm (e.g. "RUN" for "RUNNING"). */
-	shortLabel?: string;
 	value: string;
-	/** Hover hint, e.g. which upcoming issue lands the real figure. */
 	title?: string;
 	hideOnNarrow?: boolean;
+	children?: React.ReactNode;
 }) {
 	return (
 		<span
-			className={cn(
-				"flex items-center gap-[7px] font-mono text-xs ",
-				hideOnNarrow && "hidden sm:flex",
-			)}
+			className={cn("flex shrink-0 items-center gap-1.5 text-xs", hideOnNarrow && "hidden sm:flex")}
 			{...(title ? { title } : {})}
 		>
-			{shortLabel === undefined ? (
-				<span className="w-max shrink-0 text-(--color-text-3)">{label}</span>
-			) : (
-				<>
-					<span className="w-max shrink-0 text-(--color-text-3) sm:hidden">{shortLabel}</span>
-					<span className="w-max shrink-0 text-(--color-text-3) max-sm:hidden">{label}</span>
-				</>
-			)}
-			<span className="w-max shrink-0 text-(--color-text-2)">{value}</span>
+			{children}
+			<span className="text-(--color-text-3)">{label}</span>
+			<span className="font-medium tabular-nums text-(--color-text-2)">{value}</span>
 		</span>
 	);
 }
 
 function HealthStat({ health }: { health: ConsoleStats["health"] }) {
-	const label = healthLabel(health);
 	return (
-		<span className="flex items-center gap-[7px]" title="GET /healthz liveness">
+		<span className="flex shrink-0 items-center gap-1.5 text-xs" title="GET /healthz liveness">
+			<StatusDot size="sm" tone={health === "ok" ? "ok" : health === "down" ? "err" : "idle"} />
 			<span
 				className={cn(
-					"h-1.5 w-1.5 shrink-0 rounded-full",
-					health === "ok" && "bg-(--color-success)",
-					health === "down" && "bg-(--color-danger)",
-					health === "unknown" && "bg-(--color-text-3)",
-				)}
-				aria-hidden
-			/>
-			<span
-				className={cn(
-					"font-mono text-xs ",
 					health === "ok" ? "text-(--color-text-2)" : "text-(--color-text-3)",
+					health === "down" && "text-(--color-danger)",
 				)}
 			>
-				{label}
+				{healthLabel(health)}
 			</span>
 		</span>
 	);
 }
 
-function IdentityStat() {
-	const caps = useCapabilities();
-	const identity = caps.status === "ready" ? caps.identity : null;
-	return (
-		<Stat
-			label="IDENTITY"
-			value={identity === "operator" ? "OPERATOR" : identity === null ? "—" : "SPECTATOR"}
-			hideOnNarrow
-		/>
-	);
+function count(value: number | null): string {
+	return value === null ? "—" : String(value);
 }
 
-/** BURN: ops-overview spend rate (warren-d6ea); "—" while loading or spectator. */
-function BurnStat({ burnUsdPerHour }: { burnUsdPerHour: ConsoleStats["burnUsdPerHour"] }) {
-	return (
-		<Stat
-			label="BURN"
-			value={burnValue(burnUsdPerHour)}
-			title={
-				burnUsdPerHour === null
-					? "Spend rate unavailable (loading or spectator view)"
-					: "Spend rate over the last 24 hours"
-			}
-		/>
-	);
+function Divider() {
+	return <span aria-hidden className="h-3 w-px shrink-0 bg-(--color-border)" />;
 }
 
-/** RUNTIME: boot-resolved provider off `GET /instance` (warren-d6ea). */
-function RuntimeStat({ runtime }: { runtime: ConsoleStats["runtime"] }) {
+export function ConsoleTopbar({
+	stats,
+	onOpenHelp,
+}: {
+	stats: ConsoleStats;
+	onOpenHelp: () => void;
+}) {
+	const running = stats.runningCount ?? 0;
 	return (
-		<Stat
-			label="RUNTIME"
-			value={runtimeValue(runtime) ?? "—"}
-			title="Boot-resolved runtime provider"
-			hideOnNarrow
-		/>
-	);
-}
-
-export function ConsoleTopbar({ stats }: { stats: ConsoleStats }) {
-	return (
-		<header className="flex h-[42px] w-full min-w-0 flex-1 shrink-0 items-center gap-4 border-b border-(--color-border) px-3.5 sm:gap-[18px] md:px-6">
+		<header className="flex h-10 w-full min-w-0 shrink-0 items-center gap-3.5 border-b border-(--color-border) px-6">
 			<HealthStat health={stats.health} />
+			<Divider />
+			<Stat label="Running" value={count(stats.runningCount)}>
+				{running > 0 ? <StatusDot state="running" size="sm" /> : null}
+			</Stat>
+			<Stat label="Queued" value={count(stats.queuedCount)} />
 			<Stat
-				label="RUNNING"
-				shortLabel="RUN"
-				value={stats.runningCount === null ? "—" : String(stats.runningCount)}
+				label="Spend"
+				value={burnValue(stats.burnUsdPerHour)}
+				title={
+					stats.burnUsdPerHour === null
+						? "Spend rate unavailable (loading or read-only view)"
+						: "Spend rate over the last 24 hours"
+				}
 			/>
-			<Stat
-				label="QUEUE"
-				shortLabel="QUE"
-				value={stats.queuedCount === null ? "—" : String(stats.queuedCount)}
-			/>
-			<BurnStat burnUsdPerHour={stats.burnUsdPerHour} />
 			<span className="flex-1" />
-			<RuntimeStat runtime={stats.runtime} />
-			<IdentityStat />
+			<Stat
+				label="Runtime"
+				value={runtimeValue(stats.runtime) ?? "—"}
+				title="Boot-resolved runtime provider"
+				hideOnNarrow
+			/>
+			<button
+				type="button"
+				onClick={onOpenHelp}
+				aria-label="Keyboard shortcuts"
+				title="Keyboard shortcuts (?)"
+				className="rounded-xs p-1 text-(--color-text-3) transition-colors hover:bg-(--color-surface-raised) hover:text-(--color-text-2)"
+			>
+				<Keyboard className="size-4" />
+			</button>
 		</header>
 	);
 }
 
 /**
- * The 34px phone status strip (warren-3290, docs/ui-revamp/screens/mobile/
- * operations.jsx): exactly the four mobile figures — HEALTHY, RUN, QUE, BURN —
+ * The phone status strip (warren-3290): health, running, queued, spend —
  * left-packed with no spacer, on its own row under the brand bar.
  */
 export function ConsoleMobileStatusStrip({ stats }: { stats: ConsoleStats }) {
 	return (
-		<header className="flex h-[34px] w-full shrink-0 items-center gap-3.5 overflow-clip border-b border-(--color-border) px-3.5">
+		<header className="flex h-9 w-full shrink-0 items-center gap-3.5 overflow-clip border-b border-(--color-border) px-4">
 			<HealthStat health={stats.health} />
-			<Stat
-				label="RUNNING"
-				shortLabel="RUN"
-				value={stats.runningCount === null ? "—" : String(stats.runningCount)}
-			/>
-			<Stat
-				label="QUEUE"
-				shortLabel="QUE"
-				value={stats.queuedCount === null ? "—" : String(stats.queuedCount)}
-			/>
-			<BurnStat burnUsdPerHour={stats.burnUsdPerHour} />
+			<Stat label="Running" value={count(stats.runningCount)} />
+			<Stat label="Queued" value={count(stats.queuedCount)} />
+			<Stat label="Spend" value={burnValue(stats.burnUsdPerHour)} />
 		</header>
 	);
 }

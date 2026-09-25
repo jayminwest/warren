@@ -7,8 +7,8 @@ import type { ConsoleStats } from "./use-console-stats.ts";
  */
 
 /** Topbar health label, identical at every width (warren-d6ea). */
-export function healthLabel(health: ConsoleStats["health"]): "HEALTHY" | "UNREACHABLE" | "—" {
-	return health === "ok" ? "HEALTHY" : health === "down" ? "UNREACHABLE" : "—";
+export function healthLabel(health: ConsoleStats["health"]): "Healthy" | "Unreachable" | "—" {
+	return health === "ok" ? "Healthy" : health === "down" ? "Unreachable" : "—";
 }
 
 /** Epoch hours of each ops-overview window token (warren-7194). */
@@ -17,7 +17,7 @@ const WINDOW_HOURS: Record<string, number> = { "24h": 24, "7d": 168, "30d": 720 
 /**
  * BURN figure: `spend.windowUsd / windowHours` off the shared ops-overview
  * query. Null while loading, for spectators (the USD sums are operator-only),
- * or when `services.dbReachable` is false — the strip shows "— / H", never a
+ * or when `services.dbReachable` is false — the strip shows "—", never a
  * fabricated zero.
  */
 export function deriveBurnUsdPerHour(
@@ -32,10 +32,16 @@ export function deriveBurnUsdPerHour(
 
 /** BURN stat value; null renders the quiet placeholder. */
 export function burnValue(burnUsdPerHour: number | null): string {
-	return burnUsdPerHour === null ? "— / H" : `$${burnUsdPerHour.toFixed(2)} / H`;
+	return burnUsdPerHour === null ? "—" : `$${burnUsdPerHour.toFixed(2)}/h`;
 }
+
+const RUNTIME_LABELS: Record<NonNullable<ConsoleStats["runtime"]>, string> = {
+	local: "Local",
+	docker: "Docker",
+	k8s: "Kubernetes",
+};
 
 /** RUNTIME stat value off `GET /instance`; null renders the placeholder. */
 export function runtimeValue(runtime: ConsoleStats["runtime"]): string | null {
-	return runtime === null ? null : runtime.toUpperCase();
+	return runtime === null ? null : RUNTIME_LABELS[runtime];
 }
