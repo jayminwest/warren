@@ -839,6 +839,10 @@ The agent still cannot read the entrypoint's environ or write its stdout.
 The init container stays uid 1000 with no caps.
 The root entrypoint writes the workspace through group 1000, like the agent.
 
+gVisor ignores the `--bounding-set=-all` drop, so the agent's `CapBnd` still reads `0xe0`.
+That grants nothing: with no_new_privs on, no exec can raise caps.
+A live check on 2026-09-25 as uid 1001 confirmed it: `setresuid(0)` fails with EPERM, and the sandbox denies `/proc/1/environ` and `kill -0 1`.
+
 Measured on Autopilot on 2026-09-25, one sample per arm: `bun install` for this repo took 10.7 s on runc and 29.5 s on gVisor.
 Clone and `bun test` changed little.
 Budget run time on I/O-heavy projects before you switch a project to gVisor.

@@ -20,8 +20,10 @@
  * So under a sandboxed runtime the ENTRYPOINT runs as uid 0 inside the
  * sandbox, with only SETUID/SETGID/KILL and `allowPrivilegeEscalation: false`.
  * Root in a gVisor pod is root of the userspace kernel, not of the node. The
- * entrypoint still drops the AGENT to uid 1001 with an emptied bounding set,
- * so the split this module exists to keep holds: the agent cannot read the
+ * entrypoint still drops the AGENT to uid 1001 under no_new_privs. gVisor
+ * ignores the bounding-set drop (CapBnd stays 0xe0), which grants nothing
+ * because no exec can raise caps under no_new_privs. The split this module
+ * exists to keep holds: the agent cannot read the
  * entrypoint's environ (the run token) or write its stdout. The init
  * container is untouched (uid 1000, no caps). Workspace writes by the root
  * entrypoint go through group 1000 (fsGroup plus the entrypoint's umask 002).
