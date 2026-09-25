@@ -50,6 +50,8 @@ function firingTimer(fireMs: number): (fn: () => void, ms: number) => { cancel: 
 	};
 }
 const inertTimer = (): { cancel: () => void } => ({ cancel: () => {} });
+/** Keeps the wiring tests off the real metrics API (the local kubeconfig). */
+const noSample = (): Promise<undefined> => Promise.resolve(undefined);
 
 describe("K8sProvider.finalize — pod-memory sample (warren-fe11)", () => {
 	async function runFinalize(
@@ -100,6 +102,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("embeds the WARREN_GIT_TOKEN push credential into the served intent", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { WARREN_GIT_TOKEN: "ghp_pushtoken" },
 			finalizeCoordinator: coordinator,
@@ -118,6 +121,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("an intent-carried minted credential wins over the env-derived token (warren-4e1c)", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { WARREN_GIT_TOKEN: "ghp_envtoken" },
 			finalizeCoordinator: coordinator,
@@ -137,6 +141,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("falls back to GITHUB_TOKEN, and omits the token when neither is set", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { GITHUB_TOKEN: "ghp_fallback" },
 			finalizeCoordinator: coordinator,
@@ -154,6 +159,7 @@ describe("K8sProvider.finalize — wiring", () => {
 
 		const coord2 = new FinalizeCoordinator();
 		const provider2 = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: {},
 			finalizeCoordinator: coord2,
@@ -170,6 +176,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("App mode (allowStaticPushTokenFallback: false) never serves the static env token (warren-c9ac)", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { WARREN_GIT_TOKEN: "ghp_static", GITHUB_TOKEN: "ghp_fallback" },
 			allowStaticPushTokenFallback: false,
@@ -187,6 +194,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("App mode still serves the minted intent token when the gate is off", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { WARREN_GIT_TOKEN: "ghp_static" },
 			allowStaticPushTokenFallback: false,
@@ -210,6 +218,7 @@ describe("K8sProvider.finalize — wiring", () => {
 		// present (a pod is listed) so the pod-gone probe never resolves.
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { WARREN_K8S_FINALIZE_TIMEOUT_MS: "4321" },
 			finalizeCoordinator: coordinator,
@@ -222,6 +231,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("an explicit finalizeTimeoutMs dep wins over the env knob", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
 			serverEnv: { WARREN_K8S_FINALIZE_TIMEOUT_MS: "4321" },
 			finalizeCoordinator: coordinator,
@@ -235,6 +245,7 @@ describe("K8sProvider.finalize — wiring", () => {
 	test("degrades to a failed result when the pod is gone (status lists no pod)", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({
+			podMemorySampler: noSample,
 			coreApi: () => fakeApi([]), // no pod ⇒ status().exists === false
 			serverEnv: {},
 			finalizeCoordinator: coordinator,
