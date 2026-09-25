@@ -405,8 +405,12 @@ must carry:
   until `expiresAt` minus a safety margin, then re-mints. Shipped as
   `GitHubAppForge` (warren-f8df), selected by `WARREN_FORGE=app` and
   configured by `WARREN_GITHUB_APP_ID` / `WARREN_GITHUB_APP_INSTALLATION_ID`
-  / `WARREN_GITHUB_APP_PRIVATE_KEY`; the shipped margin is five minutes and
-  the mint is not down-scoped — the single installation id bounds it.
+  / `WARREN_GITHUB_APP_PRIVATE_KEY`; the shipped margin is five minutes.
+  The `gitCredential` mint is down-scoped (warren-b425): it names only the
+  run's repository and asks for `contents` + `workflows` write, falling
+  back to `contents` alone when the installation lacks `workflows`. That
+  credential reaches the run pod. The REST mint behind PR and checks calls
+  stays installation-wide and never leaves the control plane.
 - **GitHubPat:** returns the configured secret with `expiresAt: null` and
   reports `credentialLifetime: "static"`.
 

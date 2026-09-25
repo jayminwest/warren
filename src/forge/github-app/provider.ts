@@ -160,8 +160,26 @@ export class GitHubAppForge implements Forge {
 		return parseGitHubRepoRef(cloneUrl);
 	}
 
-	gitCredential(ref: RepoRef): ReturnType<Forge["gitCredential"]> {
-		return this.transport.gitCredential(ref);
+	/**
+	 * The git credential reaches the run pod, so it is scoped to the ref's
+	 * repository with contents/workflows write only (warren-b425). The REST
+	 * methods below keep the installation-wide token.
+	 */
+	async gitCredential(ref: RepoRef): ReturnType<Forge["gitCredential"]> {
+		const repository = ref.key.split("/")[2] ?? "";
+		if (repository === "") {
+			return { ok: false, error: { kind: "no_credential", detail: `unscopable ref ${ref.key}` } };
+		}
+		const minted = await this.tokenSource.mintForRepository(repository);
+		if (!minted.ok) return minted;
+		return {
+			ok: true,
+			value: {
+				username: "x-access-token",
+				secret: minted.value.secret,
+				expiresAt: minted.value.expiresAt,
+			},
+		};
 	}
 
 	openPullRequest(ref: RepoRef, req: Parameters<Forge["openPullRequest"]>[1]) {

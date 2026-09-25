@@ -124,13 +124,15 @@ describe("GitHubAppForge credential minting", () => {
 		expect(typeof result.value.expiresAt).toBe("number");
 	});
 
-	test("one installation-token mint serves both gitCredential and the API methods", async () => {
+	test("gitCredential mints a repo-scoped token apart from the API methods' token (warren-b425)", async () => {
 		const mints = { count: 0 };
 		const forge = makeForge({ fetch: stubGitHubAppServer({ mints }).fetch });
 		const ref = forge.parseRepoRef(CLONE_URL);
 		if (ref === null) throw new Error("unreachable");
 		const cred = await forge.gitCredential(ref);
 		expect(cred.ok).toBe(true);
+		const again = await forge.gitCredential(ref);
+		expect(again.ok).toBe(true);
 		const opened = await forge.openPullRequest(ref, {
 			title: "t",
 			body: "b",
@@ -138,7 +140,7 @@ describe("GitHubAppForge credential minting", () => {
 			baseBranch: "main",
 		});
 		expect(opened.ok).toBe(true);
-		expect(mints.count).toBe(1);
+		expect(mints.count).toBe(2);
 	});
 });
 
