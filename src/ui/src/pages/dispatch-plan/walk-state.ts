@@ -21,7 +21,9 @@ import {
 	initialWalkTouched,
 	parseCostCap,
 	parseIssueIds,
+	parseTimeLimit,
 	readWalkRouteState,
+	timeLimitErrorOf,
 	type WalkDraft,
 	type WalkDraftPatch,
 	type WalkRouteState,
@@ -60,6 +62,7 @@ export interface WalkStateResult {
 	readonly modelDefaultKind: "project" | "agent" | null;
 	readonly costCapError: string | null;
 	readonly costCapResult: CostCapResult;
+	readonly timeLimitError: string | null;
 	readonly planOptions: readonly PlanOption[];
 	readonly planSelectorUnavailable: boolean;
 	readonly useManualPlanId: boolean;
@@ -83,6 +86,7 @@ export interface WalkStateResult {
 	readonly setProvider: (value: string) => void;
 	readonly setModel: (value: string) => void;
 	readonly setCostCap: (value: string) => void;
+	readonly setTimeLimit: (value: string) => void;
 	readonly setSourceMode: (mode: "plan" | "issues") => void;
 	readonly cancel: () => void;
 	readonly submit: () => void;
@@ -96,7 +100,7 @@ function issueIdsOf(draft: WalkDraft): string[] {
 	return draft.sourceMode === "issues" ? parseIssueIds(draft.issuesText).slice(0, 100) : [];
 }
 
-function costValueOf(result: CostCapResult): number | undefined {
+function parsedValueOf(result: CostCapResult): number | undefined {
 	return result !== null && "value" in result ? result.value : undefined;
 }
 
@@ -129,9 +133,11 @@ export function isSubmittable(args: {
 	readonly draft: WalkDraft;
 	readonly hasSeeds: boolean;
 	readonly costCapError: string | null;
+	readonly timeLimitError?: string | null;
 }): boolean {
 	const { draft } = args;
 	if (args.costCapError !== null) return false;
+	if (args.timeLimitError !== undefined && args.timeLimitError !== null) return false;
 	if (draft.project.length === 0 || draft.agent.length === 0) return false;
 	if (draft.promptTemplate.trim().length === 0) return false;
 	if (draft.sourceMode === "issues") return parseIssueIds(draft.issuesText).length > 0;
@@ -260,12 +266,20 @@ export function useWalkState(): WalkStateResult {
 
 	const costCapResult = parseCostCap(draft.costCap);
 	const costCapError = costCapErrorOf(draft.costCap);
-	const valid = isSubmittable({ draft, hasSeeds, costCapError });
+	const timeLimitResult = parseTimeLimit(draft.timeLimit);
+	const timeLimitError = timeLimitErrorOf(draft.timeLimit);
+	const valid = isSubmittable({ draft, hasSeeds, costCapError, timeLimitError });
 
 	const submit = useCallback((): void => {
 		if (dispatch.isPending || !valid) return;
-		dispatch.mutate(buildCreatePlanRunInput({ draft, maxCostUsd: costValueOf(costCapResult) }));
-	}, [dispatch, valid, costCapResult, draft]);
+		dispatch.mutate(
+			buildCreatePlanRunInput({
+				draft,
+				maxCostUsd: parsedValueOf(costCapResult),
+				maxDurationMinutes: parsedValueOf(timeLimitResult),
+			}),
+		);
+	}, [dispatch, valid, costCapResult, timeLimitResult, draft]);
 
 	return {
 		initialState,
@@ -292,6 +306,7 @@ export function useWalkState(): WalkStateResult {
 		),
 		costCapError,
 		costCapResult,
+		timeLimitError,
 		planOptions,
 		planSelectorUnavailable,
 		useManualPlanId,
@@ -315,6 +330,7 @@ export function useWalkState(): WalkStateResult {
 		setProvider: (value) => setTouchedValue("providerOverride", value, "provider"),
 		setModel: (value) => setTouchedValue("modelOverride", value, "model"),
 		setCostCap: (value) => setTouchedValue("costCap", value, "costCap"),
+		setTimeLimit: (value) => setTouchedValue("timeLimit", value, "timeLimit"),
 		setSourceMode: (mode) => setDraftValue("sourceMode", mode),
 		cancel: () => navigate("/plan-runs"),
 		submit,

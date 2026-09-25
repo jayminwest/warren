@@ -52,6 +52,7 @@ export interface WalkFormProps {
 	readonly openChildCount: number | null;
 	readonly issueStatuses: readonly { id: string; status: string | null }[];
 	readonly costCapError: string | null;
+	readonly timeLimitError: string | null;
 	readonly onProject: (value: string) => void;
 	readonly onRef: (value: string) => void;
 	readonly onPlanId: (value: string) => void;
@@ -63,6 +64,7 @@ export interface WalkFormProps {
 	readonly onModel: (value: string) => void;
 	readonly onPrompt: (value: string) => void;
 	readonly onCostCap: (value: string) => void;
+	readonly onTimeLimit: (value: string) => void;
 	readonly onSubmit: () => void;
 }
 
@@ -319,7 +321,25 @@ function LimitsSection(p: SectionProps) {
 						spellCheck={false}
 					/>
 				</Field>
-				{/* Timeout field lands with the per-run timeout API (warren-a112). */}
+				<Field
+					label="Time limit per step (minutes)"
+					htmlFor="walk-time-limit"
+					optional
+					error={p.timeLimitError}
+					hint="Applies to every step's run: it is stopped and marked timed out after this long"
+				>
+					<Input
+						id="walk-time-limit"
+						className={invalidClass(p.timeLimitError)}
+						aria-invalid={p.timeLimitError !== null}
+						value={p.draft.timeLimit}
+						onChange={(e) => p.onTimeLimit(e.target.value)}
+						placeholder="60"
+						inputMode="numeric"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
 			</FieldRow>
 		</FormSection>
 	);

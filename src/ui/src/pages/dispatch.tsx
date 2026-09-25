@@ -80,7 +80,8 @@ function headerCopy(state: DispatchRouteState) {
 export function DispatchPage() {
 	const s = useDispatchState();
 	const copy = headerCopy(s.initialState);
-	const canSubmit = s.valid && s.costCapError === null && !s.pending;
+	const capsValid = s.costCapError === null && s.timeLimitError === null;
+	const canSubmit = s.valid && capsValid && !s.pending;
 
 	const actions = (
 		<>
@@ -152,9 +153,11 @@ export function DispatchPage() {
 					providerOverride={s.draft.providerOverride}
 					modelOverride={s.draft.modelOverride}
 					costCap={s.draft.costCap}
+					timeLimit={s.draft.timeLimit}
 					providerDefaultKind={s.providerDefaultKind}
 					modelDefaultKind={s.modelDefaultKind}
 					costCapError={s.costCapError}
+					timeLimitError={s.timeLimitError}
 					onAgent={s.setAgent}
 					onProject={s.setProject}
 					onRef={s.setRef}
@@ -163,6 +166,7 @@ export function DispatchPage() {
 					onProvider={s.setProvider}
 					onModel={s.setModel}
 					onCostCap={s.setCostCap}
+					onTimeLimit={s.setTimeLimit}
 					onSubmit={s.submit}
 				/>
 				<DispatchSummary
@@ -173,10 +177,11 @@ export function DispatchPage() {
 					provider={s.draft.providerOverride.trim()}
 					model={s.draft.modelOverride.trim()}
 					costCap={s.draft.costCap}
+					timeLimit={s.draft.timeLimit}
 					runBranchPrefix={s.defaults?.runBranchPrefix}
 					facts={s.facts}
 					routeState={s.initialState}
-					valid={s.valid && s.costCapError === null}
+					valid={s.valid && capsValid}
 					actions={actions}
 				/>
 			</div>

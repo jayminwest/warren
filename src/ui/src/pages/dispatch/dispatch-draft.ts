@@ -74,6 +74,8 @@ export interface DispatchDraft {
 	readonly modelOverride: string;
 	/** Cost cap as free text; parsed to `maxCostUsd` at submit. */
 	readonly costCap: string;
+	/** Wall-clock cap in minutes as free text; parsed to `maxDurationMinutes` (warren-a112). */
+	readonly timeLimit: string;
 }
 
 /** Touched flags stop the per-project default auto-fill per field. */
@@ -83,6 +85,7 @@ export interface DispatchTouched {
 	readonly provider: boolean;
 	readonly model: boolean;
 	readonly costCap: boolean;
+	readonly timeLimit: boolean;
 }
 
 /** Draft + touched flags travel together through the page's single state. */
@@ -101,6 +104,7 @@ export function initialDraft(state: DispatchRouteState): DispatchDraft {
 		providerOverride: "",
 		modelOverride: "",
 		costCap: "",
+		timeLimit: "",
 	};
 }
 
@@ -111,6 +115,7 @@ export function initialTouched(state: DispatchRouteState): DispatchTouched {
 		provider: false,
 		model: false,
 		costCap: false,
+		timeLimit: false,
 	};
 }
 
@@ -126,6 +131,33 @@ export function parseCostCap(text: string): { value: number } | { error: string 
 }
 
 /**
+ * Parse `timeLimit` into a `maxDurationMinutes` value (warren-a112).
+ * Empty text returns null; anything but a positive whole number of
+ * minutes returns an error.
+ */
+export function parseTimeLimit(text: string): { value: number } | { error: string } | null {
+	const trimmed = text.trim();
+	if (trimmed.length === 0) return null;
+	const value = Number(trimmed);
+	if (!/^\d+$/.test(trimmed) || !Number.isSafeInteger(value) || value <= 0) {
+		return { error: "Time limit must be a whole number of minutes above zero." };
+	}
+	return { value };
+}
+
+/** Parse-result error text, or null when the field is unset or valid. */
+export function parseErrorOf(result: { value: number } | { error: string } | null): string | null {
+	return result !== null && "error" in result ? result.error : null;
+}
+
+/** Parse-result value, or undefined when the field is unset or invalid. */
+export function parseValueOf(
+	result: { value: number } | { error: string } | null,
+): number | undefined {
+	return result !== null && "value" in result ? result.value : undefined;
+}
+
+/**
  * Build the `POST /runs` body from the draft (plus parsed cost cap and
  * continuation/replicate route state). Pure — the page only fires it.
  */
@@ -133,6 +165,7 @@ export function buildCreateRunInput(args: {
 	readonly draft: DispatchDraft;
 	readonly routeState: DispatchRouteState;
 	readonly maxCostUsd: number | undefined;
+	readonly maxDurationMinutes?: number | undefined;
 }): CreateRunInput {
 	const { draft } = args;
 	const trimmedRef = draft.ref.trim();
@@ -148,6 +181,9 @@ export function buildCreateRunInput(args: {
 		...(trimmedModel.length > 0 ? { modelOverride: trimmedModel } : {}),
 		...(trimmedSeed.length > 0 ? { seedId: trimmedSeed } : {}),
 		...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
+		...(args.maxDurationMinutes !== undefined
+			? { maxDurationMinutes: args.maxDurationMinutes }
+			: {}),
 		...(args.routeState.continueFromRunId !== undefined
 			? { continueFromRunId: args.routeState.continueFromRunId }
 			: {}),

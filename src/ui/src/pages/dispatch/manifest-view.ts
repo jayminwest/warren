@@ -1,6 +1,6 @@
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
 import type { ProjectRow } from "@/api/types.ts";
-import { parseCostCap } from "./dispatch-draft.ts";
+import { parseCostCap, parseTimeLimit } from "./dispatch-draft.ts";
 
 /**
  * Pure derivations behind the Dispatch page's resolved-manifest rail
@@ -40,6 +40,8 @@ export interface ManifestInput {
 	readonly provider: string;
 	readonly model: string;
 	readonly costCap: string;
+	/** Time limit draft text (warren-a112); absent reads as unset. */
+	readonly timeLimit?: string;
 	readonly runBranchPrefix: string | undefined;
 	readonly runtime: InstanceFactsResponse["runtime"] | undefined;
 }
@@ -69,6 +71,7 @@ export function buildManifestLines(input: ManifestInput): readonly ManifestLine[
 		{ indent: true, key: "model: ", value: modelValue(input.provider, input.model) },
 		{ key: "limits:" },
 		{ indent: true, key: "costUsd: ", value: costValue(input.costCap) },
+		{ indent: true, key: "durationMinutes: ", value: minutesValue(input.timeLimit ?? "") },
 		{ key: "delivery:" },
 		{ indent: true, key: "pushBranch: ", value: "true" },
 	];
@@ -84,6 +87,11 @@ export function modelValue(provider: string, model: string): string {
 function costValue(costCap: string): string {
 	const parsed = parseCostCap(costCap);
 	return parsed !== null && "value" in parsed ? parsed.value.toFixed(2) : "—";
+}
+
+function minutesValue(timeLimit: string): string {
+	const parsed = parseTimeLimit(timeLimit);
+	return parsed !== null && "value" in parsed ? String(parsed.value) : "—";
 }
 
 /** The branch a new run pushes: `<prefix>/<run id>`; warren's default prefix is `warren`. */
@@ -111,6 +119,12 @@ export function isolationLabel(
 export function costCapLabel(costCap: string): string | null {
 	const parsed = parseCostCap(costCap);
 	return parsed !== null && "value" in parsed ? `$${parsed.value.toFixed(2)}` : null;
+}
+
+/** `"60"` → `"60 min"`; unset or invalid → null (warren-a112). */
+export function timeLimitLabel(timeLimit: string): string | null {
+	const parsed = parseTimeLimit(timeLimit);
+	return parsed !== null && "value" in parsed ? `${parsed.value} min` : null;
 }
 
 /** Provider/model pair for display; empty → null (the agent's default applies). */

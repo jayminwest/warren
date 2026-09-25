@@ -143,6 +143,7 @@ export function DispatchPlanPage() {
 					openChildCount={s.openChildCount}
 					issueStatuses={s.issueStatuses}
 					costCapError={s.costCapError}
+					timeLimitError={s.timeLimitError}
 					onProject={s.setProject}
 					onRef={s.setRef}
 					onPlanId={s.setPlanId}
@@ -154,6 +155,7 @@ export function DispatchPlanPage() {
 					onModel={s.setModel}
 					onPrompt={s.setPrompt}
 					onCostCap={s.setCostCap}
+					onTimeLimit={s.setTimeLimit}
 					onSubmit={s.submit}
 				/>
 				<WalkSummary
@@ -164,6 +166,7 @@ export function DispatchPlanPage() {
 						provider: s.draft.providerOverride.trim(),
 						model: s.draft.modelOverride.trim(),
 						costCap: s.draft.costCap,
+						timeLimit: s.draft.timeLimit,
 						planId: s.draft.planId,
 						issuesText: s.draft.issuesText,
 						sourceMode: s.draft.sourceMode,

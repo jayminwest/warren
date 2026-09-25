@@ -182,6 +182,7 @@ export interface RunRow {
 	costUsd: number | null;
 	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
 	maxCostUsd?: number | null; // warren-f8a2: cap overlay (list + detail GET, warren-b19e); absent for spectators
+	maxDurationMinutes?: number | null; // warren-a112: wall-clock cap in minutes; operator-only overlay like maxCostUsd
 	runtimeBackend?: string | null; // warren-a0f4: local|docker|k8s frozen at dispatch; operator-only overlay beside maxCostUsd
 	/** Input/output tokens consumed/produced (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;
@@ -288,13 +289,9 @@ export interface CreateRunInput {
 	 * server-side).
 	 */
 	cloneFromRunId?: string;
-	/**
-	 * Optional per-run USD spend cap (warren-a63d): wins over the agent's
-	 * own `frontmatter.maxCostUsd` and the project's `.warren/config.yaml`
-	 * default. Must be a positive finite number; the server rejects zero,
-	 * negatives, and numeric strings.
-	 */
+	/** Per-run USD spend cap (warren-a63d); beats agent frontmatter + project default. > 0. */
 	maxCostUsd?: number;
+	maxDurationMinutes?: number; // warren-a112: wall-clock cap, positive whole minutes
 }
 
 export interface SpawnRunResponse {
@@ -512,6 +509,7 @@ export interface DefaultsConfig {
 	 * Surfaced read-only on the ProjectDetail config panel.
 	 */
 	maxCostUsd?: number;
+	maxDurationMinutes?: number; // warren-a112: project default wall-clock cap in minutes
 }
 
 export interface WarrenConfigResponse {
@@ -643,6 +641,7 @@ export interface PlanRunRow {
 	modelOverride?: string | null;
 	/** warren-a63d per-child USD cap; optional: spectator-redacted field. */
 	maxCostUsd?: number | null;
+	maxDurationMinutes?: number | null; // warren-a112 per-child minutes cap; spectator-redacted
 	dispatcherHandle?: string;
 	trigger: string;
 	state: PlanRunState;
@@ -682,6 +681,7 @@ export interface CreatePlanRunInput {
 	modelOverride?: string;
 	/** Per-child USD spend cap (warren-a63d); same validation as `POST /runs` maxCostUsd. */
 	maxCostUsd?: number;
+	maxDurationMinutes?: number; // warren-a112 per-child minutes cap; same validation as POST /runs
 	dispatcherHandle?: string;
 }
 

@@ -8,6 +8,7 @@ import {
 	modelLabel,
 	repositoryLabel,
 	runBranchValue,
+	timeLimitLabel,
 } from "./manifest-view.ts";
 
 const project = {
@@ -52,6 +53,12 @@ describe("summary labels", () => {
 		expect(costCapLabel("-1")).toBeNull();
 	});
 
+	test("timeLimitLabel formats whole minutes and drops an empty or invalid one", () => {
+		expect(timeLimitLabel("60")).toBe("60 min");
+		expect(timeLimitLabel("")).toBeNull();
+		expect(timeLimitLabel("1.5")).toBeNull();
+	});
+
 	test("modelLabel joins provider and model, or returns null when both are empty", () => {
 		expect(modelLabel("anthropic", "claude")).toBe("anthropic/claude");
 		expect(modelLabel("", "claude")).toBe("claude");
@@ -93,5 +100,6 @@ describe("buildManifestLines", () => {
 		});
 		expect(lines.find((l) => l.key === "ref: ")?.value).toBe("main");
 		expect(lines.find((l) => l.key === "branch: ")?.value).toBe("warren/<run id>");
+		expect(lines.find((l) => l.key === "durationMinutes: ")?.value).toBe("—");
 	});
 });

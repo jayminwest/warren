@@ -1,4 +1,4 @@
-import { Bot, FolderGit2, GitMerge, Layers, Wallet } from "lucide-react";
+import { Bot, FolderGit2, GitMerge, Layers, Timer, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
 import type { ProjectRow } from "@/api/types.ts";
@@ -10,9 +10,10 @@ import {
 	modelLabel,
 	modelValue,
 	repositoryLabel,
+	timeLimitLabel,
 } from "../dispatch/manifest-view.ts";
 import { SummaryCard, type SummaryRow } from "../dispatch/summary-card.tsx";
-import { parseCostCap, parseIssueIds, type WalkDraft } from "./walk-draft.ts";
+import { parseCostCap, parseIssueIds, parseTimeLimit, type WalkDraft } from "./walk-draft.ts";
 
 /**
  * The Dispatch plan page's "What will happen" rail (warren-02bb, restyled
@@ -27,6 +28,8 @@ export interface WalkManifestInput {
 	readonly provider: string;
 	readonly model: string;
 	readonly costCap: string;
+	/** Per-child time limit draft text in minutes (warren-a112); absent reads as unset. */
+	readonly timeLimit?: string;
 	readonly planId: string;
 	readonly issuesText: string;
 	readonly sourceMode: WalkDraft["sourceMode"];
@@ -63,6 +66,7 @@ export function buildWalkManifestLines(input: WalkManifestInput): readonly Manif
 		{ indent: true, key: "model: ", value: modelValue(input.provider, input.model) },
 		{ key: "limits:" },
 		{ indent: true, key: "costUsd: ", value: costValue(input.costCap) },
+		{ indent: true, key: "durationMinutes: ", value: minutesValue(input.timeLimit ?? "") },
 		{ key: "walk:" },
 		{
 			indent: true,
@@ -89,6 +93,11 @@ function openChildrenValue(input: WalkManifestInput): string {
 function costValue(costCap: string): string {
 	const parsed = parseCostCap(costCap);
 	return parsed !== null && "value" in parsed ? `${parsed.value.toFixed(2)} / child` : "—";
+}
+
+function minutesValue(timeLimit: string): string {
+	const parsed = parseTimeLimit(timeLimit);
+	return parsed !== null && "value" in parsed ? `${parsed.value} / child` : "—";
 }
 
 function stepsRow(input: WalkManifestInput, openChildCount: number | null): SummaryRow {
@@ -124,6 +133,7 @@ export function buildWalkSummaryRows(
 	const isolation = isolationLabel(input.runtime);
 	const ref = input.ref.trim().length > 0 ? input.ref.trim() : project?.defaultBranch;
 	const cap = costCapLabel(input.costCap);
+	const limit = timeLimitLabel(input.timeLimit ?? "");
 	return [
 		{
 			icon: FolderGit2,
@@ -147,6 +157,14 @@ export function buildWalkSummaryRows(
 			note: cap
 				? "A step's run stops when its spend crosses this"
 				: "The agent's or project's cap applies, if one is set",
+		},
+		{
+			icon: Timer,
+			label: "Time limit per step",
+			value: limit ?? "Agent default",
+			note: limit
+				? "A step's run is stopped and marked timed out after this long"
+				: "The agent's or project's limit applies, if one is set",
 		},
 		{
 			icon: GitMerge,

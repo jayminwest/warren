@@ -57,9 +57,11 @@ export interface DispatchFormProps {
 	providerOverride: string;
 	modelOverride: string;
 	costCap: string;
+	timeLimit: string;
 	providerDefaultKind: "project" | "agent" | null;
 	modelDefaultKind: "project" | "agent" | null;
 	costCapError: string | null;
+	timeLimitError: string | null;
 	onAgent: (value: string) => void;
 	onProject: (value: string) => void;
 	onRef: (value: string) => void;
@@ -68,6 +70,7 @@ export interface DispatchFormProps {
 	onProvider: (value: string) => void;
 	onModel: (value: string) => void;
 	onCostCap: (value: string) => void;
+	onTimeLimit: (value: string) => void;
 	/** Fires on form submission (Enter, ⌘Enter, or the Dispatch button). */
 	onSubmit: () => void;
 }
@@ -243,7 +246,25 @@ function LimitsSection(props: DispatchFormProps) {
 						spellCheck={false}
 					/>
 				</Field>
-				{/* Timeout field lands with the per-run timeout API (warren-a112). */}
+				<Field
+					label="Time limit (minutes)"
+					htmlFor="dispatch-time-limit"
+					optional
+					error={props.timeLimitError}
+					hint="The run is stopped and marked timed out after this long"
+				>
+					<Input
+						id="dispatch-time-limit"
+						className={invalidClass(props.timeLimitError)}
+						aria-invalid={props.timeLimitError !== null}
+						value={props.timeLimit}
+						onChange={(e) => props.onTimeLimit(e.target.value)}
+						placeholder="60"
+						inputMode="numeric"
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</Field>
 			</FieldRow>
 		</FormSection>
 	);

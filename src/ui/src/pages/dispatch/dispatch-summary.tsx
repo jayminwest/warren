@@ -1,4 +1,4 @@
-import { Bot, FolderGit2, GitBranch, Ticket, Wallet } from "lucide-react";
+import { Bot, FolderGit2, GitBranch, Ticket, Timer, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
 import type { ProjectRow } from "@/api/types.ts";
@@ -11,6 +11,7 @@ import {
 	modelLabel,
 	repositoryLabel,
 	runBranchValue,
+	timeLimitLabel,
 } from "./manifest-view.ts";
 import { SummaryCard, type SummaryRow } from "./summary-card.tsx";
 
@@ -29,6 +30,8 @@ export interface DispatchSummaryProps {
 	readonly provider: string;
 	readonly model: string;
 	readonly costCap: string;
+	/** Time limit draft text in minutes (warren-a112). */
+	readonly timeLimit: string;
 	/** Project's `.warren/config.yaml` `runBranchPrefix`, when declared. */
 	readonly runBranchPrefix: string | undefined;
 	readonly facts: InstanceFactsResponse | undefined;
@@ -56,6 +59,7 @@ export function buildDispatchSummaryRows(props: DispatchSummaryProps): SummaryRo
 		? (repositoryLabel(props.project.gitUrl) ?? props.project.id)
 		: "Pick a project";
 	const cap = costCapLabel(props.costCap);
+	const limit = timeLimitLabel(props.timeLimit);
 	const seed = props.seedId.trim();
 	const rows: SummaryRow[] = [
 		{ icon: FolderGit2, label: "Workspace", value: repo, note: workspaceNote(props) },
@@ -84,6 +88,14 @@ export function buildDispatchSummaryRows(props: DispatchSummaryProps): SummaryRo
 				: "The agent's or project's cap applies, if one is set",
 		},
 		{
+			icon: Timer,
+			label: "Time limit",
+			value: limit ?? "Agent default",
+			note: limit
+				? "The run is stopped and marked timed out after this long"
+				: "The agent's or project's limit applies, if one is set",
+		},
+		{
 			icon: GitBranch,
 			label: "Delivers",
 			value: <span className="font-mono">{runBranchValue(props.runBranchPrefix)}</span>,
@@ -102,6 +114,7 @@ export function DispatchSummary(props: DispatchSummaryProps) {
 		provider: props.provider,
 		model: props.model,
 		costCap: props.costCap,
+		timeLimit: props.timeLimit,
 		runBranchPrefix: props.runBranchPrefix,
 		runtime: props.facts?.runtime,
 	});
