@@ -7,7 +7,6 @@ import {
 	greeting,
 	headline,
 	isLongRun,
-	promptTitle,
 	runElapsedMs,
 	shortDuration,
 	windowStartIso,
@@ -138,14 +137,5 @@ describe("fillDays", () => {
 		expect(days).toHaveLength(30);
 		expect(days[29]?.runs).toBe(3);
 		expect(days[0]?.runs).toBe(0);
-	});
-});
-
-describe("promptTitle", () => {
-	test("collapses the tracker prompt shape and passes others through", () => {
-		expect(promptTitle('Work GitHub issue #1230 in jayminwest/warren: "version bump drift"')).toBe(
-			"#1230 version bump drift",
-		);
-		expect(promptTitle("Fix the flaky test")).toBe("Fix the flaky test");
 	});
 });

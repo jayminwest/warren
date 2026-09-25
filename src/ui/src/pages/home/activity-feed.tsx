@@ -8,6 +8,7 @@ import { Segmented } from "@/components/ui/segmented.tsx";
 import { SkeletonRows } from "@/components/ui/skeleton.tsx";
 import { PrChip, StatusDot, StatusText } from "@/components/ui/status.tsx";
 import { useListKeys } from "@/hooks/use-list-keys.ts";
+import { runTitle } from "@/lib/run-title.ts";
 import { cn } from "@/lib/utils.ts";
 import {
 	buildFeed,
@@ -18,7 +19,6 @@ import {
 	runElapsedMs,
 	shortDuration,
 } from "./home.helpers.ts";
-import { runTitle } from "./now-cards.tsx";
 
 /**
  * Home's activity feed (warren-44a2): the newest runs and plan runs,

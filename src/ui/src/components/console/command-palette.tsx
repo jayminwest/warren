@@ -19,7 +19,8 @@ import { Kbd } from "@/components/ui/kbd.tsx";
 import { StatusDot } from "@/components/ui/status.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { useTheme } from "@/hooks/use-theme.ts";
-import { activityLine, shortRepo } from "@/pages/operations/operations.helpers.ts";
+import { runTitle } from "@/lib/run-title.ts";
+import { shortRepo } from "@/pages/operations/operations.helpers.ts";
 
 /**
  * ⌘K command palette (warren-a8c9). Jump anywhere, open a run, plan run
@@ -178,12 +179,12 @@ export default function CommandPalette({
 								<Command.Group heading="Runs">
 									{(runs.data?.runs ?? []).map((r) => {
 										const repo = r.projectId ? repoOf.get(r.projectId) : undefined;
-										const title = r.seedId ?? activityLine(r.prompt);
+										const title = runTitle(r);
 										return (
 											<Item
 												key={r.id}
 												icon={<StatusDot state={r.state} />}
-												value={`${title} ${r.id} ${r.agentName} ${repo ?? ""} ${activityLine(r.prompt)}`}
+												value={`${title} ${r.id} ${r.seedId ?? ""} ${r.agentName} ${repo ?? ""}`}
 												meta={<span className="font-mono text-xs">{r.id.slice(0, 12)}</span>}
 												onSelect={() => go(`/runs/${r.id}`)}
 											>

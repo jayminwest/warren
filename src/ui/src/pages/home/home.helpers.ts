@@ -191,15 +191,3 @@ export function fillDays(
 	}
 	return out;
 }
-
-const ISSUE_PROMPT = /^Work (?:GitHub )?issue (#?[\w-]+) in [\w.-]+\/[\w.-]+: "?(.+?)"?$/;
-
-/**
- * A readable run title from the prompt's first line. The tracker trigger's
- * "Work GitHub issue #12 in owner/repo: \"title\"" shape collapses to
- * "#12 title"; any other prompt passes through.
- */
-export function promptTitle(line: string): string {
-	const m = ISSUE_PROMPT.exec(line);
-	return m ? `${m[1]} ${m[2]}` : line;
-}

@@ -6,9 +6,9 @@ import { Card } from "@/components/ui/card.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { PrChip, StatusDot } from "@/components/ui/status.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
+import { runTitle } from "@/lib/run-title.ts";
 import { cn, relativeTime } from "@/lib/utils.ts";
-import { activityLine } from "@/pages/operations/operations.helpers.ts";
-import { isLongRun, promptTitle, runElapsedMs, shortDuration } from "./home.helpers.ts";
+import { isLongRun, runElapsedMs, shortDuration } from "./home.helpers.ts";
 
 /**
  * The three "now" cards on Home (warren-44a2): what is running, what
@@ -17,10 +17,6 @@ import { isLongRun, promptTitle, runElapsedMs, shortDuration } from "./home.help
  */
 
 const MAX_ROWS = 4;
-
-export function runTitle(run: RunRow): string {
-	return promptTitle(activityLine(run.prompt)) || run.seedId || run.agentName;
-}
 
 function NowCard({
 	icon,
