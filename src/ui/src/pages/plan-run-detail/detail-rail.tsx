@@ -1,13 +1,146 @@
+import type * as React from "react";
 import type { PlanRunDetailResponse, RunRow } from "@/api/types.ts";
-import { formatTimestamp } from "@/lib/utils.ts";
+import { Card, CardBody, CardHeader } from "@/components/ui/card.tsx";
+import { PrChip } from "@/components/ui/status.tsx";
+import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { formatTrigger } from "../run-detail/run-detail-format.ts";
+import { Fact, FactCard } from "../run-detail/side-panels.tsx";
 
 /**
- * The right rail of the walk inspector (warren-2520): the source plan
- * definition, the prompt template every child was dispatched under, and
- * the delivered PRs pulled off the child runs. Read-only on every
- * capability level — the spectator projection carries the same rows.
+ * The right rail of the plan run inspector (warren-2520, migrated in
+ * warren-9474): what the walk was dispatched with, what it has spent, the
+ * PRs the children delivered, and the prompt template every child ran
+ * under. Read-only at every capability level — the spectator projection
+ * carries the same rows, minus the redacted fields.
  */
+
+type CostSummary = { sum: number; priced: number; total: number };
+
+function Hint({ children }: { children: React.ReactNode }) {
+	return <span className="text-(--color-text-3)"> · {children}</span>;
+}
+
+function capHint(cap: number | null | undefined, cost: CostSummary): string {
+	if (cap == null) return "No cap";
+	if (cost.priced === 0) return "Nothing spent yet";
+	return `${formatCostUsd(cost.sum)} spent across ${cost.priced} of ${cost.total} runs`;
+}
+
+/** `main @ 3f9a1c2` from the dispatch ref plus a child's base pin. */
+function refLine(ref: string | null, runs: readonly RunRow[]): string | null {
+	const base = runs.find((r) => r.baseCommit !== null)?.baseCommit;
+	if (base != null) return `${ref ?? "default"} @ ${base.slice(0, 7)}`;
+	return ref;
+}
+
+function DefinitionCard({
+	detail,
+	projectLabel,
+	cost,
+}: {
+	detail: PlanRunDetailResponse;
+	projectLabel: string;
+	cost: CostSummary;
+}) {
+	const { planRun, runs } = detail;
+	const ref = refLine(planRun.ref, runs);
+	return (
+		<FactCard title="Plan definition">
+			<Fact label="Plan" mono={planRun.planId !== null}>
+				{planRun.planId ?? "Issue list"}
+			</Fact>
+			<Fact label="Project">{projectLabel}</Fact>
+			{ref !== null ? (
+				<Fact label="Ref" mono>
+					{ref}
+				</Fact>
+			) : null}
+			<Fact label="Agent">{planRun.agentName}</Fact>
+			<Fact label="Model">{planRun.modelOverride ?? "Agent default"}</Fact>
+			{planRun.providerOverride != null ? (
+				<Fact label="Provider">{planRun.providerOverride}</Fact>
+			) : null}
+			<Fact label="Per-child cap">
+				{planRun.maxCostUsd != null ? formatCostUsd(planRun.maxCostUsd) : "None"}
+				{planRun.maxCostUsd != null ? <Hint>{capHint(planRun.maxCostUsd, cost)}</Hint> : null}
+			</Fact>
+			<Fact label="Trigger">{formatTrigger(planRun.trigger)}</Fact>
+			{planRun.dispatcherHandle !== undefined ? (
+				<Fact label="Dispatched by">{planRun.dispatcherHandle}</Fact>
+			) : null}
+			<Fact label="Started">{formatTimestamp(planRun.startedAt)}</Fact>
+			{planRun.endedAt !== null ? (
+				<Fact label="Ended">{formatTimestamp(planRun.endedAt)}</Fact>
+			) : null}
+		</FactCard>
+	);
+}
+
+interface DeliveredPr {
+	url: string;
+	seedId: string;
+	lifecycle: string | null;
+	note: string | null;
+}
+
+/**
+ * One entry per child run that opened a PR, in walk order. Only facts the
+ * merge watcher reported — merged (with when), or the forge lifecycle.
+ */
+function collectDeliveredPrs(
+	children: PlanRunDetailResponse["children"],
+	runs: RunRow[],
+): DeliveredPr[] {
+	const byId = new Map(runs.map((r) => [r.id, r]));
+	const out: DeliveredPr[] = [];
+	for (const c of children) {
+		const run = c.runId !== null ? byId.get(c.runId) : undefined;
+		const url = run?.prUrl;
+		if (url == null) continue;
+		const merged = c.state === "merged";
+		out.push({
+			url,
+			seedId: c.seedId,
+			lifecycle: merged ? "merged" : (run?.prState ?? null),
+			note: merged && c.prMergedAt !== null ? relativeTime(c.prMergedAt) : null,
+		});
+	}
+	return out;
+}
+
+function DeliveryCard({ detail }: { detail: PlanRunDetailResponse }) {
+	const delivered = collectDeliveredPrs(detail.children, detail.runs);
+	return (
+		<Card className="self-stretch">
+			<CardHeader
+				title="Delivery"
+				meta={`${delivered.length} ${delivered.length === 1 ? "pull request" : "pull requests"}`}
+			/>
+			<CardBody className="py-3">
+				{delivered.length === 0 ? (
+					<p className="text-sm text-(--color-text-3)">
+						No pull requests yet. Each child's PR appears here once its run finishes.
+					</p>
+				) : (
+					<ul className="flex flex-col gap-2">
+						{delivered.map((pr) => (
+							<li key={pr.url} className="flex items-center gap-2.5">
+								<PrChip url={pr.url} lifecycle={pr.lifecycle} />
+								<span className="min-w-0 flex-1 truncate font-mono text-xs text-(--color-text-2)">
+									{pr.seedId}
+								</span>
+								{pr.note !== null ? (
+									<span className="shrink-0 text-xs text-(--color-text-3)">{pr.note}</span>
+								) : null}
+							</li>
+						))}
+					</ul>
+				)}
+			</CardBody>
+		</Card>
+	);
+}
 
 export function DetailRail({
 	detail,
@@ -16,201 +149,23 @@ export function DetailRail({
 }: {
 	detail: PlanRunDetailResponse;
 	projectLabel: string;
-	cost: { sum: number; priced: number; total: number };
+	cost: CostSummary;
 }) {
-	const { planRun, children, runs } = detail;
-	const delivered = collectDeliveredPrs(children, runs);
-	const ref = refLine(planRun.ref, runs);
-
+	const template = detail.planRun.promptTemplate;
 	return (
-		<aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[336px]">
-			<RailCard title="Plan definition" meta="SOURCE PLAN">
-				<Facts
-					rows={[
-						{
-							label: "plan",
-							value: planRun.planId ?? "issues list",
-							accent: planRun.planId !== null,
-						},
-						{ label: "project", value: projectLabel },
-						...(ref !== null ? [{ label: "ref", value: ref }] : []),
-						{ label: "agent", value: planRun.agentName },
-						{
-							label: "model",
-							value: planRun.modelOverride ?? "—",
-							hint: planRun.modelOverride == null ? "agent default" : undefined,
-						},
-						...(planRun.providerOverride != null
-							? [{ label: "provider", value: planRun.providerOverride }]
-							: []),
-						{
-							label: "per-child cap",
-							value: formatCostUsd(planRun.maxCostUsd),
-							hint:
-								planRun.maxCostUsd == null
-									? "no cap declared"
-									: cost.priced === 0
-										? "no child cost recorded yet"
-										: `spent ${formatCostUsd(cost.sum)} across ${cost.priced} of ${cost.total} priced child runs`,
-						},
-						{ label: "dispatcher", value: planRun.dispatcherHandle ?? "—" },
-						{ label: "trigger", value: planRun.trigger },
-						{ label: "started", value: formatTimestamp(planRun.startedAt) },
-						{ label: "ended", value: formatTimestamp(planRun.endedAt) },
-					]}
-				/>
-			</RailCard>
-
-			{planRun.promptTemplate !== undefined ? (
-				<RailCard title="Prompt template" meta={`${children.length} CHILDREN`}>
-					<pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-(--color-text-2)">
-						{planRun.promptTemplate}
-					</pre>
-				</RailCard>
+		<aside className="flex w-full shrink-0 flex-col gap-4 lg:w-84">
+			<DefinitionCard detail={detail} projectLabel={projectLabel} cost={cost} />
+			<DeliveryCard detail={detail} />
+			{template !== undefined ? (
+				<Card className="self-stretch">
+					<CardHeader title="Prompt template" meta="Rendered once per child" />
+					<CardBody>
+						<p className="max-h-56 overflow-auto text-sm break-words whitespace-pre-wrap text-(--color-text-2)">
+							{template}
+						</p>
+					</CardBody>
+				</Card>
 			) : null}
-
-			<RailCard
-				title="Delivery"
-				meta={`${delivered.length} ${delivered.length === 1 ? "PR" : "PRS"}`}
-			>
-				{delivered.length === 0 ? (
-					<p className="font-mono text-xs text-(--color-text-3)">
-						No PRs yet — nothing has cleared reap.
-					</p>
-				) : (
-					<div className="flex flex-col gap-2.5">
-						{delivered.map((pr) => (
-							<div key={pr.url} className="flex items-center gap-2.5">
-								<a
-									href={pr.url}
-									target="_blank"
-									rel="noreferrer noopener"
-									className="min-w-0 truncate font-mono text-xs text-(--color-primary) underline-offset-2 hover:underline"
-								>
-									{pr.label}
-								</a>
-								<div className="min-w-0 flex-1" />
-								<span className="shrink-0 font-mono text-2xs " style={{ color: pr.color }}>
-									{pr.stateLabel}
-								</span>
-							</div>
-						))}
-					</div>
-				)}
-			</RailCard>
 		</aside>
 	);
-}
-
-function RailCard({
-	title,
-	meta,
-	children,
-}: {
-	title: string;
-	meta: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<section className="flex flex-col rounded-sm border border-(--color-border) bg-(--color-surface)">
-			<header className="flex h-[41px] shrink-0 items-center border-b border-(--color-border) px-3.5">
-				<h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
-				<div className="min-w-0 flex-1" />
-				<span className="font-mono text-2xs tracking-wide text-(--color-text-3)">{meta}</span>
-			</header>
-			<div className="flex flex-col gap-2.5 px-3.5 py-3">{children}</div>
-		</section>
-	);
-}
-
-function Facts({
-	rows,
-}: {
-	rows: readonly {
-		label: string;
-		value: string;
-		accent?: boolean;
-		hint?: string;
-	}[];
-}) {
-	return (
-		<div className="flex flex-col gap-2.5">
-			{rows.map((r) => (
-				<div key={r.label} className="flex items-baseline gap-2.5">
-					<span className="w-[88px] shrink-0 text-sm text-(--color-text-3)">{r.label}</span>
-					<span
-						className={`min-w-0 truncate font-mono text-xs ${
-							r.accent ? "text-(--color-primary)" : "text-(--color-text-2)"
-						}`}
-						title={r.hint ?? (r.value === "—" ? undefined : r.value)}
-					>
-						{r.value}
-					</span>
-					{r.hint !== undefined ? (
-						<span className="truncate font-mono text-2xs text-(--color-text-3)">{r.hint}</span>
-					) : null}
-				</div>
-			))}
-		</div>
-	);
-}
-
-interface DeliveredPr {
-	url: string;
-	label: string;
-	stateLabel: string;
-	color: string;
-}
-
-/**
- * The Delivery card: one entry per child run that reaped a PR, in walk
- * order. Labels carry only facts the merge watcher reported — `merged`,
- * `open`, `closed` — never a fabricated check status.
- */
-function collectDeliveredPrs(
-	children: PlanRunDetailResponse["children"],
-	runs: RunRow[],
-): DeliveredPr[] {
-	const byId = new Map<string, RunRow>();
-	for (const r of runs) byId.set(r.id, r);
-	const out: DeliveredPr[] = [];
-	for (const c of children) {
-		const run = c.runId !== null ? byId.get(c.runId) : undefined;
-		const url = run?.prUrl;
-		if (url === undefined || url === null) continue;
-		out.push({
-			url,
-			label: prLabel(url),
-			stateLabel: prStateLabel(c, run),
-			color: c.state === "merged" ? "var(--color-success)" : "var(--color-warning)",
-		});
-	}
-	return out;
-}
-
-/** `PR #612` from the forge URL tail; the raw URL when it doesn't parse. */
-function prLabel(url: string): string {
-	const num = url.match(/\/pull\/(\d+)$/);
-	return num === null ? url : `PR #${num[1]}`;
-}
-
-/** Merge-watcher facts only: `merged <ts>`, else the forge PR lifecycle. */
-function prStateLabel(
-	child: PlanRunDetailResponse["children"][number],
-	run: RunRow | undefined,
-): string {
-	if (child.state === "merged") {
-		return child.prMergedAt !== null ? `merged ${formatTimestamp(child.prMergedAt)}` : "merged";
-	}
-	return run?.prState ?? "open";
-}
-
-/** `main @ 3f9a1c2`-style ref line from the dispatch ref + a child's base pin. */
-function refLine(ref: string | null, runs: readonly RunRow[]): string | null {
-	const base = runs.find((r) => r.baseCommit !== null)?.baseCommit;
-	if (base !== undefined && base !== null) {
-		const short = base.length > 7 ? base.slice(0, 7) : base;
-		return `${ref ?? "default"} @ ${short}`;
-	}
-	return ref;
 }

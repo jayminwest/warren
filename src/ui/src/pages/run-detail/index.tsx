@@ -5,7 +5,6 @@ import { useParams } from "react-router-dom";
 import { projectsApi, runsApi } from "@/api/client.ts";
 import { isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useEventStream } from "@/hooks/use-event-stream.ts";
@@ -15,6 +14,7 @@ import { extractReapSummary, isBridgeStalled } from "@/pages/run-detail-format.t
 import { projectLabel } from "@/pages/runs/runs-format.ts";
 import { EventLog } from "./event-log.tsx";
 import { PreviewPanel } from "./preview-panel.tsx";
+import { ProblemNote } from "./problem-note.tsx";
 import { RunHeader } from "./run-header.tsx";
 import { useRunRefreshOnEvents } from "./run-refresh.ts";
 import { PromptPanel, RunDefinitionPanel, RuntimePanel, SpendPanel } from "./side-panels.tsx";
@@ -77,15 +77,17 @@ function RunDetailSkeleton() {
 function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
 	return (
 		<div className="px-4 pt-6 md:px-6">
-			<Alert variant="danger" title="Couldn't load this run">
-				<div className="flex flex-col items-start gap-2">
-					<span>{message}</span>
+			<ProblemNote
+				title="Couldn't load this run"
+				action={
 					<Button variant="outline" size="sm" onClick={onRetry}>
 						<RefreshCw aria-hidden />
 						Try again
 					</Button>
-				</div>
-			</Alert>
+				}
+			>
+				{message}
+			</ProblemNote>
 		</div>
 	);
 }
@@ -154,9 +156,9 @@ export function RunDetailPage() {
 			/>
 
 			{bridgeStalled ? (
-				<Alert variant="warning" title="Can't reach the sandbox">
+				<ProblemNote tone="warning" title="Can't reach the sandbox">
 					Reconnects keep timing out. Warren keeps retrying; the log resumes when it reconnects.
-				</Alert>
+				</ProblemNote>
 			) : null}
 
 			<StageTimeline run={r} events={stream.events} now={now} />
@@ -181,7 +183,7 @@ export function RunDetailPage() {
 						className="xl:min-h-0 xl:flex-1"
 					/>
 				</div>
-				<aside className="flex w-full shrink-0 flex-col gap-4 max-xl:contents xl:min-h-0 xl:w-80 xl:overflow-y-auto">
+				<aside className="flex w-full shrink-0 flex-col gap-4 max-xl:contents xl:min-h-0 xl:w-80 xl:overflow-y-auto xl:*:shrink-0">
 					<div className="order-1 md:order-none">
 						<RuntimePanel run={r} />
 					</div>
@@ -195,7 +197,7 @@ export function RunDetailPage() {
 							</div>
 						) : null}
 					</OperatorOnly>
-					<div className="hidden md:contents">
+					<div className="hidden md:contents md:*:shrink-0">
 						{r.previewState !== null ? <PreviewPanel run={r} /> : null}
 						<RunDefinitionPanel run={r} projectName={projectName} />
 						<PromptPanel run={r} />
