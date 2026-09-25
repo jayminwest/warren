@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { agentsApi, instanceApi, planRunsApi, projectsApi } from "@/api/client.ts";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
@@ -10,6 +10,7 @@ import type {
 	ProjectRow,
 	SeedStatusResponse,
 } from "@/api/types.ts";
+import { formatError } from "@/lib/format-error.ts";
 import { resolveDefaultKind } from "../dispatch/dispatch-draft.ts";
 import { useWalkDefaults } from "./use-walk-defaults.ts";
 import {
@@ -67,6 +68,9 @@ export interface WalkStateResult {
 	readonly valid: boolean;
 	readonly noAgents: boolean;
 	readonly noProjects: boolean;
+	readonly projectsLoading: boolean;
+	readonly agentsLoading: boolean;
+	readonly plansLoading: boolean;
 	readonly pending: boolean;
 	readonly submitError: string | null;
 	readonly setAgent: (value: string) => void;
@@ -97,7 +101,7 @@ function costValueOf(result: CostCapResult): number | undefined {
 }
 
 function errorTextOf(mutation: { isError: boolean; error: unknown }): string | null {
-	return mutation.isError ? String(mutation.error) : null;
+	return mutation.isError ? formatError(mutation.error) : null;
 }
 
 function toPlanOptions(
@@ -134,6 +138,19 @@ export function isSubmittable(args: {
 	return draft.planId.trim().length > 0 && args.hasSeeds;
 }
 
+/**
+ * `value`, once it has held still for `delayMs`. Keeps the per-issue
+ * status lookups from firing on every keystroke of a half-typed id.
+ */
+function useSettledValue(value: string, delayMs: number): string {
+	const [settled, setSettled] = useState(value);
+	useEffect(() => {
+		const timer = setTimeout(() => setSettled(value), delayMs);
+		return () => clearTimeout(timer);
+	}, [value, delayMs]);
+	return settled;
+}
+
 /** Per-issue status rows for the children table (issues mode). */
 function useIssueStatuses(
 	project: string,
@@ -144,6 +161,7 @@ function useIssueStatuses(
 			queryKey: ["projects", project, "seed", id],
 			queryFn: ({ signal }: { signal: AbortSignal }) => projectsApi.seedStatus(project, id, signal),
 			retry: false,
+			staleTime: 60_000,
 		})),
 	});
 	return issueIds.map((id, i) => {
@@ -225,7 +243,11 @@ export function useWalkState(): WalkStateResult {
 	const openChildCount =
 		readyPlans.data?.plans.find((p) => p.id === draft.planId)?.openChildCount ?? null;
 
-	const issueStatuses = useIssueStatuses(draft.project, issueIdsOf(draft));
+	const settledIssuesText = useSettledValue(draft.issuesText, 400);
+	const issueStatuses = useIssueStatuses(
+		draft.project,
+		issueIdsOf({ ...draft, issuesText: settledIssuesText }),
+	);
 
 	const dispatch = useMutation({
 		mutationFn: (input: CreatePlanRunInput) => planRunsApi.create(input),
@@ -278,6 +300,9 @@ export function useWalkState(): WalkStateResult {
 		valid,
 		noAgents: !agents.isLoading && agentRows.length === 0,
 		noProjects: !projects.isLoading && projectRows.length === 0,
+		projectsLoading: projects.isLoading,
+		agentsLoading: agents.isLoading,
+		plansLoading: plans.isLoading,
 		pending: dispatch.isPending,
 		submitError: errorTextOf(dispatch),
 		setAgent: (value) => setTouchedValue("agent", value, "agent"),

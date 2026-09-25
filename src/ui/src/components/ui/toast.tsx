@@ -17,24 +17,25 @@ import { cn } from "@/lib/utils.ts";
  * (Phase 1 token, 50) in the bottom-right corner.
  */
 
+/*
+ * warren-9474: a toast is a raised surface, not a tinted box — it floats
+ * over any page, so it needs its own ground. The icon carries the hue.
+ * It pops in with the CSS `animate-pop-in` keyframe (no motion library).
+ */
 const toastVariants = cva(
 	cn(
-		"group pointer-events-auto relative flex w-full items-start gap-2.5 overflow-hidden rounded-md border p-3 pr-8 shadow-lg",
-		"text-sm",
-		"data-[state=open]:animate-in data-[state=closed]:animate-out",
-		"data-[state=closed]:fade-out-80 data-[state=open]:fade-in",
-		"data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:slide-out-to-right-full",
+		"animate-pop-in group pointer-events-auto relative flex w-full items-start gap-2.5 overflow-hidden rounded-md border border-(--color-border-strong) bg-(--color-surface-raised) p-3 pr-9 text-sm text-(--color-text) shadow-lg",
 		"data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-(--radix-toast-swipe-end-x)",
 		"data-[swipe=move]:translate-x-(--radix-toast-swipe-move-x) data-[swipe=move]:transition-none",
 	),
 	{
 		variants: {
 			variant: {
-				info: "border-(--color-info)/30 bg-(--color-info)/10 text-(--color-info-ink)",
-				success: "border-(--color-success)/30 bg-(--color-success)/10 text-(--color-success-ink)",
-				warning: "border-(--color-warning)/30 bg-(--color-warning)/10 text-(--color-warning-ink)",
-				danger: "border-(--color-danger)/30 bg-(--color-danger)/10 text-(--color-danger-ink)",
-				neutral: "border-(--color-border) bg-(--color-surface) text-(--color-text)",
+				info: "",
+				success: "",
+				warning: "",
+				danger: "border-(--color-danger)/40",
+				neutral: "",
 			},
 		},
 		defaultVariants: { variant: "neutral" },
@@ -50,6 +51,17 @@ const VARIANT_ICON: Record<
 	warning: AlertTriangle,
 	danger: AlertCircle,
 	neutral: Info,
+};
+
+const VARIANT_ICON_TONE: Record<
+	NonNullable<VariantProps<typeof toastVariants>["variant"]>,
+	string
+> = {
+	info: "text-(--color-info)",
+	success: "text-(--color-success)",
+	warning: "text-(--color-warning)",
+	danger: "text-(--color-danger)",
+	neutral: "text-(--color-text-3)",
 };
 
 export type ToastVariant = NonNullable<VariantProps<typeof toastVariants>["variant"]>;
@@ -101,31 +113,32 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 							}}
 							className={cn(toastVariants({ variant: v }))}
 						>
-							<Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-(--color-text)" />
-							<div className="min-w-0 flex-1 space-y-0.5">
+							<Icon
+								aria-hidden="true"
+								className={cn("mt-0.5 size-4 shrink-0", VARIANT_ICON_TONE[v])}
+							/>
+							<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 								{it.title ? (
-									<ToastPrimitive.Title className="font-medium leading-tight">
-										{it.title}
-									</ToastPrimitive.Title>
+									<ToastPrimitive.Title className="font-medium">{it.title}</ToastPrimitive.Title>
 								) : null}
 								{it.description ? (
-									<ToastPrimitive.Description className="leading-snug">
+									<ToastPrimitive.Description className="break-words text-(--color-text-2)">
 										{it.description}
 									</ToastPrimitive.Description>
 								) : null}
 							</div>
 							<ToastPrimitive.Close
 								aria-label="Close"
-								className="absolute right-2 top-2 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-(--color-border-strong)"
+								className="absolute top-2 right-2 inline-flex size-6 items-center justify-center rounded-sm text-(--color-text-3) transition-colors hover:bg-(--color-surface-hover) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--color-primary)/40 focus-visible:outline-none"
 							>
-								<X className="h-3.5 w-3.5" />
+								<X className="size-3.5" />
 							</ToastPrimitive.Close>
 						</ToastPrimitive.Root>
 					);
 				})}
 				<ToastPrimitive.Viewport
 					className={cn(
-						"fixed bottom-4 right-4 z-(--z-toast) flex max-h-screen w-full max-w-sm flex-col gap-2 outline-none",
+						"fixed right-4 bottom-20 left-4 z-(--z-toast) ml-auto flex max-h-screen max-w-sm flex-col gap-2 outline-none sm:left-auto sm:w-full md:bottom-4",
 					)}
 				/>
 			</ToastPrimitive.Provider>
