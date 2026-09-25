@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { agentsApi, instanceApi, projectsApi, runsApi } from "@/api/client.ts";
 import type { InstanceFactsResponse } from "@/api/instance-types.ts";
 import type { AgentRow, CreateRunInput, ProjectRow } from "@/api/types.ts";
+import { formatError } from "@/lib/format-error.ts";
 import {
 	buildCreateRunInput,
 	type DispatchDraft,
@@ -39,6 +40,8 @@ export interface useDispatchStateResult {
 	readonly valid: boolean;
 	readonly noAgents: boolean;
 	readonly noProjects: boolean;
+	readonly projectsLoading: boolean;
+	readonly agentsLoading: boolean;
 	readonly pending: boolean;
 	readonly submitError: string | null;
 	readonly setAgent: (value: string) => void;
@@ -174,8 +177,10 @@ export function useDispatchState(): useDispatchStateResult {
 		valid: draft.agent.length > 0 && draft.project.length > 0 && draft.prompt.trim().length > 0,
 		noAgents: !agents.isLoading && agentRows.length === 0,
 		noProjects: !projects.isLoading && projectRows.length === 0,
+		projectsLoading: projects.isLoading,
+		agentsLoading: agents.isLoading,
 		pending: spawn.isPending,
-		submitError: spawn.isError ? String(spawn.error) : null,
+		submitError: spawn.isError ? formatError(spawn.error) : null,
 		setAgent: (value) => setTouchedValue("agent", value),
 		setProject: (value) => setDraftValue("project", value),
 		setRef: (value) => setDraftValue("ref", value),
