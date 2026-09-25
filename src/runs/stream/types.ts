@@ -12,6 +12,7 @@ import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunMode, RunTerminalState } from "../../db/schema.ts";
 import type { RuntimeProvider, TerminalReason } from "../../runtime/contract.ts";
 import type { RunEventBroker } from "../events.ts";
+import type { TurnMonitor } from "./turn-monitor.ts";
 
 /**
  * Structural view of a stream event — the fields the bridge and its pure
@@ -206,6 +207,13 @@ export interface BridgeRunStreamInput {
 	 * the cancel fired without a live burrow.
 	 */
 	readonly cancelBurrowRun?: (reason: string) => Promise<void>;
+	/**
+	 * TurnMonitor override (warren-1f85 / warren-74a7, #1242, tests). Default:
+	 * built from the `WARREN_TURN_*` env knobs plus the resolved spend cap. A
+	 * test injects one with a fake clock and tiny thresholds to drive the
+	 * stall / degeneration / in-turn-spend trips deterministically.
+	 */
+	readonly turnMonitor?: TurnMonitor;
 }
 
 export interface BridgeRunStreamResult {

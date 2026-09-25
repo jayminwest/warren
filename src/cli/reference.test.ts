@@ -61,9 +61,11 @@ describe("collectCommandReference", () => {
 
 	test("captures positional arguments with requiredness", () => {
 		const run = byName(collectCommandReference(testProgram()), "run");
+		// #1241: agent/project became optional positionals — with
+		// --rescue-from the server inherits them from the salvaged source run.
 		expect(run.arguments.map((a) => ({ name: a.name, required: a.required }))).toEqual([
-			{ name: "agent", required: true },
-			{ name: "project", required: true },
+			{ name: "agent", required: false },
+			{ name: "project", required: false },
 		]);
 		const addProject = byName(collectCommandReference(testProgram()), "add-project");
 		expect(addProject.arguments[0]?.name).toBe("git-url");
@@ -73,7 +75,8 @@ describe("collectCommandReference", () => {
 	test("distinguishes mandatory options from defaulted ones", () => {
 		const run = byName(collectCommandReference(testProgram()), "run");
 		const prompt = run.options.find((o) => o.flags.includes("--prompt"));
-		expect(prompt?.mandatory).toBe(true);
+		// #1241: --prompt is optional for the --rescue-from one-click.
+		expect(prompt?.mandatory).toBe(false);
 		expect(prompt?.defaultValue).toBeUndefined();
 		const trigger = run.options.find((o) => o.flags.includes("--trigger"));
 		expect(trigger?.mandatory).toBe(false);
@@ -82,7 +85,7 @@ describe("collectCommandReference", () => {
 
 	test("carries the commander-computed usage tail", () => {
 		const commands = collectCommandReference(testProgram());
-		expect(byName(commands, "run").usage).toBe("[options] <agent> <project>");
+		expect(byName(commands, "run").usage).toBe("[options] [agent] [project]");
 		expect(byName(commands, "plan run").usage).toBe("[options] [plan-id]");
 	});
 });

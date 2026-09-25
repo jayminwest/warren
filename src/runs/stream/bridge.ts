@@ -24,11 +24,13 @@ import {
 } from "../usage-aggregate.ts";
 import { appendOrDrop, newAppendGuard } from "./append-guard.ts";
 import { type CancelBurrowRunFn, enforceBudgetCap } from "./budget.ts";
+import { isPerDeltaNoiseEvent } from "./delta-noise.ts";
 import { providerStreamSource } from "./provider-source.ts";
 import { defaultRunStateProbe, runStatePoller } from "./run-state-poller.ts";
 import { persistInStreamUsage, persistPiStatsDelta, snapshotStats } from "./stats.ts";
 import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
 import { recordToolCallRollup, resolveBridgeToolRuntime } from "./tool-call-rollup.ts";
+import { bridgeTurnMonitor, TurnMonitor, turnMonitorOptionsFromEnv } from "./turn-monitor.ts";
 import {
 	type BridgeLogger,
 	type BridgeRunStreamInput,
@@ -126,6 +128,25 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				})
 			: null;
 
+	// warren-1f85 / warren-74a7 (#1242): in-turn monitor. The bridge drops every
+	// per-delta envelope before persisting; the TurnMonitor inspects them first
+	// — stall, whitespace degeneration, in-turn spend (see ./turn-monitor.ts).
+	const turnWatch = bridgeTurnMonitor({
+		monitor:
+			input.turnMonitor ?? new TurnMonitor(turnMonitorOptionsFromEnv(process.env, costCapUsd)),
+		runId,
+		sandboxRunId,
+		runtime: toolRuntime,
+		repos,
+		broker,
+		cancelBurrowRun,
+		ctrl,
+		onTerminalCancelled: () => {
+			terminalDetected = { outcome: "cancelled" };
+		},
+		...(input.logger !== undefined ? { logger: input.logger } : {}),
+	});
+
 	let written = 0;
 	let skipped = 0;
 	let dropped = 0;
@@ -191,6 +212,13 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					break;
 				}
 				continue;
+			}
+			// #1242: inspect every envelope through the turn monitor BEFORE the
+			// per-delta drop — this is the only place deltas are ever seen.
+			const turnTrip = turnWatch.observe(event);
+			if (turnTrip !== null) {
+				await turnWatch.trip(turnTrip);
+				break;
 			}
 			if (isPerDeltaNoiseEvent(event)) {
 				dropped += 1;
@@ -343,6 +371,14 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				{ runId, sandboxRunId, written, skipped, err: err.message },
 				"run stream bridge: backend reports run not found (ghost run)",
 			);
+		} else if (turnWatch.tripped.value) {
+			// #1242: the turn monitor tripped (stall / degeneration / in-turn
+			// spend) and aborted the source — the trip IS the terminal, not an
+			// error, so don't flag `errored` (that would trip the reconnect loop).
+			input.logger?.info?.(
+				{ runId, sandboxRunId, err: err instanceof Error ? err.message : String(err) },
+				"run stream bridge: stream aborted by turn monitor trip",
+			);
 		} else if (probedTerminal.value !== null) {
 			// warren-6596: the run-state poller observed burrow terminal and aborted
 			// the source — an AbortError here is intentional; don't flag `errored`
@@ -370,6 +406,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			);
 		}
 	} finally {
+		turnWatch.stop();
 		if (input.signal !== undefined) input.signal.removeEventListener("abort", onAbort);
 		ctrl.abort();
 		if (pollerTask !== null) await pollerTask;
@@ -415,49 +452,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 }
 
 /**
- * Per-delta noise envelopes the bridge deliberately does NOT persist
- * (warren event-volume incident, 2026-07-30; widened warren-ef12
- * 2026-07-31 after a post-fix audit showed ~75% of persisted rows per
- * run were still non-durable chatter).
- *
- * Dropped set — all are per-delta / skeleton envelopes whose durable
- * content is already stored elsewhere:
- *   - `message_update` (telemetry): pi emits one per model stream
- *     delta, each carrying the FULL cumulative message so far — on
- *     per-token streams (kimi-k3 via openrouter) thousands of rows per
- *     run growing quadratically in payload (a single run reached 12k+
- *     rows / ~50MB). The durable record is the `message_end` explosion
- *     into `text`/`thinking`/`tool_use` rows.
- *   - `tool_execution_update` (state_change): pi v0.74.0+ streams
- *     partial tool output (payload carries cumulative partialResult);
- *     unknown to burrow's parser it falls into the default
- *     `unknown -> state_change` branch. Same snapshot class as
- *     `message_update`; the final output is durably stored as
- *     `tool_result`.
- *   - `message_start`: an empty skeleton (content: [], stopReason
- *     pending, zeroed usage) that nothing reads.
- *
- * Deliberately KEPT: `turn_start`, `tool_execution_start` and
- * `tool_execution_end` are once-per-invocation lifecycle markers (not
- * per-delta), and `turn_end` MUST keep flowing — usage aggregation
- * (`src/runs/usage-aggregate.ts`) reads `state_change` `turn_end` (pi)
- * / `result` (claude-code) envelopes via `EventsRepo.listUsageEvents`
- * for cost/token totals; dropping it breaks usage. Other telemetry
- * subtypes (`queue_update`, `auto_retry_*`) are rare and meaningful.
- *
- * Nuance: dropping here means the UI never sees streaming partials; if
- * mid-run typing UX is ever wanted, the shape is
- * publish-but-dont-persist.
+ * Per-delta noise classification moved to `./delta-noise.ts` in #1242,
+ * where the monitor sits at the drop site.
  */
-const PER_DELTA_NOISE_TYPES = new Set(["message_update", "tool_execution_update", "message_start"]);
-
-function isPerDeltaNoiseEvent(event: StreamEventView): boolean {
-	if (event.kind !== "telemetry" && event.kind !== "state_change") return false;
-	const p = event.payload;
-	if (p === null || typeof p !== "object" || Array.isArray(p)) return false;
-	const t = (p as { type?: unknown }).type;
-	return typeof t === "string" && PER_DELTA_NOISE_TYPES.has(t);
-}
 
 /**
  * Burrow's wire `stream` is `'stdout' | 'stderr' | 'system'`; warren's

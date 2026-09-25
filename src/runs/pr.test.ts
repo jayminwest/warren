@@ -143,6 +143,29 @@ describe("buildPrContent", () => {
 		expect(c.body).toContain("**Warren run:** `run_abc`");
 	});
 
+	test("labels the run fragment with the provider error when one is set (warren-cbd3)", () => {
+		const withMessage = buildPrContent({
+			prompt: "do x",
+			runId: "run_abc",
+			agentName: "pi",
+			providerError: "402: This request requires more credits",
+		});
+		expect(withMessage.body).toContain(
+			"- **Outcome:** run ended in a provider error — 402: This request requires more credits",
+		);
+
+		const messageless = buildPrContent({
+			prompt: "do x",
+			runId: "run_abc",
+			agentName: "pi",
+			providerError: null,
+		});
+		expect(messageless.body).toContain("- **Outcome:** run ended in a provider error");
+
+		const normal = buildPrContent({ prompt: "do x", runId: "run_abc", agentName: "pi" });
+		expect(normal.body).not.toContain("provider error");
+	});
+
 	test("emits the preview_url_or_placeholder fragment when previewOptedIn is true", () => {
 		const c = buildPrContent({
 			prompt: "do x",

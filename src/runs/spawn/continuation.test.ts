@@ -183,6 +183,91 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		).rejects.toThrow();
 	});
 
+	test("rescue pins the base ref to the rescue branch, not the parent's run branch (#1241)", async () => {
+		const parentId = await makeParent();
+		const { client, calls } = makeSandboxClient();
+		let refreshRef: string | undefined;
+		const { run } = await spawnRun({
+			repos,
+			runtimeProvider: makeProvider(client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "finish the rescued work",
+			parentRunId: parentId,
+			cloneKind: "rescue",
+			existingBranch: `warren/rescue/${parentId}`,
+			projectsConfig: { root: "/data/projects", gitBinary: "git" },
+			projectSpawn: async (cmd) => {
+				if (cmd.includes("ls-remote")) {
+					return {
+						stdout: `abc123\trefs/heads/warren/rescue/${parentId}\n`,
+						stderr: "",
+						exitCode: 0,
+					};
+				}
+				return { stdout: "", stderr: "", exitCode: 0 };
+			},
+			refreshProjectFn: async (input) => {
+				refreshRef = input.ref;
+				const updated = await repos.projects.recordRefresh({
+					id: input.id,
+					headSha: "feedface".repeat(5),
+				});
+				return { project: updated, headSha: "feedface".repeat(5), ref: input.ref ?? "main" };
+			},
+		});
+
+		// The workspace is cut from the rescue branch, never the parent's own
+		// `warren/<parentId>` run branch (which is what failed to land).
+		expect(refreshRef).toBe(`warren/rescue/${parentId}`);
+		const up = calls.find((c) => c.method === "POST" && c.path === "/sandboxes");
+		expect((up?.body as { branch?: string }).branch).toBe(`warren/rescue/${parentId}`);
+		expect((up?.body as { baseBranch?: string }).baseBranch).toBe(`warren/rescue/${parentId}`);
+		// The lineage link is recorded with the rescue discriminator.
+		expect(run.parentRunId).toBe(parentId);
+		expect(run.cloneKind).toBe("rescue");
+	});
+
+	test("rejects a rescue parent from a different project", async () => {
+		await repos.projects.create({
+			id: "prj_yyyyyyyyyyyy",
+			gitUrl: "https://github.com/x/z.git",
+			localPath: "/data/projects/x/z",
+			defaultBranch: "main",
+		});
+		const otherParent = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: "prj_yyyyyyyyyyyy",
+			prompt: "elsewhere",
+			renderedAgentJson: makeAgentJson(),
+			trigger: "manual",
+		});
+		const { client } = makeSandboxClient();
+		await expect(
+			spawnRun({
+				repos,
+				runtimeProvider: makeProvider(client),
+				agentName: "refactor-bot",
+				projectId: "prj_xxxxxxxxxxxx",
+				prompt: "finish the rescued work",
+				parentRunId: otherParent.id,
+				cloneKind: "rescue",
+				existingBranch: `warren/rescue/${otherParent.id}`,
+				projectsConfig: { root: "/data/projects", gitBinary: "git" },
+				projectSpawn: async (cmd) => {
+					if (cmd.includes("ls-remote")) {
+						return {
+							stdout: `abc123\trefs/heads/warren/rescue/${otherParent.id}\n`,
+							stderr: "",
+							exitCode: 0,
+						};
+					}
+					return { stdout: "", stderr: "", exitCode: 0 };
+				},
+			}),
+		).rejects.toBeInstanceOf(ValidationError);
+	});
+
 	test("omitting parentRunId leaves parent_run_id null (root run)", async () => {
 		const { client } = makeSandboxClient();
 		const { run } = await spawnRun({

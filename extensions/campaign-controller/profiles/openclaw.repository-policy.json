@@ -65,8 +65,8 @@
 				"required": true
 			}
 		],
-		"disclosureTemplate": "This contribution was prepared by an AI agent under the warren campaign `{campaignId}` (agent `{agent}` on `{provider}/{model}`), approved by {approvedBy}. It follows the repository's AI-assisted contribution policy: the work is disclosed here and carries validation evidence below.",
-		"footerTemplate": "Opened by the warren campaign controller from a journaled, owner-approved cross-fork intent (campaign `{campaignId}`). The exact request was journaled before any posting; when the campaign policy does not enable the create mutation, this body exists only as dry-run evidence and no pull request is opened."
+		"disclosureTemplate": "This contribution was prepared by an AI agent under the [warren](https://github.com/jayminwest/warren) campaign `{campaignId}` (agent `{agent}` on `{provider}/{model}`), approved by {approvedBy}. It follows the repository's AI-assisted contribution policy: the work is disclosed here and carries validation evidence below.",
+		"footerTemplate": "Opened by the [warren](https://github.com/jayminwest/warren) campaign controller from a journaled, owner-approved cross-fork intent (campaign `{campaignId}`). The exact request was journaled before any posting; when the campaign policy does not enable the create mutation, this body exists only as dry-run evidence and no pull request is opened."
 	},
 	"commentTemplates": {
 		"version": 1,

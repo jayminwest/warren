@@ -15,12 +15,19 @@
  *   `--cwd` (default)    scaffolds into the operator's current working
  *                        directory — used when the operator has the
  *                        project repo checked out somewhere and will
- *                        commit + push themselves.
+ *                        commit + push themselves. Pure local write via
+ *                        the domain scaffold; never touches the server.
  *   `--project <id>`     scaffolds into the warren clone at
- *                        `<projects-root>/.../<repo>`. Useful for
- *                        warren-on-warren and other in-container flows;
- *                        operator still owns the commit + push (e.g. via
- *                        the project repo upstream).
+ *                        `<projects-root>/.../<repo>` — ON THE SERVER
+ *                        (warren-166d). `POST /projects/:id/init` does the
+ *                        write where the clone actually lives, so the CLI
+ *                        works against a remote warren instead of needing
+ *                        to share the server's filesystem. Useful for
+ *                        warren-on-warren, in-container flows, and the
+ *                        external-repo mirror recipe
+ *                        (docs/onboarding-external-repos.md); operator
+ *                        still owns the commit + push (e.g. via the
+ *                        project repo upstream).
  *
  * No git side-effects: this is intentionally a write-and-stop. The
  * heavier UI variant (B) in warren-bd22 — commit + push from warren's
@@ -30,21 +37,13 @@
  * Refuses to overwrite either file, including the legacy
  * `.warren/defaults.json` left over from a pre-warren-5840 install — that
  * file should be migrated via `warren config migrate` before scaffolding.
- * Schema is enforced at scaffold time via `parseConfigFile` so a malformed
- * defaults blob is impossible to write.
+ * The template + render logic lives once in the domain
+ * (`src/projects/warren-scaffold.ts`), shared with the server route.
  */
 
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { dump } from "js-yaml";
 import { type WarrenClient, WarrenClientError } from "../../client/index.ts";
 import { ValidationError } from "../../core/errors.ts";
-import {
-	WARREN_CONFIG_DIR,
-	WARREN_CONFIG_FILES,
-	warrenConfigRelativePath,
-} from "../../warren-config/config.ts";
+import { scaffoldWarrenConfig } from "../../projects/index.ts";
 import { type DefaultsConfig, parseConfigFile } from "../../warren-config/schema.ts";
 import type { CliContext } from "../output.ts";
 import { commandFailure, writeResult } from "../output.ts";
@@ -64,9 +63,9 @@ export type InitArgs =
 
 export interface InitDeps {
 	/**
-	 * Remote warren client (warren-97a2). `--project` resolves the clone
-	 * path via `GET /projects/:id`; `--default-role` validates against
-	 * `GET /agents/:name`. The CLI no longer opens the server's DB.
+	 * Remote warren client (warren-97a2). `--project` dispatches through
+	 * `POST /projects/:id/init` (warren-166d); `--default-role` validates
+	 * against `GET /agents/:name`. The CLI never opens the server's DB.
 	 */
 	readonly client: WarrenClient;
 }
@@ -75,75 +74,38 @@ export interface InitResult {
 	readonly exitCode: number;
 }
 
-/**
- * Canonical header for the empty triggers.yaml — short enough to read at
- * a glance, long enough to point operators at the schema. Keep this in
- * lockstep with `src/warren-config/schema.ts` if/when new trigger kinds
- * ship.
- */
-const TRIGGERS_TEMPLATE = `# .warren/triggers.yaml — scheduled runs for this project (R-06).
-#
-# Each entry is a cron-style trigger. Warren ticks once a minute and
-# spawns a run when a trigger is due. See docs/design/scheduler.md for the contract.
-#
-# Example:
-# - id: nightly-housekeeping
-#   kind: cron
-#   cron: '0 3 * * *'      # 03:00 daily (5 or 6 whitespace-separated fields)
-#   seed: warren-housekeep # seed id the agent reads + writes
-#   role: claude-code      # registered agent name
-#   timezone: UTC          # optional; default UTC
-#   prompt: |              # optional; pre-filled into the agent
-#     Run the housekeeping checklist.
-[]
-`;
-
-const CONFIG_HEADER = `# .warren/config.yaml — per-project warren defaults (warren-5840 layout).
-#
-# Supersedes the legacy .warren/defaults.json. Fields are all optional;
-# every key from the JSON layout works here unchanged. See
-# docs/design/warren-config.md for the schema. Moving from defaults.json? Run \`warren config migrate\`.
-`;
-
 export async function runInit(
 	context: CliContext,
 	deps: InitDeps,
 	args: InitArgs,
 ): Promise<InitResult> {
 	try {
-		const targetDir = await resolveTargetDir(deps.client, args);
-		const warrenDir = join(targetDir, WARREN_CONFIG_DIR);
-		const triggersAbs = join(warrenDir, WARREN_CONFIG_FILES.triggers);
-		const configAbs = join(warrenDir, WARREN_CONFIG_FILES.config);
-		const legacyDefaultsAbs = join(warrenDir, WARREN_CONFIG_FILES.defaults);
-
-		if (existsSync(triggersAbs)) {
-			throw new ValidationError(
-				`refusing to overwrite existing ${warrenConfigRelativePath("triggers")} at ${triggersAbs}`,
-				{ recoveryHint: "edit the existing file by hand" },
-			);
-		}
-		if (existsSync(configAbs)) {
-			throw new ValidationError(
-				`refusing to overwrite existing ${warrenConfigRelativePath("config")} at ${configAbs}`,
-				{ recoveryHint: "edit the existing file by hand" },
-			);
-		}
-		if (existsSync(legacyDefaultsAbs)) {
-			throw new ValidationError(
-				`refusing to scaffold over legacy ${warrenConfigRelativePath("defaults")} at ${legacyDefaultsAbs}`,
+		if (args.mode === "project") {
+			// The role lookups (`GET /agents`, `GET /agents/:name`) are remote
+			// calls, so `--project` mode validates the role exactly like
+			// `--cwd` mode before the write goes to the server.
+			const defaults = await resolveDefaults(deps, args);
+			const res = await deps.client.initProject(args.projectId, {
+				...(defaults.defaultRole !== undefined ? { defaultRole: defaults.defaultRole } : {}),
+			});
+			writeResult(
+				context,
 				{
-					recoveryHint: "run `warren config migrate` to convert defaults.json into config.yaml",
+					ok: true,
+					scaffolded: {
+						project: args.projectId,
+						files: res.scaffolded.files,
+						defaultRole: res.scaffolded.defaultRole,
+					},
 				},
+				`✔ scaffolded .warren/ in project ${args.projectId} (triggers.yaml + config.yaml)`,
 			);
+			return { exitCode: 0 };
 		}
 
+		const targetDir = resolveTargetDir({ cwd: args.cwd });
 		const defaults = await resolveDefaults(deps, args);
-		const configYaml = `${CONFIG_HEADER}${renderConfigYaml(defaults)}`;
-
-		await mkdir(warrenDir, { recursive: true });
-		await writeFile(triggersAbs, TRIGGERS_TEMPLATE, "utf8");
-		await writeFile(configAbs, configYaml, "utf8");
+		const result = await scaffoldWarrenConfig({ targetDir, defaults });
 
 		writeResult(
 			context,
@@ -151,8 +113,8 @@ export async function runInit(
 				ok: true,
 				scaffolded: {
 					root: targetDir,
-					files: [warrenConfigRelativePath("triggers"), warrenConfigRelativePath("config")],
-					defaultRole: defaults.defaultRole ?? null,
+					files: result.files,
+					defaultRole: result.defaults.defaultRole ?? null,
 				},
 			},
 			`✔ scaffolded .warren/ in ${targetDir} (triggers.yaml + config.yaml)`,
@@ -207,16 +169,4 @@ async function getAgentOrNull(
 		if (err instanceof WarrenClientError && err.status === 404) return null;
 		throw err;
 	}
-}
-
-/**
- * Render `DefaultsConfig` into the scaffolded YAML body. Empty objects
- * render as `{}` rather than the empty string so the file always
- * round-trips through `load` to the same schema-valid value.
- */
-function renderConfigYaml(defaults: DefaultsConfig): string {
-	if (Object.keys(defaults).length === 0) {
-		return "{}\n";
-	}
-	return dump(defaults, { lineWidth: 100, noRefs: true });
 }

@@ -103,6 +103,40 @@ export function deriveStageDurations(run: RunRow, events: RunEvent[]): StageDura
 }
 
 /**
+ * #1241 (warren-1db0): the rescue facts worth surfacing for a salvaged run.
+ * `hint` names the CLI command an operator can copy verbatim; `command` is
+ * the same spelling without the prose, used by the copy-ready affordances.
+ * Null when the run was never salvaged.
+ */
+export interface RescueFacts {
+	readonly ref: string;
+	readonly bundlePath: string | null;
+	readonly hint: string;
+	readonly command: string;
+}
+
+/** True when the run row carries a salvage rescue branch (spectator-safe). */
+export function hasRescue(run: RunRow): boolean {
+	return run.salvageRef !== null && run.salvageRef !== "";
+}
+
+/** The `warren run --rescue-from <runId>` one-liner for this run. */
+export function rescueRedispatchCommand(runId: string): string {
+	return `warren run --rescue-from ${runId}`;
+}
+
+/** Project a salvaged run row to its rescue facts, or null when unsalvaged. */
+export function readRescueFacts(run: RunRow): RescueFacts | null {
+	if (!hasRescue(run)) return null;
+	return {
+		ref: run.salvageRef as string,
+		bundlePath: run.salvagePath !== null && run.salvagePath !== "" ? run.salvagePath : null,
+		command: rescueRedispatchCommand(run.id),
+		hint: `Re-dispatch from this rescue: ${rescueRedispatchCommand(run.id)}`,
+	};
+}
+
+/**
  * Page-header elapsed for run detail (warren-935a): created -> ended so
  * the figure matches the phase rail's total span. Falls back to
  * startedAt for rows without the epoch-ms createdAt, and ticks against

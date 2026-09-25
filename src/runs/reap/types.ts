@@ -52,6 +52,16 @@ export interface ReapRunInput {
 	readonly runId: string;
 	/** The provider-observed terminal state to transition the warren row into. */
 	readonly outcome: RunTerminalState;
+	/**
+	 * warren-cbd3: reap-internal field, set by `reapRun` itself when the run
+	 * failed with a terminal provider error (failureReason `provider_error`).
+	 * The pipeline input then carries the overridden `outcome: "failed"` so
+	 * seed close, plan-run advance, and preview stay gated on a true success —
+	 * but the `pr_open` sub-step reads this field as its one exception: a
+	 * branch finalize already pushed with real commits ahead still gets a PR,
+	 * and the carried message labels the PR body with the provider error.
+	 */
+	readonly providerErrorPr?: { readonly message: string | null };
 	readonly repos: Repos;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The

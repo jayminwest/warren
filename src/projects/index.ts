@@ -46,3 +46,13 @@ export {
 	refreshProjectClone,
 } from "./refresh.ts";
 export { type ParsedGitHubUrl, parseGitHubUrl } from "./url.ts";
+export {
+	type MigrateWarrenDefaultsInput,
+	type MigrateWarrenDefaultsResult,
+	migrateWarrenDefaults,
+} from "./warren-config-migrate.ts";
+export {
+	type ScaffoldWarrenConfigInput,
+	type ScaffoldWarrenConfigResult,
+	scaffoldWarrenConfig,
+} from "./warren-scaffold.ts";
