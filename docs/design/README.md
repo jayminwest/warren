@@ -30,6 +30,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 |---|---|---|---|---|
 | [The corpus flywheel](./corpus-flywheel.md) | `direction` | `draft` | `unscheduled` | 2026-08-15 |
 | [MCP server](./mcp-server.md) | `proposal` | `draft` | `unscheduled` | 2026-08-26 |
+| [Team identity, grants, and brokered credentials](./team-identity.md) | `direction` | `proposed` | `unscheduled` | 2026-09-24 |
 | [External-repository mirror pilot](./external-repository-mirror-pilot.md) | `pilot` | `approved` | `now` | 2026-08-20 |
 | [Campaign controller](./campaign-controller.md) | `direction` | `approved` | `next` | 2026-08-20 |
 | [Resumable agent environments](./resumable-agent-environments.md) | `proposal` | `proposed` | `unscheduled` | 2026-08-20 |
@@ -55,7 +56,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 
 ## Pre-roadmap discovery
 
-The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), the proposed [resumable agent environments](./resumable-agent-environments.md), and the proposed [TypeSafe judge backend](./typesafe-judge.md). They remain ideas until the roadmap promotes them.
+The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), the proposed [resumable agent environments](./resumable-agent-environments.md), and the proposed [TypeSafe judge backend](./typesafe-judge.md), and the proposed [team identity direction](./team-identity.md). They remain ideas until the roadmap promotes them.
 
 ## Build order
 
@@ -84,6 +85,7 @@ A shipped record preserves rationale and contract history. Its `Current truth` f
 | 2026-08-22 | Provider-error retry |
 | 2026-08-26 | MCP server |
 | 2026-09-17 | Warren-armed auto-merge |
+| 2026-09-24 | Team identity, grants, and brokered credentials |
 
 ## Adding or changing a record
 
