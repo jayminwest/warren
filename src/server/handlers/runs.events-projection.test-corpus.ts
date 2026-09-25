@@ -24,6 +24,7 @@ const gitlabPat = `glpat-${"e3".repeat(10)}`;
 const npmAccessToken = `npm_${"f4".repeat(18)}`;
 const sendgridApiKey = ["SG", "a5".repeat(11), "b6".repeat(22)].join(".");
 const googleApiKey = `AIza${"c7".repeat(18)}`;
+const runScopedToken = `wrs1.run_2yb8wg7y3dkc.${"a9".repeat(32)}`;
 
 /**
  * Real-shaped agent transcript payloads, one per known key shape. Each
@@ -174,6 +175,14 @@ export const CORPUS: readonly { name: string; payload: unknown; secret: string }
 		name: "glpat- GitLab PAT in a remote URL (warren-9bbc)",
 		payload: { type: "text", text: `remote: https://oauth2:${gitlabPat}@gitlab.com/x/y.git` },
 		secret: gitlabPat,
+	},
+	{
+		name: "bare wrs1. run-scoped token in an env dump (warren-3f97)",
+		payload: {
+			type: "tool_result",
+			content: `WARREN_RUN_ID=run_2yb8wg7y3dkc\nTOKEN=${runScopedToken}`,
+		},
+		secret: runScopedToken,
 	},
 	{
 		name: "npm_ access token in an .npmrc dump (warren-9bbc)",

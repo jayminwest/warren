@@ -122,6 +122,10 @@ const SECRET_PATTERN = new RegExp(
 		// the `:pass@` shape so an ordinary URL without userinfo never matches.
 		// Redacted whole (scheme + userinfo + `@`), leaving the host in the clear.
 		String.raw`\w+://[^\s:@/]+:[^\s@/]+@`,
+		// Warren run-scoped callback tokens, `wrs1.<runId>.<hex HMAC-SHA256>`
+		// (warren-3f97). A bare token printed without a `Bearer` prefix (an
+		// `env` dump, an echoed variable) matched no shape above.
+		String.raw`wrs1\.[A-Za-z0-9_]+\.[0-9a-f]{64}`,
 		// JWTs — three base64url segments joined by dots. Anchored on the `eyJ`
 		// header prefix (base64url of `{"`) so a dotted identifier like
 		// `foo.bar.baz` is never mistaken for a token.
