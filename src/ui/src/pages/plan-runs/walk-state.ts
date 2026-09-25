@@ -1,10 +1,11 @@
 import type { PlanRunChildState, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
 
 /**
- * Direction C walk-inventory state helpers (warren-23b2 / pl-7e38 step
- * 6). Colour mappings use only token variables so the dark and light
- * themes both render; the vocabulary itself (`PlanRunState`,
- * `PlanRunChildState`) is re-exported from `src/core/wire.ts`.
+ * Walk-inventory helpers (warren-23b2). The list page draws status from
+ * the shared vocabulary in components/ui/status.tsx; the two colour maps
+ * below remain for the plan-run detail page. The vocabulary itself
+ * (`PlanRunState`, `PlanRunChildState`) is re-exported from
+ * `src/core/wire.ts`.
  */
 
 /** State dot + label colour for the STATE cell. */
@@ -59,38 +60,31 @@ export function planRunElapsed(planRun: PlanRunRow, now: number): string {
 }
 
 /**
- * The caption under the child squares, e.g. `3 / 7 merged · gated on
- * PR merge` or `9 / 9 merged`. Only facts the API carries — never a
- * fabricated PR number.
+ * The progress caption beside the child squares, e.g. "3 of 7 merged ·
+ * child 4 running" or "9 of 9 merged". Only facts the API carries —
+ * never a fabricated PR number.
  */
-export function childSummary(
-	state: PlanRunState,
-	children: readonly { state: PlanRunChildState }[],
-): string {
-	if (children.length === 0) return "—";
-	const merged = children.filter((c) => c.state === "merged").length;
-	const base = `${merged} / ${children.length} merged`;
+export function childSummary(state: PlanRunState, children: readonly PlanRunChildState[]): string {
+	if (children.length === 0) return "No children";
+	const merged = children.filter((c) => c === "merged").length;
+	const base = `${merged} of ${children.length} merged`;
 	const clause = walkClause(state, children);
 	return clause === null ? base : `${base} · ${clause}`;
 }
 
-function walkClause(
-	state: PlanRunState,
-	children: readonly { state: PlanRunChildState }[],
-): string | null {
+function walkClause(state: PlanRunState, children: readonly PlanRunChildState[]): string | null {
 	switch (state) {
 		case "queued":
-			return "awaiting dispatch";
+			return "waiting to start";
 		case "succeeded":
 			return null;
 		case "failed":
-			return "failed";
+			return "stopped on a failure";
 		case "cancelled":
 			return "cancelled";
 		case "running": {
-			const gated = children.some((c) => c.state === "pr_open");
-			if (gated) return "gated on PR merge";
-			const active = children.findIndex((c) => c.state === "dispatched" || c.state === "running");
+			if (children.includes("pr_open")) return "waiting on PR merge";
+			const active = children.findIndex((c) => c === "dispatched" || c === "running");
 			return active === -1 ? "in flight" : `child ${active + 1} running`;
 		}
 	}

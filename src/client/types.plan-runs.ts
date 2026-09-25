@@ -97,8 +97,17 @@ export interface ListPlanRunsFilter {
 	state?: PlanRunStateFilter;
 }
 
+/**
+ * A `GET /plan-runs` row: the plan-run plus its children's states in seq
+ * order, so a list can draw progress without a detail fetch per row
+ * (warren-b2d6).
+ */
+export interface PlanRunListRow extends PlanRunRow {
+	childStates: PlanRunChildState[];
+}
+
 export interface ListPlanRunsResponse {
-	planRuns: PlanRunRow[];
+	planRuns: PlanRunListRow[];
 }
 
 /** `POST /plan-runs/:id/cancel` response envelope. */

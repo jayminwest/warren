@@ -16,6 +16,7 @@ import { ValidationError } from "../../core/errors.ts";
 import {
 	isTerminalPlanRunState,
 	PLAN_RUN_STATE_FILTERS,
+	type PlanRunChildState,
 	type PlanRunStateFilter,
 } from "../../core/wire.ts";
 import { mintGitCredential } from "../../forge/credentials.ts";
@@ -23,6 +24,7 @@ import {
 	buildDefaultPlanRunEmit,
 	cancelPlanRun,
 	createPlanRun,
+	type PlanRunRow,
 	resumePlanRun,
 	tailPlanRunEvents,
 } from "../../plan-runs/index.ts";
@@ -121,43 +123,49 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
  * `GET /plan-runs?project=&state=` — list plan-runs, optionally filtered.
  * Options-bag shape mirrors `listRunsHandler` (mx-f1a881) so a UI rendering
  * either endpoint can share its query plumbing.
+ *
+ * Each row carries `childStates` — its children's states in seq order,
+ * fetched in one batched query — so the list renders per-row progress
+ * without a detail fetch per row (warren-b2d6). Child state is public
+ * bookkeeping (`PUBLIC_PLAN_RUN_CHILD_FIELDS`), so spectators get it too.
  */
 export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
-		const projectId = ctx.url.searchParams.get("project");
-		const state = parsePlanRunStateFilter(ctx.url.searchParams.get("state"));
-		if (projectId !== null) {
-			const rows = await deps.repos.planRuns.listByProjectAndState(
-				projectId,
-				state !== undefined && state !== "active" ? state : undefined,
-			);
-			const scoped =
-				state === "active" ? rows.filter((row) => !isTerminalPlanRunState(row.state)) : rows;
-			return jsonResponse(200, {
-				planRuns: scoped.map((row) => projectPlanRun(row, ctx.actor)),
-			});
+		const rows = await selectPlanRuns(deps, ctx.url.searchParams);
+		const children = await deps.repos.planRuns.listChildrenForPlanRuns(rows.map((r) => r.id));
+		const statesByRun = new Map<string, PlanRunChildState[]>();
+		for (const child of children) {
+			const list = statesByRun.get(child.planRunId);
+			if (list === undefined) statesByRun.set(child.planRunId, [child.state]);
+			else list.push(child.state);
 		}
-		if (state === "active") {
-			const active = await deps.repos.planRuns.listActive();
-			return jsonResponse(200, {
-				planRuns: active.map((row) => projectPlanRun(row, ctx.actor)),
-			});
-		}
-		// listByProjectAndState requires a project, so the unscoped view walks
-		// projects. Volume is tiny relative to runs (one plan-run per
-		// dispatched plan, not per child). `state` undefined means every state.
-		{
-			const projects = await deps.repos.projects.listAll();
-			const all = (
-				await Promise.all(
-					projects.map((p) => deps.repos.planRuns.listByProjectAndState(p.id, state)),
-				)
-			).flat();
-			return jsonResponse(200, {
-				planRuns: all.map((row) => projectPlanRun(row, ctx.actor)),
-			});
-		}
+		return jsonResponse(200, {
+			planRuns: rows.map((row) => ({
+				...projectPlanRun(row, ctx.actor),
+				childStates: statesByRun.get(row.id) ?? [],
+			})),
+		});
 	};
+}
+
+async function selectPlanRuns(deps: ServerDeps, params: URLSearchParams): Promise<PlanRunRow[]> {
+	const projectId = params.get("project");
+	const state = parsePlanRunStateFilter(params.get("state"));
+	if (projectId !== null) {
+		const rows = await deps.repos.planRuns.listByProjectAndState(
+			projectId,
+			state !== undefined && state !== "active" ? state : undefined,
+		);
+		return state === "active" ? rows.filter((row) => !isTerminalPlanRunState(row.state)) : rows;
+	}
+	if (state === "active") return deps.repos.planRuns.listActive();
+	// listByProjectAndState requires a project, so the unscoped view walks
+	// projects. Volume is tiny relative to runs (one plan-run per
+	// dispatched plan, not per child). `state` undefined means every state.
+	const projects = await deps.repos.projects.listAll();
+	return (
+		await Promise.all(projects.map((p) => deps.repos.planRuns.listByProjectAndState(p.id, state)))
+	).flat();
 }
 
 /**

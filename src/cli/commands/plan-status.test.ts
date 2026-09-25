@@ -279,7 +279,10 @@ describe("runPlanList", () => {
 			{
 				client: listClient({
 					listPlanRuns: async () => ({
-						planRuns: [planRunRow(), planRunRow({ id: "pr-2" })],
+						planRuns: [planRunRow(), planRunRow({ id: "pr-2" })].map((r) => ({
+							...r,
+							childStates: [],
+						})),
 					}),
 				}),
 			},
@@ -315,7 +318,7 @@ describe("runPlanList", () => {
 			context,
 			{
 				client: listClient({
-					listPlanRuns: async () => ({ planRuns: [planRunRow()] }),
+					listPlanRuns: async () => ({ planRuns: [{ ...planRunRow(), childStates: [] }] }),
 				}),
 			},
 			{ output: "pretty" },

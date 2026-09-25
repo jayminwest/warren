@@ -103,6 +103,27 @@ describe("GET /plan-runs", () => {
 		]);
 	});
 
+	test("each row carries its children's states in seq order (warren-b2d6)", async () => {
+		const created = await repos.planRuns.create({
+			planId: "pl-kids",
+			projectId: seedyProjectId,
+			agentName: "claude-code",
+			children: [
+				{ seq: 1, seedId: "wa-a" },
+				{ seq: 2, seedId: "wa-b" },
+			],
+		});
+		await repos.planRuns.updateChild({
+			planRunId: created.planRun.id,
+			seq: 1,
+			patch: { state: "failed" },
+		});
+		const base = await serve();
+		const res = await fetch(`${base}/plan-runs`);
+		const body = (await res.json()) as { planRuns: { childStates: string[] }[] };
+		expect(body.planRuns[0]?.childStates).toEqual(["failed", "pending"]);
+	});
+
 	test("filters by project + state", async () => {
 		await repos.planRuns.create({
 			planId: "pl-q",
