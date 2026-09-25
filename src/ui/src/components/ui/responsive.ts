@@ -71,7 +71,7 @@ export const responsiveTrailingControl = "w-full sm:ml-auto sm:w-auto";
  * Safari's focus auto-zoom), collapsing to the compact desktop sizing at
  * `sm+`.
  */
-export const responsiveFormControl = "h-11 text-base sm:h-9 sm:text-sm";
+export const responsiveFormControl = "h-11 text-input sm:h-8 sm:text-sm";
 
 /**
  * Footer action row (e.g. Cancel / submit). Stacks full-width buttons on

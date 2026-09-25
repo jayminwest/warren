@@ -42,6 +42,7 @@
 	--color-danger: oklch(68% 0.21 27);
 	--color-info: oklch(72% 0.14 240);
 	--color-neutral: oklch(70% 0.02 264);
+	--color-merge: oklch(72% 0.14 300);
 	--color-lt-bg: oklch(96.8% 0.004 264);
 	--color-lt-sidebar: oklch(98.6% 0.002 264);
 	--color-lt-surface: oklch(100% 0 0);
@@ -60,6 +61,7 @@
 	--color-lt-danger: oklch(54% 0.19 27);
 	--color-lt-info: oklch(52% 0.125 240);
 	--color-lt-neutral: oklch(48% 0.018 264);
+	--color-lt-merge: oklch(52% 0.17 300);
 	--font-sans:
 		"Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 	--font-mono:
@@ -96,6 +98,7 @@
 	--color-danger: var(--color-lt-danger);
 	--color-info: var(--color-lt-info);
 	--color-neutral: var(--color-lt-neutral);
+	--color-merge: var(--color-lt-merge);
 
 	/* Status ink flips — see the status inks block below. */
 	--color-success-ink: var(--color-lt-primary-ink);
@@ -130,6 +133,7 @@
 		--color-danger: var(--color-lt-danger);
 		--color-info: var(--color-lt-info);
 		--color-neutral: var(--color-lt-neutral);
+		--color-merge: var(--color-lt-merge);
 
 		--color-success-ink: var(--color-lt-primary-ink);
 		--color-warning-ink: oklch(99% 0.01 75);
@@ -190,6 +194,9 @@
 	--text-xl--line-height: 28px;
 	--text-2xl: 24px;
 	--text-2xl--line-height: 30px;
+	/* Phone form controls stay at 16px so iOS never zooms on focus. */
+	--text-input: 16px;
+	--text-input--line-height: 22px;
 	--tracking-tight: -0.015em;
 	--tracking-wide: 0.02em;
 

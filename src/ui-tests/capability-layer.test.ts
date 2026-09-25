@@ -348,7 +348,7 @@ describe("demo polish (warren-f53e)", () => {
 		expect(cta).not.toMatch(/\["plots"\]/);
 		expect(cta).not.toMatch(/\["plot"\]/);
 		expect(cta).not.toMatch(/discover new Plots/);
-		const status = read("components", "status-indicator.tsx");
+		const status = read("components", "ui", "status.tsx");
 		expect(status).not.toMatch(/PLOT_STATUS/);
 		expect(status).not.toMatch(/^\tplot: /m);
 	});

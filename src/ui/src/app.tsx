@@ -3,7 +3,6 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/auth-gate.tsx";
 import { ConsoleShell } from "@/components/console/console-shell.tsx";
 import { OperatorRoute } from "@/components/operator-only.tsx";
-import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
 import { useLifecycleStreamInvalidation } from "@/hooks/use-lifecycle-stream-invalidation.ts";
 import { AgentsPage } from "@/pages/agents.tsx";
@@ -68,107 +67,105 @@ export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
 			<LifecycleStreamBridge />
-			<MotionProvider>
-				<ToastProvider>
-					<HashRouter>
-						<Routes>
-							<Route path="/login" element={<LoginPage />} />
-							<Route
-								element={
-									<AuthGate>
-										<ConsoleShell />
-									</AuthGate>
-								}
-							>
-								{/* Operations is the index route (c-operations), except
+			<ToastProvider>
+				<HashRouter>
+					<Routes>
+						<Route path="/login" element={<LoginPage />} />
+						<Route
+							element={
+								<AuthGate>
+									<ConsoleShell />
+								</AuthGate>
+							}
+						>
+							{/* Operations is the index route (c-operations), except
 								    on a zero-project instance where an undismissed
 								    operator lands on the first-run setup checklist
 								    instead (warren-a911 / pl-26f3 step 9). Spectators
 								    always get the console. */}
-								<Route index element={<SetupLandingRoute />} />
-								{/* Manual entry point back to the checklist.
+							<Route index element={<SetupLandingRoute />} />
+							{/* Manual entry point back to the checklist.
 								    Operator-gated like every mutating surface. */}
-								<Route
-									path="/setup"
-									element={
-										<OperatorRoute capability="admin">
-											<SetupPage />
-										</OperatorRoute>
-									}
-								/>
-								<Route path="/operations" element={<OperationsPage />} />
+							<Route
+								path="/setup"
+								element={
+									<OperatorRoute capability="admin">
+										<SetupPage />
+									</OperatorRoute>
+								}
+							/>
+							<Route path="/operations" element={<OperationsPage />} />
 
-								{/* WORKLOADS */}
-								<Route path="/runs" element={<RunsPage />} />
-								{/* The dispatch forms are the only pages whose whole
+							{/* WORKLOADS */}
+							<Route path="/runs" element={<RunsPage />} />
+							{/* The dispatch forms are the only pages whose whole
 								    reason to exist is a mutation, so they are guarded
 								    at the route — a spectator who deep-links here lands
 								    on /runs (warren-f53e / pl-b82d step 19). Legacy
 								    deep links redirect to the Direction C dispatch
 								    routes. */}
-								<Route path="/runs/new" element={<Navigate to="/dispatch" replace />} />
-								<Route path="/runs/:id" element={<RunDetailPage />} />
-								<Route
-									path="/dispatch"
-									element={
-										<OperatorRoute>
-											<DispatchPage />
-										</OperatorRoute>
-									}
-								/>
-								<Route
-									path="/dispatch/plan"
-									element={
-										<OperatorRoute>
-											<DispatchPlanPage />
-										</OperatorRoute>
-									}
-								/>
-								<Route path="/plan-runs" element={<PlanRunsPage />} />
-								<Route path="/plan-runs/new" element={<Navigate to="/dispatch/plan" replace />} />
-								<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
+							<Route path="/runs/new" element={<Navigate to="/dispatch" replace />} />
+							<Route path="/runs/:id" element={<RunDetailPage />} />
+							<Route
+								path="/dispatch"
+								element={
+									<OperatorRoute>
+										<DispatchPage />
+									</OperatorRoute>
+								}
+							/>
+							<Route
+								path="/dispatch/plan"
+								element={
+									<OperatorRoute>
+										<DispatchPlanPage />
+									</OperatorRoute>
+								}
+							/>
+							<Route path="/plan-runs" element={<PlanRunsPage />} />
+							<Route path="/plan-runs/new" element={<Navigate to="/dispatch/plan" replace />} />
+							<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
 
-								{/* INFRASTRUCTURE */}
-								<Route path="/projects" element={<ProjectsPage />} />
-								<Route path="/projects/:id" element={<ProjectDetailPage />} />
-								<Route path="/agents" element={<AgentsPage />} />
-								{/* Telemetry consolidates the legacy analytics routes
+							{/* INFRASTRUCTURE */}
+							<Route path="/projects" element={<ProjectsPage />} />
+							<Route path="/projects/:id" element={<ProjectDetailPage />} />
+							<Route path="/agents" element={<AgentsPage />} />
+							{/* Telemetry consolidates the legacy analytics routes
 								    under its tabs until warren-7197 rebuilds them. */}
-								<Route path="/telemetry" element={<TelemetryPage />}>
-									<Route index element={<TelemetryIndexRedirect />} />
-									<Route path="loop" element={<TelemetryLoopTab />} />
-									<Route path="behavior" element={<TelemetryBehaviorTab />} />
-									<Route path="judge" element={<TelemetryJudgeTab />} />
-									<Route
-										path="economics"
-										element={
-											// GET /analytics/cost is readOperator (the
-											// instance-wide USD rollup), so the tab keeps the
-											// guard the legacy /cost-analytics route carried.
-											<OperatorRoute capability="readOperator">
-												<TelemetryEconomicsTab />
-											</OperatorRoute>
-										}
-									/>
-								</Route>
+							<Route path="/telemetry" element={<TelemetryPage />}>
+								<Route index element={<TelemetryIndexRedirect />} />
+								<Route path="loop" element={<TelemetryLoopTab />} />
+								<Route path="behavior" element={<TelemetryBehaviorTab />} />
+								<Route path="judge" element={<TelemetryJudgeTab />} />
 								<Route
-									path="/cost-analytics"
-									element={<Navigate to="/telemetry/economics" replace />}
+									path="economics"
+									element={
+										// GET /analytics/cost is readOperator (the
+										// instance-wide USD rollup), so the tab keeps the
+										// guard the legacy /cost-analytics route carried.
+										<OperatorRoute capability="readOperator">
+											<TelemetryEconomicsTab />
+										</OperatorRoute>
+									}
 								/>
-								<Route
-									path="/run-analytics"
-									element={<Navigate to="/telemetry/behavior" replace />}
-								/>
-
-								{/* Footer + coming pages. */}
-								<Route path="/events" element={<EventExplorerPage />} />
-								<Route path="/instance" element={<InstancePage />} />
 							</Route>
-							<Route path="*" element={<Navigate to="/operations" replace />} />
-						</Routes>
-					</HashRouter>
-				</ToastProvider>
-			</MotionProvider>
+							<Route
+								path="/cost-analytics"
+								element={<Navigate to="/telemetry/economics" replace />}
+							/>
+							<Route
+								path="/run-analytics"
+								element={<Navigate to="/telemetry/behavior" replace />}
+							/>
+
+							{/* Footer + coming pages. */}
+							<Route path="/events" element={<EventExplorerPage />} />
+							<Route path="/instance" element={<InstancePage />} />
+						</Route>
+						<Route path="*" element={<Navigate to="/operations" replace />} />
+					</Routes>
+				</HashRouter>
+			</ToastProvider>
 		</QueryClientProvider>
 	);
 }

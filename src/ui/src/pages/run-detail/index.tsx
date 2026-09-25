@@ -5,10 +5,10 @@ import { projectsApi, runsApi } from "@/api/client.ts";
 import type { RunEvent, RunRow } from "@/api/types.ts";
 import { isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { RunFailureBadge } from "@/components/status-indicator.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { PrChip, StatusBadge } from "@/components/ui/status.tsx";
+import { Tag } from "@/components/ui/tag.tsx";
 import { useEventStream } from "@/hooks/use-event-stream.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatPullRequestLifecycle } from "@/lib/labels.ts";
@@ -154,68 +154,25 @@ function DispatchFromRunButtons({ run }: { run: RunRow }) {
 	);
 }
 
-function prBadgeVariant(prState: RunRow["prState"]): "succeeded" | "running" | "failed" {
-	if (prState === "merged") return "succeeded";
-	if (prState === "open") return "running";
-	return "failed";
-}
-
-function PrBadge({ run }: { run: RunRow }) {
-	if (run.prState === null) {
-		return (
-			<Badge
-				variant="failed"
-				className="font-mono text-xs"
-				title="A PR exists but the merge watcher hasn't polled its state yet"
-			>
-				pr unknown
-			</Badge>
-		);
-	}
-	return (
-		<Badge
-			variant={prBadgeVariant(run.prState)}
-			className="font-mono text-xs"
-			title={
-				run.prState === "merged" && run.prMergedAt !== null ? `merged ${run.prMergedAt}` : undefined
-			}
-		>
-			{formatPullRequestLifecycle(run.prState)}
-		</Badge>
-	);
-}
-
 function HeaderBadges({ run, reap }: { run: RunRow; reap: ReturnType<typeof extractReapSummary> }) {
 	const emptyPush = reap !== null && reap.branchPushed === true && reap.commitsAhead === 0;
 	const hasCommits = run.commitsAhead !== null && run.commitsAhead > 0;
-	const hasPr = run.prUrl !== null || run.prState !== null;
 	return (
 		<>
 			{emptyPush ? (
-				<Badge
-					variant="cancelled"
-					className="font-mono text-xs"
-					title="Push succeeded but the branch has no new commits — the agent didn't commit"
-				>
-					empty push
-				</Badge>
+				<Tag title="Push succeeded but the branch has no new commits — the agent didn't commit">
+					Empty push
+				</Tag>
 			) : null}
 			{hasCommits ? (
-				<Badge variant="succeeded" className="font-mono text-xs">
+				<Tag>
 					+{run.commitsAhead} commit{run.commitsAhead === 1 ? "" : "s"}
-				</Badge>
+				</Tag>
 			) : null}
-			{hasPr ? <PrBadge run={run} /> : null}
 			{run.prUrl !== null ? (
-				<a
-					href={run.prUrl}
-					target="_blank"
-					rel="noreferrer noopener"
-					className="font-mono text-xs underline underline-offset-2 hover:text-(--color-primary)"
-					title="Open the auto-opened pull request on GitHub"
-				>
-					PR ↗
-				</a>
+				<PrChip url={run.prUrl} lifecycle={run.prState} />
+			) : run.prState !== null ? (
+				<StatusBadge state={run.prState} label={formatPullRequestLifecycle(run.prState)} />
 			) : null}
 		</>
 	);
@@ -285,7 +242,7 @@ function RunHeader({
 				</p>
 				<div className="flex flex-wrap items-center gap-2">
 					{run.state === "failed" && run.failureReason !== null ? (
-						<RunFailureBadge reason={run.failureReason} />
+						<StatusBadge state="failed" reason={run.failureReason} />
 					) : null}
 					<HeaderBadges run={run} reap={reap} />
 				</div>
@@ -300,7 +257,7 @@ function RunHeader({
 					<span className={cn("font-mono text-xs ", stateColor(run.state))}>{run.state}</span>
 				</span>
 				{run.state === "failed" && run.failureReason !== null ? (
-					<RunFailureBadge reason={run.failureReason} />
+					<StatusBadge state="failed" reason={run.failureReason} />
 				) : null}
 				<HeaderBadges run={run} reap={reap} />
 				<span className="font-mono text-xs text-(--color-text-3)">

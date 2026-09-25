@@ -3,7 +3,7 @@ import { formatPreviewUrl, previewApi, runsApi } from "@/api/client.ts";
 import type { RunRow } from "@/api/types.ts";
 import { isActivePreviewState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { StatusIndicator } from "@/components/status-indicator.tsx";
+import { StatusBadge } from "@/components/ui/status.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
@@ -99,7 +99,7 @@ export function PreviewPanel({ run }: { run: RunRow }) {
 				</span>
 			</header>
 			<div className="flex flex-col gap-2 p-3">
-				<StatusIndicator kind="preview" status={state} />
+				<StatusBadge state={state} />
 				<PreviewFacts run={run} canonicalUrl={canonicalUrl} mode={mode} />
 				{state === "failed" && run.previewFailureMessage ? (
 					<pre

@@ -66,14 +66,14 @@ export function MobileFilterStrip({
 						onChange={(e) => patch({ runId: e.target.value })}
 						placeholder="run id"
 						aria-label="Filter by run id"
-						className={cn(responsiveFormControl, "font-mono text-base")}
+						className={cn(responsiveFormControl, "font-mono text-input")}
 					/>
 					<Input
 						value={state.kind}
 						onChange={(e) => patch({ kind: e.target.value })}
 						placeholder="kind"
 						aria-label="Filter by event kind"
-						className={cn(responsiveFormControl, "font-mono text-base")}
+						className={cn(responsiveFormControl, "font-mono text-input")}
 					/>
 					{projects !== undefined && (
 						<select

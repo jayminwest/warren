@@ -3,9 +3,9 @@ import { Circle, CircleCheck, CircleHelp, Lock } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { projectsApi, runsApi } from "@/api/client.ts";
-import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { StatusBadge } from "@/components/ui/status.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { cn } from "@/lib/utils.ts";
 import {
@@ -64,9 +64,11 @@ function SetupStepRow({ step, index }: { step: SetupStep; index: number }) {
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex flex-wrap items-center gap-2">
 					<span className="text-sm font-medium text-(--color-text)">{step.title}</span>
-					<Badge variant={step.state === "done" ? "done" : "secondary"}>
-						{STATE_LABEL[step.state]}
-					</Badge>
+					<StatusBadge
+						state={step.state}
+						tone={step.state === "done" ? "ok" : "idle"}
+						label={STATE_LABEL[step.state]}
+					/>
 				</div>
 				<p className="text-sm text-(--color-text-2)">{step.blurb}</p>
 			</div>

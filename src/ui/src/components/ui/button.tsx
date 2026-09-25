@@ -4,36 +4,29 @@ import * as React from "react";
 import { cn } from "@/lib/utils.ts";
 
 /*
- * Phase 2a primitives (warren-6e69 / pl-55a3 step 2):
- *
- * Buttons now have a real pressed feedback step — `active:opacity-80`
- * for filled variants, `active:opacity-90` for the chrome variants —
- * stacked on top of the existing hover state. The shared
- * `transition-colors` (with Tailwind's default 150ms) keeps the hover
- * and active transitions in lockstep without spending bundle bytes on
- * extra transition-property utilities. The `link` variant also picks
- * up the pressed feedback so keyboard/touch users get the same
- * affordance as buttons.
+ * Button (warren-9474): primary is the one filled green action per view;
+ * outline and ghost carry everything else. Sizes step 28/32/40px.
  */
 const buttonVariants = cva(
-	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-border-strong) disabled:pointer-events-none disabled:opacity-50",
+	"inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-sm text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)/40 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3.5 [&_svg]:shrink-0",
 	{
 		variants: {
 			variant: {
 				default:
-					"bg-(--color-primary) text-(--color-primary-ink) hover:opacity-90 active:opacity-80",
+					"bg-(--color-primary) text-(--color-primary-ink) shadow-sm hover:brightness-110 active:brightness-95",
 				destructive:
-					"bg-(--color-danger) text-(--color-danger-ink) hover:opacity-90 active:opacity-80",
+					"bg-(--color-danger) text-(--color-danger-ink) shadow-sm hover:brightness-110 active:brightness-95",
 				outline:
-					"border bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover) hover:text-(--color-text) active:opacity-80",
-				ghost: "text-(--color-text) hover:bg-(--color-surface-hover) active:opacity-80",
-				link: "text-(--color-text) underline-offset-4 hover:underline",
+					"border border-(--color-border-strong) bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover) active:bg-(--color-surface-raised)",
+				ghost:
+					"text-(--color-text-2) hover:bg-(--color-surface-hover) hover:text-(--color-text) active:bg-(--color-surface-raised)",
+				link: "px-0 text-(--color-primary) underline-offset-4 hover:underline",
 			},
 			size: {
-				default: "h-9 px-4 py-2",
-				sm: "h-8 rounded-md px-3 text-xs",
-				lg: "h-10 rounded-md px-6",
-				icon: "h-9 w-9",
+				default: "h-8 px-3",
+				sm: "h-7 px-2.5 text-xs",
+				lg: "h-10 px-4",
+				icon: "size-8",
 			},
 		},
 		defaultVariants: {
