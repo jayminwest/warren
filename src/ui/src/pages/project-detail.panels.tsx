@@ -8,34 +8,27 @@ import type {
 	WarrenConfigResponse,
 } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
+import { Card, CardHeader } from "@/components/ui/card.tsx";
 import {
 	CardFigure,
 	CardFigureNote,
 	InventoryCardList,
 	InventoryRowCard,
 } from "@/components/ui/inventory-card.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
+import { SkeletonRows } from "@/components/ui/skeleton.tsx";
+import { StatusBadge } from "@/components/ui/status.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
+import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { ListError } from "@/pages/runs/list-error.tsx";
 
 /**
- * The project inspector's panels (warren-8375 / pl-7e38 step 10),
- * split from `project-detail.tsx` for the 500-line budget (check:size).
- *
- * Shared chrome: bordered surface cards with a 41px header — title,
- * quiet mono metadata, and a right-aligned mono note. Token variables
- * only, so the light theme swaps automatically.
+ * The project inspector's main-column panels (warren-8375, migrated to
+ * Card in warren-9474): dispatch defaults, triggers and ready plans.
  */
 
-const PANEL =
-	"flex min-w-0 flex-col rounded-[4px] border border-(--color-border) bg-(--color-surface)";
-const PANEL_HEAD =
-	"flex h-[41px] shrink-0 items-center gap-2.5 border-b border-b-(--color-border) px-3.5";
-const PANEL_TITLE = "text-sm  font-semibold text-(--color-text)";
-const PANEL_META = "font-mono text-2xs  text-(--color-text-3)";
-const HEAD_NOTE = "font-mono text-2xs  tracking-wide text-(--color-text-3)";
+const FILE_META = "font-mono";
 
 /* --------------------------------------------------------------------- */
 /* Dispatch defaults                                                      */
@@ -45,108 +38,105 @@ export function DispatchDefaultsPanel({
 	query,
 	isLoading,
 	error,
+	onRetry,
 }: {
 	query: WarrenConfigResponse | undefined;
 	isLoading: boolean;
 	error: unknown;
+	onRetry?: () => void;
 }) {
-	const errors = query?.errors ?? [];
 	return (
-		<section className={PANEL} aria-label="Dispatch defaults">
-			<div className={PANEL_HEAD}>
-				<h2 className={PANEL_TITLE}>Dispatch defaults</h2>
-				<span className={PANEL_META}>{query?.sourceFile ?? ".warren/config.yaml"}</span>
-				<div className="min-w-0 flex-1" />
-				{errors.length > 0 ? (
-					<span className={`${HEAD_NOTE} text-(--color-danger)`}>{errors.length} ERRORS</span>
-				) : (
-					<span className={HEAD_NOTE}>VALID</span>
-				)}
-			</div>
-			<div className="px-3.5 py-3">
-				<DefaultsBody
-					isError={error !== null && error !== undefined}
-					error={error}
-					query={query}
-					isLoading={isLoading}
-				/>
-			</div>
-		</section>
+		<Card className="self-stretch" aria-label="Dispatch defaults">
+			<CardHeader
+				title="Dispatch defaults"
+				meta={<span className={FILE_META}>{query?.sourceFile ?? ".warren/config.yaml"}</span>}
+				actions={<DefaultsBadge query={query} />}
+			/>
+			<DefaultsBody query={query} isLoading={isLoading} error={error} onRetry={onRetry} />
+		</Card>
 	);
+}
+
+function DefaultsBadge({ query }: { query: WarrenConfigResponse | undefined }) {
+	if (query === undefined) return null;
+	const n = query.errors?.length ?? 0;
+	if (n > 0) return <StatusBadge state="failed" label={`${n} ${n === 1 ? "error" : "errors"}`} />;
+	return query.defaults !== null ? <StatusBadge state="succeeded" label="Valid" /> : null;
 }
 
 function DefaultsBody({
 	query,
 	isLoading,
-	isError,
 	error,
+	onRetry,
 }: {
 	query: WarrenConfigResponse | undefined;
 	isLoading: boolean;
-	isError: boolean;
 	error: unknown;
+	onRetry?: () => void;
 }) {
-	const defaults = query?.defaults ?? null;
-	const errors = query?.errors ?? [];
-	if (isLoading) {
-		return <Spinner label="Loading dispatch defaults" />;
-	}
-	if (isError) {
-		return (
-			<Alert variant="danger" title="Failed to load warren config">
-				{formatError(error)}
-			</Alert>
-		);
+	if (isLoading) return <SkeletonRows rows={3} />;
+	if (error !== null && error !== undefined) {
+		return <ListError what="the project config" error={error} onRetry={onRetry} />;
 	}
 	if (query === undefined) return null;
-	if (defaults === null) {
+	if (query.defaults === null) {
 		return (
 			<EmptyRow
 				text={
-					errors.length > 0
-						? "Not present, or the last load failed â see the error count above."
-						: "No .warren/config.yaml in the clone; dispatch uses agent and server defaults."
+					(query.errors?.length ?? 0) > 0
+						? "The config file is missing or failed to load."
+						: "No .warren/config.yaml in the repository, so runs use the agent and server defaults."
 				}
 			/>
 		);
 	}
-	return <DefaultsGrid defaults={defaults} />;
+	return <DefaultsGrid defaults={query.defaults} />;
+}
+
+/** Human label, config key, rendered value, and whether the value is an identifier. */
+function defaultsEntries(d: DefaultsConfig): Array<[string, string, string | undefined, boolean]> {
+	return [
+		["Agent", "defaultRole", d.defaultRole, true],
+		["Model", "defaultModel", d.defaultModel, true],
+		["Provider", "defaultProvider", d.defaultProvider, true],
+		["Branch", "defaultBranch", d.defaultBranch, true],
+		["Run branch prefix", "runBranchPrefix", d.runBranchPrefix, true],
+		[
+			"Cost cap per run",
+			"maxCostUsd",
+			d.maxCostUsd !== undefined ? formatCostUsd(d.maxCostUsd) : undefined,
+			false,
+		],
+		["Quality gate", "qualityGate", d.qualityGate, true],
+		["Prompt", "defaultPrompt", d.defaultPrompt, false],
+	];
 }
 
 /** Two-column key/value grid over the defaults that are actually set. */
 function DefaultsGrid({ defaults }: { defaults: DefaultsConfig }) {
-	const entries: Array<[string, string | undefined]> = [
-		["defaultRole", defaults.defaultRole],
-		["defaultModel", defaults.defaultModel],
-		["defaultProvider", defaults.defaultProvider],
-		["defaultBranch", defaults.defaultBranch],
-		["runBranchPrefix", defaults.runBranchPrefix],
-		["maxCostUsd", defaults.maxCostUsd?.toFixed(2)],
-		["qualityGate", defaults.qualityGate],
-		["defaultPrompt", defaults.defaultPrompt],
-	];
-	const set = entries.filter((entry): entry is [string, string] => entry[1] !== undefined);
+	const set = defaultsEntries(defaults).filter((e) => e[2] !== undefined);
 	if (set.length === 0) {
-		return <EmptyRow text="File is present but sets no overrides." />;
+		return <EmptyRow text="The config file is present but sets no defaults." />;
 	}
-	const midpoint = Math.ceil(set.length / 2);
 	return (
-		<div className="flex flex-col gap-4 md:flex-row">
-			<DefaultsColumn entries={set.slice(0, midpoint)} />
-			<DefaultsColumn entries={set.slice(midpoint)} />
-		</div>
-	);
-}
-
-function DefaultsColumn({ entries }: { entries: Array<[string, string]> }) {
-	return (
-		<dl className="flex min-w-0 flex-1 flex-col gap-2.5">
-			{entries.map(([key, value]) => (
-				<div key={key} className="flex items-center gap-2.5">
-					<dt className="max-md:w-[110px] md:w-[120px] shrink-0 text-sm text-(--color-text-3)">
-						{key}
+		<dl className="grid gap-x-8 gap-y-2.5 px-4 py-3.5 md:grid-cols-2">
+			{set.map(([label, key, value, mono]) => (
+				<div
+					key={key}
+					className="flex min-w-0 items-baseline justify-between gap-4 md:justify-start"
+				>
+					<dt className="w-36 shrink-0 text-sm text-(--color-text-3)" title={key}>
+						{label}
 					</dt>
-					<dd className="min-w-0 truncate font-mono text-xs max-md:flex-1 max-md:text-right text-(--color-text-2)">
+					<dd
+						title={value}
+						className={
+							mono
+								? "min-w-0 truncate font-mono text-xs text-(--color-text)"
+								: "min-w-0 truncate text-sm text-(--color-text) tabular-nums"
+						}
+					>
 						{value}
 					</dd>
 				</div>
@@ -179,64 +169,72 @@ export function TriggersPanel({ projectId }: { projectId: string }) {
 	});
 
 	const list = triggers.data?.triggers ?? [];
+	const stateOf = (t: TriggerSummary) => ({
+		isRunning: runNow.isPending && runNow.variables === t.id,
+		onRunNow: () => runNow.mutate(t.id),
+	});
 
 	return (
-		<section className={PANEL} aria-label="Triggers">
-			<div className={PANEL_HEAD}>
-				<h2 className={PANEL_TITLE}>Triggers</h2>
-				<span className={PANEL_META}>.warren/triggers.yaml</span>
-				<div className="min-w-0 flex-1" />
-			</div>
+		<Card className="self-stretch" aria-label="Triggers">
+			<CardHeader
+				title="Triggers"
+				meta={<span className={FILE_META}>.warren/triggers.yaml</span>}
+			/>
 			{triggers.isLoading ? (
-				<div className="px-3.5 py-3">
-					<Spinner label="Loading triggers" />
-				</div>
+				<SkeletonRows rows={2} />
 			) : triggers.isError ? (
-				<div className="px-3.5 py-3">
-					<Alert variant="danger" title="Failed to load triggers">
-						{formatError(triggers.error)}
-					</Alert>
-				</div>
+				<ListError what="triggers" error={triggers.error} onRetry={() => void triggers.refetch()} />
 			) : list.length === 0 ? (
-				<EmptyRow text="No triggers configured — edit .warren/triggers.yaml on the project repo to add one." />
+				<EmptyRow text="No scheduled triggers. Add one in .warren/triggers.yaml in the repository." />
 			) : (
 				<>
-					{/* No mobile artboard for project-detail (warren-89aa): the
-					 * trigger rows degrade to the shared InventoryRowCard pattern
-					 * below md; the table-style rows above md are untouched. */}
 					<InventoryCardList>
 						{list.map((t) => (
-							<TriggerCard
-								key={t.id}
-								trigger={t}
-								isRunning={runNow.isPending && runNow.variables === t.id}
-								onRunNow={() => runNow.mutate(t.id)}
-							/>
+							<TriggerCard key={t.id} trigger={t} {...stateOf(t)} />
 						))}
 					</InventoryCardList>
-					<div className="hidden md:block">
-						{list.map((t, i) => (
+					<ul className="hidden divide-y divide-(--color-border) md:block">
+						{list.map((t) => (
 							<TriggerRow
 								key={t.id}
 								trigger={t}
-								last={i === list.length - 1}
-								isRunning={runNow.isPending && runNow.variables === t.id}
+								{...stateOf(t)}
 								runError={
 									runNow.isError && runNow.variables === t.id ? formatError(runNow.error) : null
 								}
-								onRunNow={() => runNow.mutate(t.id)}
 							/>
 						))}
-					</div>
+					</ul>
 				</>
 			)}
-		</section>
+		</Card>
 	);
 }
 
-/* The mobile arm of one trigger row (warren-89aa): dot-only state
- * (triggers carry no run-state), role + last-fired as the trailing
- * figures, prompt/parse-error as the meta line. */
+function promptOf(trigger: TriggerSummary): string {
+	return trigger.parseError !== null
+		? `Schedule doesn't parse: ${trigger.parseError}`
+		: (trigger.prompt ?? "—");
+}
+
+function lastFiredOf(trigger: TriggerSummary): string {
+	return trigger.lastFiredAt !== null
+		? `Fired ${relativeTime(trigger.lastFiredAt)}`
+		: "Never fired";
+}
+
+function RunNowButton({ isRunning, onRunNow }: { isRunning: boolean; onRunNow: () => void }) {
+	// `POST /projects/:id/triggers/:tid/run` is `dispatch`-gated.
+	return (
+		<OperatorOnly>
+			<Button variant="outline" size="sm" onClick={onRunNow} disabled={isRunning}>
+				{isRunning ? "Dispatching…" : "Run now"}
+			</Button>
+		</OperatorOnly>
+	);
+}
+
+/* The phone arm of one trigger row (warren-89aa). */
 function TriggerCard({
 	trigger,
 	isRunning,
@@ -246,14 +244,6 @@ function TriggerCard({
 	isRunning: boolean;
 	onRunNow: () => void;
 }) {
-	const lastFired =
-		trigger.lastFiredAt !== null
-			? `last fired ${relativeTime(trigger.lastFiredAt)}`
-			: "never fired";
-	const prompt =
-		trigger.parseError !== null
-			? `cron parse error: ${trigger.parseError}`
-			: (trigger.prompt ?? "—");
 	return (
 		<InventoryRowCard
 			tone={trigger.parseError !== null ? "warning" : "neutral"}
@@ -264,96 +254,66 @@ function TriggerCard({
 			figures={
 				<>
 					<CardFigure value={trigger.role} />
-					<CardFigureNote value={lastFired} />
+					<CardFigureNote value={lastFiredOf(trigger)} />
 				</>
 			}
-			meta={prompt}
+			meta={promptOf(trigger)}
 		>
-			{/* `POST /projects/:id/triggers/:tid/run` is `dispatch`-gated. */}
-			<OperatorOnly>
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-6 px-2.5 text-xs"
-					onClick={onRunNow}
-					disabled={isRunning}
-				>
-					{isRunning ? "Dispatching…" : "Run now"}
-				</Button>
-			</OperatorOnly>
+			<RunNowButton isRunning={isRunning} onRunNow={onRunNow} />
 		</InventoryRowCard>
 	);
 }
 
 function TriggerRow({
 	trigger,
-	last,
 	isRunning,
 	runError,
 	onRunNow,
 }: {
 	trigger: TriggerSummary;
-	last: boolean;
 	isRunning: boolean;
 	runError: string | null;
 	onRunNow: () => void;
 }) {
 	return (
-		<div
-			className={`flex min-h-[49px] flex-wrap items-center gap-3 px-3.5 py-1.5 ${
-				last ? "" : "border-b border-b-(--color-border)"
-			}`}
-		>
-			<div className="flex w-[180px] shrink-0 flex-col gap-0.5">
-				<span className="font-mono text-xs text-(--color-text)">{trigger.id}</span>
-				<span className="font-mono text-2xs text-(--color-text-3)">
-					{trigger.cron} {trigger.timezone ?? "UTC"}
+		<li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+			<div className="flex w-44 shrink-0 flex-col">
+				<span className="truncate font-mono text-sm text-(--color-text)">{trigger.id}</span>
+				<span className="truncate font-mono text-2xs text-(--color-text-3)">
+					{trigger.cron} · {trigger.timezone ?? "UTC"}
 				</span>
 			</div>
-			<span className="w-[110px] shrink-0 font-mono text-xs text-(--color-text-2)">
-				{trigger.role}
-			</span>
-			{trigger.seed !== undefined ? (
-				<span className="font-mono text-2xs text-(--color-text-3)">{trigger.seed}</span>
-			) : null}
-			<span className="min-w-0 flex-1 truncate text-xs text-(--color-text-3)">
-				{trigger.parseError !== null
-					? `cron parse error: ${trigger.parseError}`
-					: (trigger.prompt ?? "—")}
+			<span className="w-28 shrink-0 truncate text-sm text-(--color-text-2)">{trigger.role}</span>
+			<span
+				className={
+					trigger.parseError !== null
+						? "min-w-0 flex-1 truncate text-sm text-(--color-warning)"
+						: "min-w-0 flex-1 truncate text-sm text-(--color-text-3)"
+				}
+				title={promptOf(trigger)}
+			>
+				{promptOf(trigger)}
 			</span>
 			<span
-				className="shrink-0 font-mono text-2xs text-(--color-text-3)"
-				title={trigger.lastFiredAt ?? "never fired"}
+				className="shrink-0 text-xs text-(--color-text-3)"
+				title={trigger.lastFiredAt ?? undefined}
 			>
 				{trigger.lastRunId !== null ? (
 					<Link
 						to={`/runs/${encodeURIComponent(trigger.lastRunId)}`}
-						className="underline-offset-2 hover:underline"
+						className="underline-offset-2 hover:text-(--color-text-2) hover:underline"
 					>
-						last fired {relativeTime(trigger.lastFiredAt)}
+						{lastFiredOf(trigger)}
 					</Link>
-				) : trigger.lastFiredAt !== null ? (
-					`last fired ${relativeTime(trigger.lastFiredAt)}`
 				) : (
-					"never fired"
+					lastFiredOf(trigger)
 				)}
 			</span>
-			{/* `POST /projects/:id/triggers/:tid/run` is `dispatch`-gated. */}
-			<OperatorOnly>
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-6 px-2.5 text-xs"
-					onClick={onRunNow}
-					disabled={isRunning}
-				>
-					{isRunning ? "Dispatching…" : "Run now"}
-				</Button>
-			</OperatorOnly>
+			<RunNowButton isRunning={isRunning} onRunNow={onRunNow} />
 			{runError !== null ? (
-				<span className="w-full font-mono text-2xs text-(--color-danger)">{runError}</span>
+				<span className="w-full text-xs text-(--color-danger)">Couldn't dispatch: {runError}</span>
 			) : null}
-		</div>
+		</li>
 	);
 }
 
@@ -361,95 +321,81 @@ function TriggerRow({
 /* Ready plans                                                            */
 /* --------------------------------------------------------------------- */
 
+function openChildren(n: number): string {
+	return `${n} open ${n === 1 ? "child" : "children"}`;
+}
+
+function DispatchPlanLink() {
+	return (
+		<OperatorOnly>
+			<Link to="/dispatch/plan" className={buttonVariants({ variant: "outline", size: "sm" })}>
+				Dispatch
+			</Link>
+		</OperatorOnly>
+	);
+}
+
 export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 	const readyPlans = useQuery({
 		queryKey: ["ready-plans", projectId],
 		queryFn: ({ signal }) => projectsApi.readyPlans(projectId, signal),
 		enabled: projectId.length > 0,
-		// Matches ReadyPlansView's stream + slow-fallback cadence (warren-f566).
-		refetchInterval: 45_000,
+		// No stream event covers the tracker, so a slow poll keeps it fresh.
+		refetchInterval: 60_000,
 	});
 
 	const plans = readyPlans.data?.plans ?? [];
 
 	return (
-		<section className={PANEL} aria-label="Ready plans">
-			<div className={PANEL_HEAD}>
-				<h2 className={PANEL_TITLE}>Ready plans</h2>
-				<div className="min-w-0 flex-1" />
-				<span className={HEAD_NOTE}>UNBLOCKED ONLY</span>
-			</div>
+		<Card className="self-stretch" aria-label="Ready plans">
+			<CardHeader title="Ready plans" meta="Approved plans with unblocked work" />
 			{readyPlans.isLoading ? (
-				<div className="px-3.5 py-3">
-					<Spinner label="Loading ready plans" />
-				</div>
+				<SkeletonRows rows={2} />
 			) : readyPlans.isError ? (
-				<div className="px-3.5 py-3">
-					<Alert variant="danger" title="Failed to load ready plans">
-						{formatError(readyPlans.error)}
-					</Alert>
-				</div>
+				<ListError
+					what="ready plans"
+					error={readyPlans.error}
+					onRetry={() => void readyPlans.refetch()}
+				/>
 			) : plans.length === 0 ? (
-				<EmptyRow text="No approved plans with open, undispatched children right now." />
+				<EmptyRow text="No approved plans have open work waiting to be dispatched." />
 			) : (
 				<>
-					{/* Mobile arm (warren-89aa): ready-plan rows degrade to the
-					 * shared InventoryRowCard pattern below md. */}
 					<InventoryCardList>
 						{plans.map((plan) => (
 							<InventoryRowCard
 								key={plan.id}
 								tone="info"
-								stateLabel="ready"
 								title={plan.id}
 								subline={plan.name ?? plan.status}
-								figures={
-									<CardFigure
-										value={`${plan.openChildCount} open child${
-											plan.openChildCount === 1 ? "" : "ren"
-										}`}
-									/>
-								}
+								figures={<CardFigureNote value={openChildren(plan.openChildCount)} />}
 							>
-								<OperatorOnly>
-									<Link to="/dispatch/plan" className="shrink-0">
-										<Button size="sm">Dispatch plan</Button>
-									</Link>
-								</OperatorOnly>
+								<DispatchPlanLink />
 							</InventoryRowCard>
 						))}
 					</InventoryCardList>
-					<div className="hidden md:block">
-						{plans.map((plan, i) => (
-							<div
-								key={plan.id}
-								className={`flex min-h-[49px] flex-wrap items-center gap-3 px-3.5 py-1.5 ${
-									i === plans.length - 1 ? "" : "border-b border-b-(--color-border)"
-								}`}
-							>
-								<span className="w-[70px] shrink-0 font-mono text-xs text-(--color-primary)">
+					<ul className="hidden divide-y divide-(--color-border) md:block">
+						{plans.map((plan) => (
+							<li key={plan.id} className="flex items-center gap-4 px-4 py-2.5">
+								<span className="w-20 shrink-0 font-mono text-sm text-(--color-text-2)">
 									{plan.id}
 								</span>
-								<span className="min-w-0 flex-1 truncate text-sm text-(--color-text-2)">
+								<span className="min-w-0 flex-1 truncate text-sm text-(--color-text)">
 									{plan.name ?? plan.status}
 								</span>
-								<span className="shrink-0 font-mono text-2xs text-(--color-text-3)">
-									{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
+								<span className="shrink-0 text-xs text-(--color-text-3) tabular-nums">
+									{openChildren(plan.openChildCount)}
 								</span>
-								<OperatorOnly>
-									<Link to="/dispatch/plan" className="shrink-0">
-										<Button size="sm">Dispatch plan</Button>
-									</Link>
-								</OperatorOnly>
-							</div>
+								<DispatchPlanLink />
+							</li>
 						))}
-					</div>
+					</ul>
 				</>
 			)}
-		</section>
+		</Card>
 	);
 }
 
 export function EmptyRow({ text }: { text: string }) {
-	return <p className="px-3.5 py-3 text-sm text-(--color-text-3)">{text}</p>;
+	return <p className="px-4 py-3.5 text-sm text-(--color-text-3)">{text}</p>;
 }
