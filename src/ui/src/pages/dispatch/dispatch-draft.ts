@@ -36,6 +36,13 @@ export interface DispatchRouteState {
 	 * base (NOT the parent's pushed branch).
 	 */
 	cloneFromRunId?: string;
+	/**
+	 * Rescue parent (#1241, warren-1db0). When Run detail's rescue
+	 * affordance navigates here, it carries the salvaged run id so the new
+	 * run re-dispatches that run's recovered work off its
+	 * `warren/rescue/<runId>` salvage branch.
+	 */
+	rescueFromRunId?: string;
 }
 
 export function readDispatchRouteState(state: unknown): DispatchRouteState {
@@ -48,6 +55,7 @@ export function readDispatchRouteState(state: unknown): DispatchRouteState {
 	if (typeof s.seedId === "string") out.seedId = s.seedId;
 	if (typeof s.continueFromRunId === "string") out.continueFromRunId = s.continueFromRunId;
 	if (typeof s.cloneFromRunId === "string") out.cloneFromRunId = s.cloneFromRunId;
+	if (typeof s.rescueFromRunId === "string") out.rescueFromRunId = s.rescueFromRunId;
 	return out;
 }
 
@@ -145,6 +153,9 @@ export function buildCreateRunInput(args: {
 			: {}),
 		...(args.routeState.cloneFromRunId !== undefined
 			? { cloneFromRunId: args.routeState.cloneFromRunId }
+			: {}),
+		...(args.routeState.rescueFromRunId !== undefined
+			? { rescueFromRunId: args.routeState.rescueFromRunId }
 			: {}),
 	};
 }

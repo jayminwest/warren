@@ -84,12 +84,17 @@ describe("buildProgram", () => {
 		expect(program.version()).toMatch(/^\d+\.\d+\.\d+$/);
 	});
 
-	test("`run` requires a --prompt option", () => {
+	test("`run` options relax requiredness for the --rescue-from one-click (#1241)", () => {
 		const program = buildProgram(silentContext());
 		const runCmd = program.commands.find((c) => c.name() === "run");
 		expect(runCmd).toBeDefined();
+		// agent/project/prompt are optional now: with --rescue-from the server
+		// inherits them from the salvaged source run. runRun enforces the
+		// "all three required without --rescue-from" rule at dispatch time.
 		const promptOpt = runCmd?.options.find((o) => o.long === "--prompt");
-		expect(promptOpt?.mandatory).toBe(true);
+		expect(promptOpt?.mandatory).toBe(false);
+		const rescueOpt = runCmd?.options.find((o) => o.long === "--rescue-from");
+		expect(rescueOpt).toBeDefined();
 	});
 });
 

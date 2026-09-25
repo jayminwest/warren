@@ -6,7 +6,7 @@
  * settle discipline. The e2e vertical slice lives under `src/acceptance/`.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FixedClock, SequentialIdGenerator } from "../clock.ts";
@@ -32,13 +32,13 @@ import {
 import { MUTATION_UNCERTAIN_REASON } from "./mutation-journal.ts";
 
 const clock = new FixedClock(1_000_000);
+const UPDATE = process.env.WARREN_UPDATE_GOLDENS === "1";
 const CONTRACT = loadDefaultPrBodyContract();
-const GOLDEN = JSON.parse(
-	readFileSync(
-		new URL("../pr-intent/__golden__/default-pr-body-refresh.json", import.meta.url),
-		"utf8",
-	),
-) as {
+const GOLDEN_PATH = new URL(
+	"../pr-intent/__golden__/default-pr-body-refresh.json",
+	import.meta.url,
+);
+const GOLDEN = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as {
 	baseFacts: PrBodyFacts;
 	refresh: PrBodyRefreshFacts;
 	body: string;
@@ -121,7 +121,15 @@ function journalRefresh(input: Partial<Parameters<typeof renderAndJournalBodyRef
 describe("renderRefreshedPrBody (warren-09d2)", () => {
 	test("renders the exact golden refreshed body, deterministically", () => {
 		const body = renderRefreshedPrBody(CONTRACT, baseFacts(), refreshFacts());
-		expect(body).toBe(GOLDEN.body);
+		if (UPDATE) {
+			writeFileSync(GOLDEN_PATH, `${JSON.stringify({ ...GOLDEN, body }, null, "\t")}\n`);
+		}
+		// In update mode the module-level GOLDEN still holds the stale body, so
+		// compare against a fresh read — a round trip of what was just written.
+		const expectedBody = UPDATE
+			? (JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as { body: string }).body
+			: GOLDEN.body;
+		expect(body).toBe(expectedBody);
 		// The whole-body invariant: rendering the merged facts through the
 		// contract directly yields the identical body — the refresh owns no
 		// wording of its own and edits no region the contract does not cover.
@@ -132,7 +140,7 @@ describe("renderRefreshedPrBody (warren-09d2)", () => {
 			followUpRunId: "run_2222",
 			knownGap: undefined,
 		};
-		expect(renderPrBody(CONTRACT, merged)).toBe(GOLDEN.body);
+		expect(renderPrBody(CONTRACT, merged)).toBe(expectedBody);
 	});
 
 	test("merges follow-up evidence order-preserving and deduped", () => {

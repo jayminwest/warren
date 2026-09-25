@@ -5,6 +5,7 @@ import {
 	type Ctx,
 	fakeBurrowClient,
 	fakeExec,
+	fakeForge,
 	fakeFs,
 	makeBurrow,
 	reapDeps,
@@ -62,7 +63,8 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 		expect(result.state).toBe("failed");
 		expect(result.failureReason).toBe("provider_error");
 		expect(result.providerError).toBe(inner);
-		// No bookkeeping-only PR ships for a provider-error run.
+		// No PR here: this reap wires no forge, so the pr_open step skips even
+		// on the warren-cbd3 pushed-work exception (covered by the k8s test below).
 		expect(result.prUrl).toBeNull();
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		expect(events.find((ev) => ev.kind === "reap.provider_error")).toMatchObject({
@@ -310,5 +312,90 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			failureReason: "provider_error",
 			salvage: { rescueRef: "warren/rescue/run-1", bundlePath: "/data/salvage/run-1.bundle" },
 		});
+	});
+
+	test("warren-cbd3: k8s provider_error run with a pushed commit opens a PR and never claims 'unrecoverable'", async () => {
+		// The run_03wb2b8crbz6 shape: the agent committed, finalize pushed the
+		// branch (1 commit ahead), and only then the provider errored. The pod
+		// posted no salvage bundle — none is needed, the work is on origin — so
+		// the pod-side salvage arm must stay silent instead of claiming the
+		// uncommitted work is unrecoverable, and the PR-open step must open the
+		// PR despite the failed outcome, with the body labelling the provider
+		// error.
+		const message = "Provider finish_reason: error";
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "state_change",
+			stream: "system",
+			payload: { type: "turn_end", message: { stopReason: "error", errorMessage: message } },
+		});
+		const finalizeResult: FinalizeResult = {
+			pushed: true,
+			commitsAhead: 1,
+			emptyPush: false,
+			dirty: false,
+			dirtyPaths: [],
+			workspacePlansBody: null,
+			events: [],
+			artifacts: {},
+			prBranch: null,
+			stages: [
+				{ stage: "branch_push", status: "ok" },
+				{ stage: "commits_ahead", status: "ok" },
+			],
+		};
+		const provider = {
+			capabilities: {},
+			workspaceInfo: async (): Promise<WorkspaceInfo> => ({
+				workspacePath: null,
+				branch: "warren/run-1",
+			}),
+			finalize: async (): Promise<FinalizeResult> => finalizeResult,
+			terminate: async () => ({
+				archived: true,
+				deletedEvents: 0,
+				deletedMessages: 0,
+				deletedRuns: 0,
+			}),
+		} as unknown as RuntimeProvider;
+		const forge = fakeForge();
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+			autoOpenPr: { enabled: true, warrenBaseUrl: null },
+			forge,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("provider_error");
+		expect(result.branchPushed).toBe(true);
+		expect(result.commitsAhead).toBe(1);
+		expect(result.prUrl).toBe("fake://x/y/pulls/1");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		// No "unrecoverable" claim: the pod-side salvage arm stays silent
+		// because the work is already durable on origin.
+		expect(events.find((ev) => ev.kind === "reap.workspace_salvage_failed")).toBeUndefined();
+		// The branch-pushed payload is the operator record of where the work lives.
+		expect(events.find((ev) => ev.kind === "reap.branch_pushed")?.payloadJson).toMatchObject({
+			branch: "warren/run-1",
+			commitsAhead: 1,
+		});
+		expect(events.find((ev) => ev.kind === "reap.pr_opened")?.payloadJson).toMatchObject({
+			prUrl: "fake://x/y/pulls/1",
+			mode: "created",
+		});
+		// The PR body labels the provider error so a reviewer knows the run did
+		// not finish cleanly.
+		expect(forge.store.getPr("x/y", 1)?.body).toContain(
+			`- **Outcome:** run ended in a provider error — ${message}`,
+		);
 	});
 });
