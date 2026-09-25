@@ -47,6 +47,11 @@ Releases **0.9.10 and earlier** live in
   of those 401s arrived after sign-in, the client cleared the fresh token.
   A 401 now clears the stored token only when that request sent it.
 
+- **Run detail no longer shows every event twice (warren-01e8).** When a
+  run you are watching finishes, the page restarts its event subscription,
+  which replays the full history. Events already on screen are now skipped
+  by seq.
+
 ## [0.19.2] — 2026-09-19
 
 The auto-merge release. A project can now let warren arm GitHub

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { runsApi, streamRunEvents, UnauthorizedError } from "@/api/client.ts";
 import { isTerminalRunState, type RunEvent } from "@/api/types.ts";
 import {
+	appendRunEvent,
 	type EventStreamLoopDeps,
 	runEventStreamLoop,
 	type StreamStatus,
@@ -63,7 +64,11 @@ export function useEventStream(runId: string, follow: boolean): State {
 				}
 			},
 			isAuthError: (err) => err instanceof UnauthorizedError,
-			onEvent: (evt) => setState((s) => ({ ...s, events: [...s.events, evt] })),
+			onEvent: (evt) =>
+				setState((s) => {
+					const events = appendRunEvent(s.events, evt);
+					return events === s.events ? s : { ...s, events };
+				}),
 			onStatus: (status, error) => setState((s) => ({ ...s, status, error })),
 		};
 		void runEventStreamLoop(deps);

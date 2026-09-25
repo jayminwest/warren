@@ -116,3 +116,15 @@ async function attachOnce<T>(
 		return { action: "retry", connected: false, lastSeq };
 	}
 }
+
+/**
+ * Append `evt` unless its seq is already shown. The run page flips
+ * `follow` off when the run ends, which restarts the subscription and
+ * replays the full history over the events already on screen; without
+ * this every live-watched run showed each event twice.
+ */
+export function appendRunEvent(events: readonly RunEvent[], evt: RunEvent): RunEvent[] {
+	const last = events[events.length - 1];
+	if (last !== undefined && evt.seq <= last.seq) return events as RunEvent[];
+	return [...events, evt];
+}

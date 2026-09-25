@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { RunEvent } from "../api/types.ts";
-import { runEventStreamLoop, type StreamStatus } from "./use-event-stream.helpers.ts";
+import {
+	appendRunEvent,
+	runEventStreamLoop,
+	type StreamStatus,
+} from "./use-event-stream.helpers.ts";
 
 /**
  * Reconnect-policy tests for the stream loop behind `useEventStream`
@@ -213,5 +217,24 @@ describe("runEventStreamLoop", () => {
 		]);
 		expect(outcome.events.map((e) => e.seq)).toEqual([1, 2]);
 		expect(outcome.statuses[outcome.statuses.length - 1]).toBe("ended");
+	});
+});
+
+describe("appendRunEvent", () => {
+	const evt = (seq: number) => ({ seq }) as RunEvent;
+
+	test("appends events in seq order", () => {
+		expect(appendRunEvent([evt(1)], evt(2)).map((e) => e.seq)).toEqual([1, 2]);
+	});
+
+	test("drops a replayed history after follow flips off", () => {
+		let events: RunEvent[] = [];
+		for (const seq of [1, 2, 3, 1, 2, 3]) events = appendRunEvent(events, evt(seq));
+		expect(events.map((e) => e.seq)).toEqual([1, 2, 3]);
+	});
+
+	test("returns the same array when nothing is added", () => {
+		const events = [evt(1), evt(2)];
+		expect(appendRunEvent(events, evt(2))).toBe(events);
 	});
 });
