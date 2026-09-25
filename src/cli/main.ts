@@ -39,8 +39,10 @@ import { runServe } from "./commands/serve.ts";
 import { registerUpCommand } from "./commands/up.ts";
 import { withCliDb } from "./context.ts";
 import {
+	capFlags,
 	parseIssueList,
 	parseMaxCostUsd,
+	parseMaxDurationMinutes,
 	parsePlanRunOutput,
 	parsePlanRunState,
 	resolveCliExitCode,
@@ -304,6 +306,11 @@ export function buildProgram(baseContext: CliContext): Command {
 				"per-child USD spend cap applied to every child dispatch",
 				parseMaxCostUsd,
 			)
+			.option(
+				"--max-duration-minutes <n>",
+				"per-child wall-clock cap in minutes applied to every child dispatch",
+				parseMaxDurationMinutes,
+			)
 			.option("--no-follow", "dispatch and exit without tailing events")
 			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
 	).action(
@@ -318,6 +325,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				provider?: string;
 				model?: string;
 				maxCostUsd?: number;
+				maxDurationMinutes?: number;
 				follow: boolean;
 				output?: string;
 			} & RemoteOpts,
@@ -337,7 +345,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					...(opts.ref !== undefined ? { ref: opts.ref } : {}),
 					...(opts.provider !== undefined ? { provider: opts.provider } : {}),
 					...(opts.model !== undefined ? { model: opts.model } : {}),
-					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
+					...capFlags(opts),
 				},
 			);
 			process.exit(result.exitCode);

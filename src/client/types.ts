@@ -180,6 +180,10 @@ export interface RunRow {
 	 * from the dispatch-context row; operator-only overlay, absent for
 	 * spectators, null when no dispatch-context row. */
 	maxCostUsd?: number | null;
+	/** Per-run wall-clock cap in minutes (warren-a112), read off the frozen
+	 * rendered agent; operator-only list/detail overlay, absent for
+	 * spectators, null when the run has no cap. */
+	maxDurationMinutes?: number | null;
 	tokensInput: number | null;
 	tokensOutput: number | null;
 	tokensCacheRead: number | null;
@@ -251,6 +255,11 @@ export interface CreateRunInput {
 	rescueFromRunId?: string;
 	/** Per-run USD spend cap (warren-a63d): wins over the agent's own and the project default. */
 	maxCostUsd?: number;
+	/**
+	 * Per-run wall-clock cap in whole minutes (warren-a112). Same precedence as
+	 * `maxCostUsd`; past `startedAt + cap` the watchdog fails the run `timed_out`.
+	 */
+	maxDurationMinutes?: number;
 }
 
 /**

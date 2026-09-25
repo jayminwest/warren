@@ -28,6 +28,7 @@ function planRunRow(overrides: Partial<PlanRunRow> = {}): PlanRunRow {
 		providerOverride: null,
 		modelOverride: null,
 		maxCostUsd: null,
+		maxDurationMinutes: null,
 		dispatcherHandle: "cli",
 		trigger: "cli",
 		state: "running",

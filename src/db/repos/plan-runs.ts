@@ -123,6 +123,8 @@ export interface CreatePlanRunInput {
 	modelOverride?: string | null;
 	/** warren-a63d: per-child USD spend cap the coordinator forwards on each dispatch. */
 	maxCostUsd?: number | null;
+	/** warren-a112: per-child wall-clock cap (minutes), forwarded like maxCostUsd. */
+	maxDurationMinutes?: number | null;
 	dispatcherHandle?: string;
 	trigger?: string;
 	/**
@@ -216,6 +218,7 @@ export class PlanRunsRepo {
 			providerOverride: input.providerOverride ?? null,
 			modelOverride: input.modelOverride ?? null,
 			maxCostUsd: input.maxCostUsd ?? null,
+			maxDurationMinutes: input.maxDurationMinutes ?? null,
 			dispatcherHandle: input.dispatcherHandle ?? "operator",
 			trigger: input.trigger ?? "manual",
 			parentRunId: input.parentRunId ?? null,

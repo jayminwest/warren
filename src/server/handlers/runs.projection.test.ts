@@ -199,10 +199,11 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		// on each row — fields the stored row itself does not carry. No context
 		// row exists for this run, so both read null, never absent.
 		expect(new Set(Object.keys(list[0] ?? {}))).toEqual(
-			new Set([...Object.keys(stored), "maxCostUsd", "runtimeBackend"]),
+			new Set([...Object.keys(stored), "maxCostUsd", "maxDurationMinutes", "runtimeBackend"]),
 		);
 		expect(list[0]?.maxCostUsd).toBeNull();
 		expect(list[0]?.runtimeBackend).toBeNull();
+		expect(list[0]?.maxDurationMinutes).toBeNull();
 		expect(body.costTotalUsd).toBe(1.25);
 		expect(body.costPricedCount).toBe(1);
 		const detailBody = await get(`/runs/${runId}`, TOKEN);
@@ -211,7 +212,9 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		// The detail GET overlays the dispatch-context cap too (warren-b19e,
 		// operator-only, for the Spend panel's "$X of $Y cap"). No context row
 		// here, so it reads null, never absent.
-		expect(new Set(Object.keys(detail))).toEqual(new Set([...Object.keys(stored), "maxCostUsd"]));
+		expect(new Set(Object.keys(detail))).toEqual(
+			new Set([...Object.keys(stored), "maxCostUsd", "maxDurationMinutes"]),
+		);
 		expect(detail.maxCostUsd).toBeNull();
 		expect(detail.sandboxId).toBe("bur_1");
 		expect(detail.renderedAgentJson).toEqual({

@@ -395,6 +395,9 @@ export const DefaultsConfigSchema = z
 		// frontmatter > this. Resolved by resolveCapOverride (src/runs/cost-cap.ts)
 		// and enforced mid-run by the event bridge.
 		maxCostUsd: MaxCostUsdSchema.optional(),
+		// warren-a112: project-wide wall-clock cap (whole minutes); weakest source in
+		// the same chain (src/runs/run-timeout.ts), enforced by the heartbeat watchdog.
+		maxDurationMinutes: z.number().int().positive("maxDurationMinutes must be positive").optional(),
 		// warren-05ea: opt-in polling CI-fixer; missing block → poller skips it.
 		ciFixer: CiFixerConfigSchema.optional(),
 		// warren-3db0: opt-in closed-loop healer; missing block → intake skips it.

@@ -97,12 +97,12 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     also covers rate-limit and provider-network failures).
  *   - `running` on entry with model output ⇒ `crashed` (agent ran and
  *     hit an unrecoverable error mid-conversation).
- *   - `timed_out` (warren-285d) is set by the heartbeat watchdog
- *     (src/runs/watchdog.ts) when a `running` run goes silent-but-busy past
- *     `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` — e.g. a runaway gate command behind
- *     a stuck bash tool. The watchdog cancels the burrow run and reaps it
- *     `failed` so the sandbox tree is torn down instead of pinning CPU
- *     forever; burrow reports no timeout state, so warren owns the deadline.
+ *   - `timed_out` (warren-285d) is set by the watchdog (src/runs/watchdog.ts)
+ *     when a `running` run goes silent-but-busy past
+ *     `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` (a `watchdog.timed_out` event), or
+ *     outlives its per-run `maxDurationMinutes` wall-clock cap (warren-a112,
+ *     a `duration.exceeded` event). Either way the watchdog cancels the
+ *     workload and reaps it `failed`, so warren owns the deadline.
  *   - `sandbox_run_lost` (warren-b1a9; renamed from `burrow_run_lost` in
  *     warren-d15c for the runtime-neutral warren-36cb taxonomy) means the
  *     runtime backend has no record of the run — a burrow 404 (local) or a

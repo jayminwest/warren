@@ -4,12 +4,13 @@ import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { validateBaseCommit, validateDispatchRef } from "../../../runs/base-commit.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
 import { spawnRun } from "../../../runs/index.ts";
+import { readMaxDurationMinutes } from "../../../runs/run-timeout.ts";
 import type { TrackerContext } from "../../../tracker/contract.ts";
 import type { GitSpawnCredential } from "../../../workspace/git/credential-env.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
-import { optionalObject, optionalPositiveNumber } from "../body-fields.ts";
+import { optionalObject, optionalPositiveInteger, optionalPositiveNumber } from "../body-fields.ts";
 import { defaultSpawn, optionalString, readJsonBody, requireString } from "../index.ts";
 
 /**
@@ -26,6 +27,7 @@ interface CloneDefaults {
 	readonly providerOverride?: string;
 	readonly modelOverride?: string;
 	readonly maxCostUsd?: number;
+	readonly maxDurationMinutes?: number;
 }
 
 /**
@@ -147,6 +149,8 @@ function readParentDefaults(parent: {
 	// folded on the frozen frontmatter; read it back so the follow-up inherits it
 	// verbatim, same as provider/model.
 	const capUsd = readMaxCostUsd(rendered.frontmatter ?? {});
+	// warren-a112: the wall-clock cap is inherited the same way.
+	const capMinutes = readMaxDurationMinutes(rendered.frontmatter ?? {});
 	return {
 		agentName: parent.agentName,
 		projectId: parent.projectId,
@@ -154,6 +158,7 @@ function readParentDefaults(parent: {
 		...(fm.provider !== undefined ? { providerOverride: fm.provider } : {}),
 		...(fm.model !== undefined ? { modelOverride: fm.model } : {}),
 		...(capUsd !== null ? { maxCostUsd: capUsd } : {}),
+		...(capMinutes !== null ? { maxDurationMinutes: capMinutes } : {}),
 	};
 }
 
@@ -192,13 +197,26 @@ function assertRescueExclusivity(
 	});
 }
 
-interface ResolvedDispatchFields {
-	readonly agentName: string;
-	readonly projectId: string;
-	readonly prompt: string;
-	readonly providerOverride?: string;
-	readonly modelOverride?: string;
-	readonly maxCostUsd?: number;
+/**
+ * Per-dispatch caps: the spend cap (warren-a63d) and the wall-clock cap
+ * (warren-a112). An explicit body field wins; a replicate or rescue falls
+ * back to the source run's effective cap read off its frozen frontmatter,
+ * matching the provider/model inheritance. Undefined keys are omitted.
+ */
+function resolveDispatchCaps(
+	body: Record<string, unknown>,
+	source: CloneDefaults | undefined,
+): { maxCostUsd?: number; maxDurationMinutes?: number } {
+	const maxCostUsd = optionalPositiveNumber(body, "maxCostUsd") ?? source?.maxCostUsd;
+	const maxDurationMinutes =
+		optionalPositiveInteger(body, "maxDurationMinutes") ?? source?.maxDurationMinutes;
+	return {
+		...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+		...(maxDurationMinutes !== undefined ? { maxDurationMinutes } : {}),
+	};
+}
+
+interface ResolvedDispatchFields extends CloneDefaults {
 	readonly parentRunId?: string;
 	readonly cloneKind?: "replicate" | "rescue";
 	/** #1241: the source run's rescue branch, dispatched as `existingBranch`. */
@@ -255,11 +273,7 @@ async function resolveDispatchFields(
 			clone?.providerOverride,
 		modelOverride:
 			optionalString(body, "modelOverride") ?? rescue?.modelOverride ?? clone?.modelOverride,
-		// Per-dispatch spend cap (warren-a63d): explicit body field wins; a
-		// replicate or rescue falls back to the source run's effective cap read
-		// off its frozen frontmatter, matching the provider/model inheritance.
-		maxCostUsd:
-			optionalPositiveNumber(body, "maxCostUsd") ?? rescue?.maxCostUsd ?? clone?.maxCostUsd,
+		...resolveDispatchCaps(body, rescue ?? clone),
 		// A replicate or rescue records the same `parent_run_id` column as a
 		// continuation; the `clone_kind` discriminator keeps them apart.
 		...(continueFromRunId !== undefined ? { parentRunId: continueFromRunId } : {}),
@@ -309,6 +323,7 @@ async function buildHttpSpawnOptions(
 		providerOverride,
 		modelOverride,
 		maxCostUsd,
+		maxDurationMinutes,
 		parentRunId,
 		cloneKind,
 		rescueRef,
@@ -344,6 +359,7 @@ async function buildHttpSpawnOptions(
 		modelOverride,
 		...(trigger !== undefined ? { trigger } : {}),
 		...(maxCostUsd !== undefined ? { maxCostUsdOverride: maxCostUsd } : {}),
+		...(maxDurationMinutes !== undefined ? { maxDurationMinutesOverride: maxDurationMinutes } : {}),
 		seedId,
 		...(targetBranch !== undefined ? { targetBranch } : {}),
 		...(effectiveExistingBranch !== undefined ? { existingBranch: effectiveExistingBranch } : {}),

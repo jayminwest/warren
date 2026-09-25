@@ -351,7 +351,7 @@ describe("bootWatchdog", () => {
 			disabled: true,
 		});
 		const result = await handle.runOnce();
-		expect(result).toEqual({ timedOut: [], reconciled: [], errors: [] });
+		expect(result).toEqual({ timedOut: [], durationExceeded: [], reconciled: [], errors: [] });
 		expect(handle.tickCount()).toBe(1);
 		await handle.stop();
 	});

@@ -14,6 +14,12 @@ describe("inheritedDispatchOverrides", () => {
 		});
 	});
 
+	test("carries the wall-clock cap forward (warren-a112)", () => {
+		expect(inheritedDispatchOverrides({ frontmatter: { maxDurationMinutes: 45 } })).toEqual({
+			maxDurationMinutesOverride: 45,
+		});
+	});
+
 	test("fills only the slots the parent actually carried", () => {
 		expect(inheritedDispatchOverrides({ frontmatter: { model: "kimi-k3" } })).toEqual({
 			modelOverride: "kimi-k3",

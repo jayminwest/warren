@@ -54,7 +54,8 @@ export const PUBLIC_PLAN_RUN_FIELDS = [
  *   is the IP here, same posture as `renderedAgentJson` on runs.
  * - `dispatcherHandle` — who kicked the plan-run off. Operator identity
  *   is not spectator business.
- * - `providerOverride` / `modelOverride` / `maxCostUsd` — dispatch-time
+ * - `providerOverride` / `modelOverride` / `maxCostUsd` /
+ *   `maxDurationMinutes` — dispatch-time
  *   config the operator set; noise to a spectator and a hint about
  *   internal provider plumbing and budgets.
  * - `failureReason` — a raw internal error string
@@ -68,6 +69,7 @@ export const REDACTED_PLAN_RUN_FIELDS = [
 	"providerOverride",
 	"modelOverride",
 	"maxCostUsd",
+	"maxDurationMinutes",
 	"dispatcherHandle",
 	"failureReason",
 ] as const satisfies readonly (keyof PlanRunRow)[];

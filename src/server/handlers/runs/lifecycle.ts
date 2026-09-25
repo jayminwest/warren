@@ -8,6 +8,7 @@ import {
 	hydrateRunsUsage,
 	hydrateRunUsage,
 } from "../../../runs/index.ts";
+import { resolveRunMaxDurationMinutes } from "../../../runs/run-timeout.ts";
 import { isPublicOnly, pickFields } from "../../projection.ts";
 import { jsonResponse } from "../../response.ts";
 import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
@@ -197,7 +198,8 @@ export function parseRunsPagination(ctx: { url: URL }): { limit: number; offset:
 /**
  * Overlay the dispatch-context spend cap onto the projected list rows
  * (warren-f8a2): `maxCostUsd` is the per-run USD cap the mobile runs card
- * uses for its near-cap tint. A spectator gets no caps at all, so the cap
+ * uses for its near-cap tint. `maxDurationMinutes` (warren-a112) rides
+ * beside it, read off the run's frozen rendered_agent_json. A spectator gets no caps at all, so the cap
  * never reaches the public projection — same posture as the list's
  * `costTotalUsd`.
  */
@@ -217,6 +219,7 @@ async function projectRunsWithCaps(
 		return {
 			...projected,
 			maxCostUsd: fact?.maxCostUsd ?? null,
+			maxDurationMinutes: resolveRunMaxDurationMinutes(run.renderedAgentJson),
 			runtimeBackend: fact?.runtimeBackend ?? null,
 		};
 	});
@@ -279,7 +282,13 @@ export function getRunHandler(deps: ServerDeps): RouteHandler {
 		if (!isPublicOnly(ctx.actor)) {
 			const fact = await deps.repos.dispatchContext.getByRunId(id);
 			return jsonResponse(200, {
-				run: { ...projectRun(run, ctx.actor), maxCostUsd: fact?.maxCostUsd ?? null },
+				run: {
+					...projectRun(run, ctx.actor),
+					maxCostUsd: fact?.maxCostUsd ?? null,
+					// warren-a112: the wall-clock cap the watchdog enforces, read off
+					// the frozen rendered_agent_json (its single source of truth).
+					maxDurationMinutes: resolveRunMaxDurationMinutes(run.renderedAgentJson),
+				},
 			});
 		}
 		// warren-7d84: detail GETs wrap the resource, matching POST /runs

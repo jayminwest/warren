@@ -367,10 +367,10 @@ export const planRuns = sqliteTable(
 		ref: text("ref"),
 		providerOverride: text("provider_override"),
 		modelOverride: text("model_override"),
-		// warren-a63d: per-dispatch USD spend cap applied to EACH child run
-		// (forwarded as spawnRun maxCostUsdOverride), persisted like the
-		// provider/model overrides so the coordinator re-reads it per child.
+		// warren-a63d / warren-a112: per-dispatch USD spend + wall-clock (minutes) caps
+		// applied to EACH child run; the coordinator re-reads them per child.
 		maxCostUsd: real("max_cost_usd"),
+		maxDurationMinutes: integer("max_duration_minutes"),
 		dispatcherHandle: text("dispatcher_handle").notNull().default("operator"),
 		trigger: text("trigger").notNull().default("manual"),
 		// Back-link to the parent run that created this plan-run via

@@ -29,7 +29,11 @@ import {
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import { reserveEventStreamSlot } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
-import { optionalPositiveNumber, optionalStringArray } from "./body-fields.ts";
+import {
+	optionalPositiveInteger,
+	optionalPositiveNumber,
+	optionalStringArray,
+} from "./body-fields.ts";
 import {
 	optionalString,
 	parseBoolean,
@@ -82,6 +86,8 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		// warren-a63d: per-child spend cap; each child dispatch carries it as
 		// maxCostUsdOverride. Same boundary validation as POST /runs.
 		const maxCostUsd = optionalPositiveNumber(body, "maxCostUsd");
+		// warren-a112: per-child wall-clock cap, same validation as POST /runs.
+		const maxDurationMinutes = optionalPositiveInteger(body, "maxDurationMinutes");
 
 		const projectId = requireString(body, "project");
 		// warren-6c4c: mint the pre-dispatch refresh-fetch credential per-spawn
@@ -99,6 +105,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...(providerOverride !== undefined ? { providerOverride } : {}),
 			...(modelOverride !== undefined ? { modelOverride } : {}),
 			...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+			...(maxDurationMinutes !== undefined ? { maxDurationMinutes } : {}),
 			...(dispatcherHandle !== undefined ? { dispatcherHandle } : {}),
 			repos: deps.repos,
 			issueTracker: deps.issueTracker,

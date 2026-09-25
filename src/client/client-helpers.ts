@@ -1,4 +1,28 @@
+import { ValidationError } from "../core/errors.ts";
 import { WarrenClientError } from "./errors.ts";
+
+/**
+ * Guard the per-run caps before JSON serialization: the spend cap
+ * (warren-a63d) and the wall-clock cap (warren-a112). `JSON.stringify`
+ * turns `NaN` / `±Infinity` into `null`, which the server reads as "field
+ * absent" — the dispatch would then succeed silently UNCAPPED instead of
+ * failing validation. Fail here with the same rules the server enforces.
+ */
+export function assertValidDispatchCaps(input: {
+	readonly maxCostUsd?: number;
+	readonly maxDurationMinutes?: number;
+}): void {
+	const { maxCostUsd, maxDurationMinutes } = input;
+	if (maxCostUsd !== undefined && !(Number.isFinite(maxCostUsd) && maxCostUsd > 0)) {
+		throw new ValidationError("maxCostUsd must be a positive finite number of USD");
+	}
+	if (
+		maxDurationMinutes !== undefined &&
+		!(Number.isSafeInteger(maxDurationMinutes) && maxDurationMinutes > 0)
+	) {
+		throw new ValidationError("maxDurationMinutes must be a positive integer number of minutes");
+	}
+}
 
 /** Default poll cadence for {@link WarrenClient.waitForRun}. */
 export const DEFAULT_POLL_INTERVAL_MS = 2_000;

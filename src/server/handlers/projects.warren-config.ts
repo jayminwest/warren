@@ -53,7 +53,7 @@ export const PUBLIC_WARREN_CONFIG_DEFAULTS_FIELDS = [
  *   text; error messages can narrate host file reads.
  * - `defaultPrompt`, `repoContext` — dispatch prompt text.
  * - `qualityGate` — an executable command string.
- * - `maxCostUsd` — an admission-cap disclosure.
+ * - `maxCostUsd`, `maxDurationMinutes` — admission-cap disclosures.
  * - `agentImage`, `preview`, `agent`, `interactiveAgents`, `resources`,
  *   `admission`, `ciFixer`, `healer`, `tracker`, `pr` — nested operator
  *   configuration blocks (image names, ports, pod specs, prompt knobs,
@@ -67,6 +67,7 @@ export const REDACTED_WARREN_CONFIG_FIELDS = [
 	"repoContext",
 	"qualityGate",
 	"maxCostUsd",
+	"maxDurationMinutes",
 	"agentImage",
 	"preview",
 	"agent",

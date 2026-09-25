@@ -247,6 +247,8 @@ export const planRuns = pgTable(
 		// Mirror of sqlite plan_runs.max_cost_usd (warren-a63d): per-child
 		// spend cap the coordinator forwards on each dispatch.
 		maxCostUsd: doublePrecision("max_cost_usd"),
+		// Mirror of sqlite plan_runs.max_duration_minutes (warren-a112).
+		maxDurationMinutes: integer("max_duration_minutes"),
 		dispatcherHandle: text("dispatcher_handle").notNull().default("operator"),
 		trigger: text("trigger").notNull().default("manual"),
 		// Mirror of sqlite plan_runs.parent_run_id (warren-d9a2). See

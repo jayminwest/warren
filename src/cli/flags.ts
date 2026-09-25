@@ -43,6 +43,39 @@ export function parseMaxCostUsd(value: string): number {
 }
 
 /**
+ * Commander argParser for `--max-duration-minutes` (warren-a112, the
+ * per-run wall-clock cap). Whole positive minutes only — the same rule
+ * `POST /runs` enforces — so a typo fails the command here instead of
+ * dispatching uncapped.
+ */
+export function parseMaxDurationMinutes(value: string): number {
+	const parsed = Number(value.trim());
+	if (value.trim() === "" || !Number.isSafeInteger(parsed) || parsed <= 0) {
+		throw new InvalidArgumentError("must be a positive whole number of minutes");
+	}
+	return parsed;
+}
+
+/** The two per-run cap flags, as parsed by commander. */
+export interface CapFlagOpts {
+	readonly maxCostUsd?: number;
+	readonly maxDurationMinutes?: number;
+}
+
+/**
+ * Keep only the cap flags the operator set, so a spread never forwards an
+ * explicit `undefined`. Shared by `warren run` and `warren plan-run`.
+ */
+export function capFlags(opts: CapFlagOpts): CapFlagOpts {
+	return {
+		...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
+		...(opts.maxDurationMinutes !== undefined
+			? { maxDurationMinutes: opts.maxDurationMinutes }
+			: {}),
+	};
+}
+
+/**
  * Coerce a `--issues a,b,c` flag value into the ordered issue-id list
  * (warren-de42). Empty segments are dropped so a trailing comma is not an
  * error; an unset/empty flag yields undefined.
