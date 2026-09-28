@@ -61,6 +61,12 @@ spec:
 #          and the control-plane callback still work. No IPv6 rule ships, so
 #          IPv6 egress stays denied. FQDN-based allowlisting remains the
 #          follow-up for narrowing the public half.
+#          Known gap (warren-3584, accepted risk): on GKE Dataplane V2 this
+#          policy does not stop a pod from reaching its own node's kubelet
+#          (for example 169.254.4.6:10250). ipBlock cannot select host
+#          endpoints there, and Autopilot supports no host policy. The kubelet
+#          401 plus automountServiceAccountToken: false is the control. See
+#          docs/RUNBOOK-K8S.md §4.1 for the evidence and operator checks.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

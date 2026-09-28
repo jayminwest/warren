@@ -678,8 +678,8 @@ Four policies ship, all in `warren-runs`:
    the agent uses for events, inbox, and finalize. If you rename the control-plane
    namespace or labels, update this rule in lockstep with
    `WARREN_K8S_CALLBACK_*` / `pod-spec.ts`.
-3. **External world** — `0.0.0.0/0`. Git clone/push, model providers, and package
-   registries all leave the cluster. **No CIDR or FQDN pin** ships in-tree.
+3. **External world** — `0.0.0.0/0` minus link-local and private ranges (warren-b275).
+   Git clone/push, model providers, and package registries all leave the cluster. **No CIDR or FQDN pin** ships in-tree.
    GitHub and provider ranges move, and FQDN-based policy needs Cilium or GKE
    Dataplane V2. That tightening is operator territory at release time — widen
    or narrow this rule in a live overlay, never by guessing CIDRs into base.
@@ -703,6 +703,91 @@ kubectl -n warren-runs get networkpolicy
 kubectl -n warren-runs get pods -l warren.io/managed-by=warren -o wide
 # (from a debug pod in warren-runs) nc -zv <run-pod-ip> 1-65535  → times out
 ```
+
+#### Accepted risk: a run pod can reach its own node's kubelet (warren-3584)
+
+On GKE Autopilot with Dataplane V2, a `restricted` run pod can open a TCP
+connection to the kubelet on its own node. The escape-lab probe of
+2026-09-25 found this on `runc` and on gVisor.
+
+- Pod default gateway: `169.254.4.6`
+- Probe: `https://169.254.4.6:10250/pods`
+- Result: HTTP 401
+
+The link-local exception in rule 3 does not stop this traffic. The kubelet
+is a host process, not a pod or an external address. GKE states that with
+Dataplane V2, NetworkPolicy `ipBlock` rules cannot select traffic to or
+from `hostNetwork` endpoints ([GKE network policy](https://cloud.google.com/kubernetes-engine/docs/how-to/network-policy)).
+
+No Autopilot-supported policy closes this path today:
+
+- **Kubernetes `NetworkPolicy`.** `ipBlock`, `podSelector` and
+  `namespaceSelector` cannot select host endpoints under Dataplane V2
+  ([GKE network policy](https://cloud.google.com/kubernetes-engine/docs/how-to/network-policy)).
+- **`CiliumClusterwideNetworkPolicy` host policy.** A Cilium host policy
+  needs `nodeSelector`. GKE lists "Node selectors are not supported" as a
+  limitation ([GKE CCNP](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-cilium-network-policy)).
+- **`CiliumClusterwideNetworkPolicy` `egressDeny` to the `host` entity.**
+  GKE documents neither deny rules nor entity selectors for CCNP
+  ([GKE CCNP](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-cilium-network-policy)). The feature also needs a cluster update
+  (`--enable-cilium-clusterwide-network-policy`). We do not ship an
+  undocumented control.
+- **`FQDNNetworkPolicy`.** It is an egress allowlist for DNS names. It adds
+  allows and has no deny rule. GKE does not document its effect on node
+  traffic ([GKE FQDN policy](https://cloud.google.com/kubernetes-engine/docs/how-to/fqdn-network-policies)).
+- **Custom eBPF or a host firewall.** GKE does not support custom eBPF
+  programs on Dataplane V2 nodes ([Dataplane V2](https://cloud.google.com/kubernetes-engine/docs/concepts/dataplane-v2)). Autopilot
+  gives you no node access.
+
+**The control is kubelet authentication.** The kubelet rejects a caller
+that has no credential. Run pods set `automountServiceAccountToken: false`
+(`buildRunPod` in `src/runtime/k8s/pod-spec.ts`), so the agent has no
+token to present.
+
+The impact is network reach only. The agent cannot list pods, read logs,
+or exec through the kubelet.
+
+**This control depends on one setting.** `WARREN_K8S_SERVICE_ACCOUNT` puts
+a ServiceAccount on run pods and mounts its token. The kubelet then asks
+the API server to authorize that token.
+
+Do not grant that ServiceAccount any `nodes/*` permission (`nodes/proxy`,
+`nodes/log`, `nodes/stats`, `nodes/metrics`). With no such grant, the
+kubelet answers 403.
+
+Verify the control after each deploy, and after any change to
+`WARREN_K8S_SERVICE_ACCOUNT` or to run-pod RBAC:
+
+```bash
+# 1. Run pods do not mount a token (expect: false, or empty when an SA is set)
+kubectl -n warren-runs get pods -l warren.io/managed-by=warren \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.automountServiceAccountToken}{"\n"}{end}'
+
+# 2. No token file exists inside a live run pod (expect: No such file)
+kubectl -n warren-runs exec <run-pod> -c agent -- \
+  ls /var/run/secrets/kubernetes.io/serviceaccount/token
+
+# 3. The kubelet rejects the pod (expect: 401, not 200)
+kubectl -n warren-runs exec <run-pod> -c agent -- \
+  curl -sk -o /dev/null -w '%{http_code}\n' https://169.254.4.6:10250/pods
+
+# 4. Only when WARREN_K8S_SERVICE_ACCOUNT is set: the SA has no node access
+#    (expect: no for each line)
+for r in nodes/proxy nodes/log nodes/stats nodes/metrics; do
+  kubectl auth can-i get "$r" \
+    --as=system:serviceaccount:warren-runs:"$WARREN_K8S_SERVICE_ACCOUNT"
+done
+```
+
+The gateway address can differ between clusters. If step 3 cannot connect,
+read the gateway in the pod with `cat /proc/net/route`.
+The `Gateway` column of the `00000000` row holds it as little-endian hex.
+
+Stop and raise an incident if step 3 returns `200` or step 4 prints `yes`.
+
+Reopen this decision when GKE documents deny rules or entity selectors for `CiliumClusterwideNetworkPolicy` on Autopilot.
+A candidate policy is an `egressDeny` to the `host` and `remote-node` entities for pods with `warren.io/managed-by=warren`.
+Test it on a scratch cluster first, and keep DNS and the control-plane callback working.
 
 ### 4.2 In-pod entrypoint/agent uid split (warren-cb93)
 

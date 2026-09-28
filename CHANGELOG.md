@@ -33,6 +33,13 @@ Releases **0.9.10 and earlier** live in
 - **`restricted` egress blocks link-local and private ranges (warren-b275).**
   The run-pod NetworkPolicy's internet rule now excepts `169.254.0.0/16`
   (the metadata server), RFC 1918 and `100.64.0.0/10`.
+- **Run pod to kubelet reach is a documented accepted risk (warren-3584).**
+  On GKE Autopilot with Dataplane V2, `restricted` egress does not stop a
+  run pod from reaching its own node's kubelet on `:10250`. No
+  Autopilot-supported policy can select that host traffic. The kubelet
+  rejects the pod with 401 because run pods mount no ServiceAccount token.
+  `docs/RUNBOOK-K8S.md` §4.1 cites the GKE limits and lists the checks an
+  operator runs after each deploy.
 - **Event scrubber redacts bare run tokens (warren-3f97).** A `wrs1.` run
   token in agent output is now redacted like other secrets.
 
