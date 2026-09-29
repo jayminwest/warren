@@ -27,7 +27,7 @@ export function registerRunCommands(program: Command, context: CliContext): void
 	).action(async (runId: string, opts: { summary?: boolean } & RemoteOpts) => {
 		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runShow(ctx, { client }, { runId, summary: opts.summary === true });
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	addClientFlags(
@@ -56,7 +56,7 @@ export function registerRunCommands(program: Command, context: CliContext): void
 				...(timeoutSeconds !== undefined ? { timeoutMs: timeoutSeconds * 1_000 } : {}),
 			},
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	addClientFlags(
@@ -77,7 +77,7 @@ export function registerRunCommands(program: Command, context: CliContext): void
 				...(opts.fromSeq !== undefined ? { fromSeq: opts.fromSeq } : {}),
 			},
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	addClientFlags(
@@ -93,6 +93,6 @@ export function registerRunCommands(program: Command, context: CliContext): void
 			{ client },
 			{ runId, ...(opts.reason !== undefined ? { reason: opts.reason } : {}) },
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 }

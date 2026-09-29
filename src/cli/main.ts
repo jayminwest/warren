@@ -114,7 +114,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				...(opts.defaultBranch !== undefined ? { defaultBranch: opts.defaultBranch } : {}),
 			},
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	registerRunCommand(program, context);
@@ -145,7 +145,7 @@ export function buildProgram(baseContext: CliContext): Command {
 						...(opts.defaultRole !== undefined ? { defaultRole: opts.defaultRole } : {}),
 					};
 		const result = await runInit(ctx, { client }, args);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	// `config` is a subcommand group rather than a flat top-level so future
@@ -172,7 +172,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				? { mode: "project" as const, projectId: opts.project }
 				: { mode: "cwd" as const, cwd: opts.cwd ?? process.cwd() };
 		const result = await runConfigMigrate(ctx, { client }, args);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	addClientFlags(
@@ -220,7 +220,7 @@ export function buildProgram(baseContext: CliContext): Command {
 		}
 		const deps = remoteDoctorDeps(context.env, clientFlags(opts));
 		const result = await runRemoteDoctor(context, deps, { noAuth: opts.auth === false });
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	// `db` is a subcommand group rather than a flat top-level so future
@@ -272,7 +272,7 @@ export function buildProgram(baseContext: CliContext): Command {
 			}
 			try {
 				const result = await runMigrateToPostgres(context, { source, target });
-				process.exit(result.exitCode);
+				process.exitCode = result.exitCode;
 			} finally {
 				await source.close().catch(() => undefined);
 				await target.close().catch(() => undefined);
@@ -340,7 +340,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
 				},
 			);
-			process.exit(result.exitCode);
+			process.exitCode = result.exitCode;
 		},
 	);
 	addClientFlags(
@@ -356,7 +356,7 @@ export function buildProgram(baseContext: CliContext): Command {
 			{ client },
 			{ planRunId, output: parsePlanRunOutput(opts.output) },
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 	addClientFlags(
 		planGroup
@@ -371,7 +371,7 @@ export function buildProgram(baseContext: CliContext): Command {
 			{ client },
 			{ planRunId, output: parsePlanRunOutput(opts.output) },
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 	addClientFlags(
 		planGroup
@@ -396,7 +396,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					: {}),
 			},
 		);
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	addClientFlags(
@@ -406,7 +406,7 @@ export function buildProgram(baseContext: CliContext): Command {
 	).action(async (opts: RemoteOpts) => {
 		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runProjects(ctx, { client });
-		process.exit(result.exitCode);
+		process.exitCode = result.exitCode;
 	});
 
 	// Agent-facing run read/control commands (warren-b048).
