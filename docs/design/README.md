@@ -38,6 +38,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [TypeSafe judge backend and routing exploration](./typesafe-judge.md) | `proposal` | `proposed` | `unscheduled` | 2026-09-17 |
 | [Extensions](./extensions.md) | `direction` | `proposed` | `mixed` | 2026-08-04 |
 | [Agent composition and Pi runtime](./agent-composition.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
+| [Automatic run admission](./automatic-run-admission.md) | `contract` | `proposed` | `unscheduled` | 2026-10-02 |
 | [Forge contract](./forge-contract.md) | `contract` | `approved` | `shipped` | 2026-08-11 |
 | [IssueTracker contract](./issue-tracker.md) | `contract` | `approved` | `shipped` | 2026-08-20 |
 | [PlanRun coordinator](./plan-run-coordinator.md) | `contract` | `approved` | `shipped` | 2026-08-01 |

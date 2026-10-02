@@ -35,7 +35,7 @@ import {
 	listWithUnresolvedPr,
 } from "./runs-queries.ts";
 import { markAgentEnded, markReaped, markWorkspaceReady } from "./runs-stage.ts";
-import { countNonTerminal } from "./runs-stats.ts";
+import { countNonTerminal, countNonTerminalAutomatic } from "./runs-stats.ts";
 import { clearBurrowIdForWorkspace } from "./runs-workspace.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
@@ -264,6 +264,11 @@ export class RunsRepo {
 	/** Non-terminal (`queued`+`running`) count; body in runs-stats.ts (warren-e1f1). */
 	countNonTerminal(projectId?: string): Promise<number> {
 		return countNonTerminal(this.adapter, projectId);
+	}
+
+	/** Non-terminal runs from automatic triggers only. */
+	countNonTerminalAutomatic(): Promise<number> {
+		return countNonTerminalAutomatic(this.adapter);
 	}
 
 	/** The retry a `sandbox_run_lost` original spawned (warren-4af7); body in runs-queries.ts. */

@@ -316,7 +316,7 @@ describe("runTick", () => {
 			projectId: project.id,
 			prompt: "scheduled",
 			renderedAgentJson: { sections: {} },
-			trigger: "scheduled",
+			trigger: "manual",
 		});
 
 		const logger = makeLogger();

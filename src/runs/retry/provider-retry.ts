@@ -53,6 +53,7 @@ import type { ProjectsConfig } from "../../projects/config.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
+import { withAutomaticRetryAdmission } from "../../triggers/automatic-capacity.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";
 import { type LifecycleExtension, WARREN_EXT_PROTOCOL } from "../lifecycle-bus.ts";
@@ -313,7 +314,14 @@ async function maybeRetryProviderError(
 		return;
 	}
 
-	await dispatchProviderRetry(input, now, { ...run, projectId }, signal.message);
+	await withAutomaticRetryAdmission(
+		input.repos.runs,
+		run.trigger,
+		() => dispatchProviderRetry(input, now, { ...run, projectId }, signal.message),
+		() =>
+			emit(runId, PROVIDER_RETRY_EVENTS.retrySkipped, { verdict: "automatic_admission_denied" }),
+		now(),
+	);
 }
 
 /**
