@@ -20,6 +20,7 @@ import type { ProjectRow } from "../db/schema.ts";
 import type { WarrenExtensions } from "../seeds-cli/index.ts";
 import type { TrackerContext } from "../tracker/contract.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
+import { withAutomaticRunAdmission } from "./automatic-capacity.ts";
 import { type DispatchScheduledResult, dispatchScheduledSeed } from "./dispatch.ts";
 import type { TickDeps, TickLogger } from "./tick.ts";
 
@@ -69,13 +70,22 @@ export async function runScheduledSeedsPass(input: RunScheduledSeedsPassInput): 
 	deps.noticeGate?.clearNotice(`sd_list_failed:${project.id}`);
 
 	for (const issue of issues) {
-		const result = await dispatchScheduledSeed({
-			projectId: project.id,
-			seed: issue,
-			defaults: config.defaults,
+		// Leave queued seed metadata untouched when the instance is at capacity;
+		// the next scheduler tick will retry this still-due issue.
+		const admission = await withAutomaticRunAdmission(
+			deps.repos.runs,
+			() =>
+				dispatchScheduledSeed({
+					projectId: project.id,
+					seed: issue,
+					defaults: config.defaults,
+					now,
+					spawn: deps.spawn,
+				}),
 			now,
-			spawn: deps.spawn,
-		});
+		);
+		if (!admission.admitted) break;
+		const result = admission.value;
 		scheduled.push(result);
 		logScheduledResult(deps.logger, project.id, result);
 		if (result.kind === "fired") {

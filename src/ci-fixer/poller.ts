@@ -119,6 +119,8 @@ export interface PollProjectCiFixerInput {
 	/** Max CI-log lines to splice into the fixer prompt (warren-a993).
 	 * `ciFixer.logTailLines` from project config. `<= 0` disables the fetch. */
 	readonly logTailLines: number;
+	/** Stop after this many successful dispatches; omit for no limit. */
+	readonly maxDispatches?: number;
 }
 
 /**
@@ -132,8 +134,12 @@ export async function pollProjectCiFixer(
 	input: PollProjectCiFixerInput,
 ): Promise<CiFixerPollResult[]> {
 	const results: CiFixerPollResult[] = [];
+	let dispatched = 0;
 	for (const candidate of input.candidates) {
-		results.push(await pollCandidate(input, candidate));
+		if (input.maxDispatches !== undefined && dispatched >= input.maxDispatches) break;
+		const result = await pollCandidate(input, candidate);
+		results.push(result);
+		if (result.kind === "dispatched") dispatched += 1;
 	}
 	return results;
 }

@@ -43,6 +43,7 @@ import type {
 	ScheduledIssueCapableTracker,
 } from "../tracker/contract.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
+import { resolveAutomaticRunPolicy, withAutomaticRunAdmission } from "./automatic-capacity.ts";
 import { runCiFixerPass, type TickCiFixerDeps } from "./ci-fixer-pass.ts";
 import type { CronRetryTracker } from "./cron-retry.ts";
 import {
@@ -242,31 +243,45 @@ async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 
 	const cronExtras = cronDispatchExtras(deps);
 	for (const trigger of config.triggers ?? []) {
-		const result = await dispatchCronTrigger({
-			projectId: project.id,
-			trigger,
-			defaults: config.defaults,
+		const admission = await withAutomaticRunAdmission(
+			deps.repos.runs,
+			() =>
+				dispatchCronTrigger({
+					projectId: project.id,
+					trigger,
+					defaults: config.defaults,
+					now,
+					repos: deps.repos,
+					spawn: deps.spawn,
+					...cronExtras,
+				}),
 			now,
-			repos: deps.repos,
-			spawn: deps.spawn,
-			...cronExtras,
-		});
+		);
+		if (!admission.admitted) break;
+		const result = admission.value;
 		cron.push(result);
 		logCronResult(deps.logger, project.id, trigger.id, result);
 	}
 
 	// warren-0b75: CI-fixer poll. Independent of the seeds shell-out below,
 	// so it runs before the `return` on an `sd list` failure can skip it.
-	if (deps.ciFixer !== undefined) {
-		await runCiFixerPass({
-			repos: deps.repos,
-			ciFixer: deps.ciFixer,
-			project,
-			config,
+	const ciFixer = deps.ciFixer;
+	if (ciFixer !== undefined) {
+		await withAutomaticRunAdmission(
+			deps.repos.runs,
+			() =>
+				runCiFixerPass({
+					repos: deps.repos,
+					ciFixer,
+					project,
+					config,
+					now,
+					maxDispatches: resolveAutomaticRunPolicy().maxConcurrentRuns,
+					...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+					...(deps.noticeGate !== undefined ? { noticeGate: deps.noticeGate } : {}),
+				}),
 			now,
-			...(deps.logger !== undefined ? { logger: deps.logger } : {}),
-			...(deps.noticeGate !== undefined ? { noticeGate: deps.noticeGate } : {}),
-		});
+		);
 	}
 
 	await runScheduledSeedsPass({ deps, project, config, now, nowIso, scheduled });

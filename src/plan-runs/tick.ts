@@ -26,6 +26,7 @@ import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunRow } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
+import { withAutomaticRunAdmission } from "../triggers/automatic-capacity.ts";
 import {
 	type AdvanceResult,
 	advancePlanRun,
@@ -101,11 +102,20 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 	const advances: PlanRunAdvanceLog[] = [];
 	const errors: { planRunId: string; reason: string }[] = [];
 	const emit = deps.emit ?? buildDefaultPlanRunEmit(deps.repos as CoordinatorRepos, deps.now);
+	const admissionNow = deps.now?.() ?? new Date();
 
 	const active: PlanRunRow[] = await deps.repos.planRuns.listActive();
 	for (const planRun of active) {
+		// Child completion is persisted on the run row; defer coordinator
+		// polling until the automatic child finishes, then resume next tick.
 		try {
-			const result = await advancePlanRun(buildAdvanceInput(deps, planRun, emit));
+			const admission = await withAutomaticRunAdmission(
+				deps.repos.runs,
+				() => advancePlanRun(buildAdvanceInput(deps, planRun, emit)),
+				admissionNow,
+			);
+			if (!admission.admitted) break;
+			const result = admission.value;
 			advances.push({ planRunId: planRun.id, result });
 			logAdvance(deps.logger, planRun.id, result);
 		} catch (err) {

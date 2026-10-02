@@ -61,6 +61,8 @@ export interface RunCiFixerPassInput {
 	readonly project: ProjectRow;
 	readonly config: LoadedWarrenConfig;
 	readonly now: Date;
+	/** Stop after this many successful dispatches; the scheduler uses one. */
+	readonly maxDispatches?: number;
 	readonly logger?: TickLogger;
 	/**
 	 * Notice rate-limiter (warren-0b49, §5) — gates the
@@ -122,6 +124,7 @@ export async function runCiFixerPass(input: RunCiFixerPassInput): Promise<void> 
 		spawn,
 		now,
 		logTailLines: settings.logTailLines,
+		...(input.maxDispatches !== undefined ? { maxDispatches: input.maxDispatches } : {}),
 	});
 
 	for (const result of results) {
