@@ -33,3 +33,13 @@ export class ProjectLacksTrackerError extends WarrenError {
 export class PlanHasNoOpenChildrenError extends WarrenError {
 	readonly code = "plan_has_no_open_children";
 }
+
+/**
+ * Thrown by the tick's spawn wrapper when automatic run admission is closed
+ * (capacity full, outside the run window, or another dispatch holds the lock).
+ * Not a failure: the coordinator leaves the child where it is and returns a
+ * noop, so the next tick tries the spawn again.
+ */
+export class PlanRunSpawnDeferredError extends Error {
+	readonly code = "automatic_admission_denied";
+}

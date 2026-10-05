@@ -43,7 +43,7 @@ import type {
 	ScheduledIssueCapableTracker,
 } from "../tracker/contract.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
-import { resolveAutomaticRunPolicy, withAutomaticRunAdmission } from "./automatic-capacity.ts";
+import { withAutomaticRunAdmission } from "./automatic-capacity.ts";
 import { runCiFixerPass, type TickCiFixerDeps } from "./ci-fixer-pass.ts";
 import type { CronRetryTracker } from "./cron-retry.ts";
 import {
@@ -269,14 +269,14 @@ async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 	if (ciFixer !== undefined) {
 		await withAutomaticRunAdmission(
 			deps.repos.runs,
-			() =>
+			(freeSlots) =>
 				runCiFixerPass({
 					repos: deps.repos,
 					ciFixer,
 					project,
 					config,
 					now,
-					maxDispatches: resolveAutomaticRunPolicy().maxConcurrentRuns,
+					maxDispatches: freeSlots,
 					...(deps.logger !== undefined ? { logger: deps.logger } : {}),
 					...(deps.noticeGate !== undefined ? { noticeGate: deps.noticeGate } : {}),
 				}),

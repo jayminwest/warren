@@ -23,6 +23,7 @@ import type {
 	CoordinatorSpawnFn,
 	CoordinatorSpawnResult,
 } from "./coordinator.ts";
+import { PlanRunSpawnDeferredError } from "./errors.ts";
 import {
 	type CoordinatorReopenPrFn,
 	hasEmptyPushEvent,
@@ -371,6 +372,9 @@ async function retryChild(
 	try {
 		spawnResult = await spawn({ planRun, child, prompt });
 	} catch (err) {
+		if (err instanceof PlanRunSpawnDeferredError) {
+			return { kind: "result", result: { kind: "noop", reason: err.code } };
+		}
 		return await failChild(input, run, `dispatch_failed:${formatError(err)}`);
 	}
 	const retryCount = child.retryCount + 1;

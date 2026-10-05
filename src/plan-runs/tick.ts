@@ -38,6 +38,7 @@ import {
 	type CoordinatorSpawnFn,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
+import { PlanRunSpawnDeferredError } from "./errors.ts";
 import type { MergeStallProbe } from "./merge-stall.ts";
 
 export interface PlanRunTickLogger {
@@ -102,20 +103,12 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 	const advances: PlanRunAdvanceLog[] = [];
 	const errors: { planRunId: string; reason: string }[] = [];
 	const emit = deps.emit ?? buildDefaultPlanRunEmit(deps.repos as CoordinatorRepos, deps.now);
-	const admissionNow = deps.now?.() ?? new Date();
+	const spawn = admittedSpawn(deps, deps.now?.() ?? new Date());
 
 	const active: PlanRunRow[] = await deps.repos.planRuns.listActive();
 	for (const planRun of active) {
-		// Child completion is persisted on the run row; defer coordinator
-		// polling until the automatic child finishes, then resume next tick.
 		try {
-			const admission = await withAutomaticRunAdmission(
-				deps.repos.runs,
-				() => advancePlanRun(buildAdvanceInput(deps, planRun, emit)),
-				admissionNow,
-			);
-			if (!admission.admitted) break;
-			const result = admission.value;
+			const result = await advancePlanRun(buildAdvanceInput({ ...deps, spawn }, planRun, emit));
 			advances.push({ planRunId: planRun.id, result });
 			logAdvance(deps.logger, planRun.id, result);
 		} catch (err) {
@@ -126,6 +119,24 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 	}
 
 	return { advances, errors };
+}
+
+/**
+ * Gate only the child spawn on automatic run admission. Coordinator
+ * bookkeeping (merge polling, timeouts, terminal transitions) must keep
+ * running while capacity is full; a denied spawn throws
+ * {@link PlanRunSpawnDeferredError}, which the coordinator turns into a noop.
+ */
+function admittedSpawn(deps: PlanRunTickDeps, now: Date): CoordinatorSpawnFn {
+	return async (spawnInput) => {
+		const admission = await withAutomaticRunAdmission(
+			deps.repos.runs,
+			() => deps.spawn(spawnInput),
+			now,
+		);
+		if (!admission.admitted) throw new PlanRunSpawnDeferredError("automatic admission denied");
+		return admission.value;
+	};
 }
 
 /**

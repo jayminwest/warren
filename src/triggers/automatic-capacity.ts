@@ -72,25 +72,56 @@ export type AutomaticAdmissionResult<T> =
 	| { readonly admitted: true; readonly value: T }
 	| { readonly admitted: false };
 
-let dispatchInProgress = false;
+let lockHeld = false;
+const lockWaiters: (() => void)[] = [];
 
-/** Serialize automatic dispatch admission across Warren's scheduler loops. */
+function tryAcquireLock(): boolean {
+	if (lockHeld) return false;
+	lockHeld = true;
+	return true;
+}
+
+function acquireLock(): Promise<void> {
+	if (tryAcquireLock()) return Promise.resolve();
+	return new Promise((resolve) => lockWaiters.push(resolve));
+}
+
+/** Hand the lock straight to the next waiter so a try-lock caller cannot jump the queue. */
+function releaseLock(): void {
+	const next = lockWaiters.shift();
+	if (next !== undefined) next();
+	else lockHeld = false;
+}
+
+export interface AutomaticAdmissionOptions {
+	/**
+	 * Wait for an in-flight dispatch to finish instead of being denied. Scheduler
+	 * loops try-lock because they re-poll next tick; a provider retry fires once
+	 * and has no later attempt, so it waits.
+	 */
+	readonly waitForLock?: boolean;
+}
+
+/**
+ * Serialize automatic dispatch admission across Warren's scheduler loops.
+ * `work` receives the free slot count so a multi-dispatch pass stays under the cap.
+ */
 export async function withAutomaticRunAdmission<T>(
 	runs: Pick<Repos["runs"], "countNonTerminalAutomatic">,
-	work: () => Promise<T>,
+	work: (freeSlots: number) => Promise<T>,
 	now: Date = new Date(),
 	policy: AutomaticRunPolicy = resolveAutomaticRunPolicy(),
+	options: AutomaticAdmissionOptions = {},
 ): Promise<AutomaticAdmissionResult<T>> {
 	if (!isWithinAutomaticRunWindow(now, policy.window)) return { admitted: false };
-	if (dispatchInProgress) return { admitted: false };
-	dispatchInProgress = true;
+	if (options.waitForLock === true) await acquireLock();
+	else if (!tryAcquireLock()) return { admitted: false };
 	try {
-		if ((await runs.countNonTerminalAutomatic()) >= policy.maxConcurrentRuns) {
-			return { admitted: false };
-		}
-		return { admitted: true, value: await work() };
+		const freeSlots = policy.maxConcurrentRuns - (await runs.countNonTerminalAutomatic());
+		if (freeSlots <= 0) return { admitted: false };
+		return { admitted: true, value: await work(freeSlots) };
 	} finally {
-		dispatchInProgress = false;
+		releaseLock();
 	}
 }
 
@@ -103,6 +134,8 @@ export async function withAutomaticRetryAdmission(
 	policy: AutomaticRunPolicy = resolveAutomaticRunPolicy(),
 ): Promise<void> {
 	if (!isAutomaticRunTrigger(trigger)) return work();
-	const admission = await withAutomaticRunAdmission(runs, work, now, policy);
+	const admission = await withAutomaticRunAdmission(runs, work, now, policy, {
+		waitForLock: true,
+	});
 	if (!admission.admitted) await onDenied();
 }

@@ -152,3 +152,56 @@ describe("automatic run window", () => {
 		expect(workStarted).toBe(false);
 	});
 });
+
+describe("withAutomaticRunAdmission", () => {
+	const inWindow = new Date("2026-06-01T01:00:00.000Z");
+	const runsAt = (count: number) => ({ countNonTerminalAutomatic: async () => count });
+
+	test("passes the free slot count to the admitted work", async () => {
+		const result = await withAutomaticRunAdmission(
+			runsAt(2),
+			async (freeSlots) => freeSlots,
+			inWindow,
+			policy(3),
+		);
+		expect(result).toEqual({ admitted: true, value: 1 });
+	});
+
+	test("denies a try-lock caller while another dispatch holds the lock", async () => {
+		let release: () => void = () => {};
+		const held = withAutomaticRunAdmission(
+			runsAt(0),
+			() => new Promise<void>((resolve) => (release = resolve)),
+			inWindow,
+			policy(5),
+		);
+		await Promise.resolve();
+		const denied = await withAutomaticRunAdmission(runsAt(0), async () => "x", inWindow, policy(5));
+		expect(denied).toEqual({ admitted: false });
+		release();
+		await held;
+	});
+
+	test("lets a waitForLock caller run once the holder releases", async () => {
+		let release: () => void = () => {};
+		const held = withAutomaticRunAdmission(
+			runsAt(0),
+			() => new Promise<void>((resolve) => (release = resolve)),
+			inWindow,
+			policy(5),
+		);
+		await Promise.resolve();
+		const waiting = withAutomaticRunAdmission(
+			runsAt(0),
+			async () => "retried",
+			inWindow,
+			policy(5),
+			{
+				waitForLock: true,
+			},
+		);
+		release();
+		await held;
+		expect(await waiting).toEqual({ admitted: true, value: "retried" });
+	});
+});

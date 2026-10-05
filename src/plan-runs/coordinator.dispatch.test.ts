@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type Harness, NOW, neverPoll, setup } from "./coordinator.test-helpers.ts";
 import { advancePlanRun, type CoordinatorSpawnFn } from "./coordinator.ts";
+import { PlanRunSpawnDeferredError } from "./errors.ts";
 
 describe("advancePlanRun — dispatch phase", () => {
 	let h: Harness;
@@ -32,6 +33,25 @@ describe("advancePlanRun — dispatch phase", () => {
 		expect(first?.state).toBe("dispatched");
 		expect(first?.runId).not.toBeNull();
 		expect(h.events.map((e) => e.kind)).toContain("plan_run.dispatched");
+	});
+
+	test("deferred spawn returns noop and leaves the child pending", async () => {
+		const result = await advancePlanRun({
+			planRun: h.planRun,
+			repos: h.repos,
+			getIssue: h.getIssueStub("open"),
+			checkPrMerged: neverPoll,
+			spawn: async () => {
+				throw new PlanRunSpawnDeferredError("automatic admission denied");
+			},
+			emit: h.emit,
+			now: () => NOW,
+		});
+		expect(result).toEqual({ kind: "noop", reason: "automatic_admission_denied" });
+		const reloaded = await h.repos.planRuns.require(h.planRun.id);
+		expect(reloaded.state).toBe("running");
+		const children = await h.repos.planRuns.listChildren(h.planRun.id);
+		expect(children.find((c) => c.seq === 1)?.state).toBe("pending");
 	});
 
 	test("non-terminal child run → waiting_for_run; running run syncs child.state", async () => {

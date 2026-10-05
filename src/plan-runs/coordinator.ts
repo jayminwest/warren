@@ -40,6 +40,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import { DEFAULT_PLAN_RUN_MERGE_STALLED_WARNING_MS } from "./config.ts";
+import { PlanRunSpawnDeferredError } from "./errors.ts";
 import { handleInFlight } from "./in-flight.ts";
 import { type CoordinatorReopenPrFn, checkParentRunMerged } from "./merge-gate.ts";
 import type { MergeStallProbe } from "./merge-stall.ts";
@@ -266,6 +267,7 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 		try {
 			spawnResult = await input.spawn({ planRun, child: next, prompt });
 		} catch (err) {
+			if (err instanceof PlanRunSpawnDeferredError) return { kind: "noop", reason: err.code };
 			const reason = `dispatch_failed:${formatError(err)}`;
 			const endedAt = nowFn().toISOString();
 			await input.repos.planRuns.updateChild({

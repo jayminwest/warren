@@ -15,7 +15,6 @@ import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 
 /** Lifecycle states that still occupy a queue/admission slot. */
 const NON_TERMINAL_STATES = ["queued", "running"] as const satisfies readonly RunState[];
-/** Non-terminal runs created by Warren's automatic schedulers. */
 
 /** Cost + token totals across all runs. */
 export interface RunCostAggregate {
