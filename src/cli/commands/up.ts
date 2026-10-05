@@ -74,6 +74,8 @@ export interface UpDeps {
 	readonly openBrowser?: (url: string) => void;
 	/** Credential wizard seams; defaults probe the live machine (warren-80e9). */
 	readonly wizard?: UpWizardDeps;
+	/** The server process env the stored credentials export into; defaults to `process.env`. */
+	readonly processEnv?: Record<string, string | undefined>;
 }
 
 export interface UpResult {
@@ -160,6 +162,23 @@ function browserOpener(context: CliContext): (url: string) => void {
 	};
 }
 
+/**
+ * gh #1298: dispatch-time seams (e.g. the agent git identity in
+ * `src/runs/spawn/git-identity.ts`) read `process.env`, not the boot env.
+ * Export the merged value of every stored key so `~/.warren/env` acts like
+ * exported env (the real env still wins, via `merged`).
+ */
+function exportStoredEnv(
+	target: Record<string, string | undefined>,
+	stored: Record<string, string>,
+	merged: Record<string, string | undefined>,
+): void {
+	for (const key of Object.keys(stored)) {
+		const value = merged[key];
+		if (value !== undefined) target[key] = value;
+	}
+}
+
 export async function runUp(context: CliContext, deps: UpDeps, args: UpArgs): Promise<UpResult> {
 	const probe: UpRuntimeProbe = deps.probe ?? {
 		platform: process.platform,
@@ -211,7 +230,9 @@ export async function runUp(context: CliContext, deps: UpDeps, args: UpArgs): Pr
 	const wizardDeps =
 		deps.wizard ?? defaultUpWizardDeps(context, context.env, deps.homeDir ?? homedir);
 	const storedEnv = await runUpWizard(context, wizardDeps, { wizard: args.wizard !== false });
-	Object.assign(env, mergeUnderEnv(env, storedEnv));
+	const merged = mergeUnderEnv(env, storedEnv);
+	Object.assign(env, merged);
+	exportStoredEnv(deps.processEnv ?? process.env, storedEnv, merged);
 
 	return runServe(
 		upContext,

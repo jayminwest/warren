@@ -1,7 +1,8 @@
 /**
  * Resolve the env a sandboxed process actually sees: a hardened baseline
  * (HOME, PATH) layered with declared host passthrough, an SSH_AUTH_SOCK
- * derived from the profile when present, profile setEnv overrides, and
+ * derived from the profile when present, a GIT_CONFIG_GLOBAL pointing at the
+ * workspace gitconfig, profile setEnv overrides, and
  * finally per-command env. Used by both the bwrap and seatbelt wrappers so
  * they stay symmetric. Lifted from burrow's `src/provider/local/env.ts`
  * (warren-5af7).
@@ -26,6 +27,11 @@ export interface ResolveEnvOptions {
 	homePath: string;
 	/** Used to resolve `envPassthrough` names. */
 	hostEnv: Record<string, string | undefined>;
+	/**
+	 * The workspace path as the sandboxed process sees it: `/workspace` inside
+	 * bwrap, the host path on macOS. Anchors `profile.gitconfigFile`.
+	 */
+	workspacePath?: string;
 }
 
 export function resolveSandboxEnv(
@@ -45,6 +51,12 @@ export function resolveSandboxEnv(
 
 	if (profile.sshAuthSock) {
 		out.SSH_AUTH_SOCK = profile.sshAuthSock;
+	}
+
+	// gh #1298: point git at the workspace gitconfig so agent commits carry the
+	// run identity, not git's `<user>@<host>` fallback. setEnv may override.
+	if (profile.gitconfigFile !== undefined && options.workspacePath !== undefined) {
+		out.GIT_CONFIG_GLOBAL = `${options.workspacePath}/${profile.gitconfigFile}`;
 	}
 
 	for (const [name, value] of Object.entries(profile.setEnv)) {

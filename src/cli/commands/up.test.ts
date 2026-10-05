@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { WarrenClientConfig } from "../../client/index.ts";
 import type { WarrenServerHandle } from "../../server/main/index.ts";
 import type { CliContext } from "../output.ts";
@@ -9,7 +12,7 @@ import {
 	type UpDeps,
 	type UpRuntimeProbe,
 } from "./up.ts";
-import type { UpWizardDeps } from "./up-wizard.ts";
+import { type UpWizardDeps, wizardEnvPath, writeWizardEnv } from "./up-wizard.ts";
 
 function probe(over: Partial<UpRuntimeProbe>): UpRuntimeProbe {
 	return {
@@ -116,6 +119,7 @@ function happyDeps(over: Partial<UpDeps> = {}): UpDeps {
 		mkdir: () => undefined,
 		saveConfig: () => "/home/op/.warren/client.json",
 		wizard: wizardDeps(),
+		processEnv: {},
 		serveDeps: {
 			boot: async () => bootedHandle("tok123"),
 			waitForShutdown: async () => undefined,
@@ -220,6 +224,30 @@ describe("runUp", () => {
 		);
 		expect(saved).toBe(false);
 		expect(out.join("")).not.toContain("logged in");
+	});
+
+	test("exports stored ~/.warren/env values into the process env, real env winning (gh #1298)", async () => {
+		const home = mkdtempSync(join(tmpdir(), "warren-up-"));
+		try {
+			writeWizardEnv(wizardEnvPath(home), {
+				WARREN_GIT_AUTHOR_NAME: "bot",
+				WARREN_GIT_AUTHOR_EMAIL: "1+bot@users.noreply.github.com",
+				WARREN_GIT_TOKEN: "stored-token",
+			});
+			const { context } = captureContext({ WARREN_GIT_TOKEN: "real-token" });
+			const processEnv: Record<string, string | undefined> = {};
+			const result = await runUp(
+				context,
+				happyDeps({ wizard: wizardDeps({ homeDir: () => home }), processEnv }),
+				{},
+			);
+			expect(result.exitCode).toBe(0);
+			expect(processEnv.WARREN_GIT_AUTHOR_NAME).toBe("bot");
+			expect(processEnv.WARREN_GIT_AUTHOR_EMAIL).toBe("1+bot@users.noreply.github.com");
+			expect(processEnv.WARREN_GIT_TOKEN).toBe("real-token");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 
 	test("fails the command when the data dir cannot be created", async () => {

@@ -34,6 +34,7 @@ import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/provider
 import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import { WARREN_SANDBOX_GIT_ENV } from "../../sandbox/git-preflight.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
+import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
 import type { RunSpec } from "../contract.ts";
 
@@ -330,6 +331,7 @@ export async function buildLocalSandboxProfile(input: BuildProfileInput): Promis
 		envPassthrough: resolveEnvPassthrough(spec.runtimeId, input.frontmatter),
 		setEnv: input.env,
 		toolchainPaths: resolveToolchainPaths(spec.runtimeId, input.which),
+		...(workspace.identity !== null ? { gitconfigFile: WORKSPACE_GITCONFIG_FILENAME } : {}),
 		...(workspace.source.gitCommonDir !== undefined
 			? { workspaceGitdir: workspace.source.gitCommonDir }
 			: {}),

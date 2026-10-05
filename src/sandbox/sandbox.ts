@@ -65,6 +65,7 @@ async function spawnDarwin(
 	const env = resolveSandboxEnv(resolved, command, {
 		homePath: resolved.home,
 		hostEnv: process.env,
+		workspacePath: resolved.workspace,
 	});
 	const argv = buildSeatbeltArgv(profilePath, command, {
 		sandboxExecBin: options.sandboxExecBin,
@@ -130,6 +131,7 @@ async function spawnLinux(
 	const env = resolveSandboxEnv(profile, command, {
 		homePath: SANDBOX_HOME_PATH,
 		hostEnv: process.env,
+		workspacePath: "/workspace",
 	});
 	const wantsStdin = command.stdin !== undefined;
 	// `env` here becomes bwrap's process env (replacing process.env entirely,

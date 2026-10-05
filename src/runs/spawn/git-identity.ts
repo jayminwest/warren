@@ -23,10 +23,10 @@ function readGitIdentity(serverEnv: EnvLike): { name: string; email: string } | 
  * `WARREN_GIT_AUTHOR_EMAIL`, see `.env.example`) into the sandbox as the four
  * `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars git reads ahead of any config.
  *
- * On the Local path the supervisor already exports these into its own process
- * env (`src/supervisor/git-identity.ts`) and burrow passes them through, so
- * this is a no-op re-assertion of the same values. On the K8s path there is NO
- * supervisor and the run pod has no gitconfig at all — without this every
+ * This is the only path that carries them into a Local sandbox: `warren up`
+ * runs no supervisor, so nothing else exports them (gh #1298). `warren up`
+ * copies its stored `~/.warren/env` into `process.env` for this read. On the
+ * K8s path there is NO supervisor and the run pod has no gitconfig at all — without this every
  * agent `git commit` dies with "Author identity unknown" exit 128 (hit live on
  * GKE, warren-4e36). Mirrors the supervisor's rule: both halves or nothing.
  */

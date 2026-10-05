@@ -75,6 +75,13 @@ export interface SandboxProfile {
 	 */
 	workspaceGitdir?: string;
 	/**
+	 * Workspace-relative path of the run's gitconfig (`.gitconfig.burrow`,
+	 * written at materialization). The sandbox env exports it as
+	 * `GIT_CONFIG_GLOBAL`, resolved against the workspace path the sandboxed
+	 * process sees (gh #1298). Unset when no identity was written.
+	 */
+	gitconfigFile?: string;
+	/**
 	 * OPTIONAL per-project agent image override from `.warren/config.yaml`
 	 * `agentImage`, carried on the RunSpec (warren-fabb) and threaded here
 	 * because the drive-loop spawn seam receives only the profile + command.

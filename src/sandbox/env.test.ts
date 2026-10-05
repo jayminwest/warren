@@ -22,6 +22,26 @@ const cmd = (over: Partial<SpawnCommand> = {}): SpawnCommand => ({
 });
 
 describe("resolveSandboxEnv", () => {
+	test("exports GIT_CONFIG_GLOBAL at the in-sandbox workspace gitconfig (gh #1298)", () => {
+		const env = resolveSandboxEnv(profile({ gitconfigFile: ".gitconfig.burrow" }), cmd(), {
+			homePath: "/home-dir",
+			hostEnv: {},
+			workspacePath: "/workspace",
+		});
+		expect(env.GIT_CONFIG_GLOBAL).toBe("/workspace/.gitconfig.burrow");
+	});
+
+	test("leaves GIT_CONFIG_GLOBAL unset without a gitconfig file, and lets setEnv override it", () => {
+		const opts = { homePath: "/home-dir", hostEnv: {}, workspacePath: "/workspace" };
+		expect(resolveSandboxEnv(profile(), cmd(), opts).GIT_CONFIG_GLOBAL).toBeUndefined();
+		const overridden = resolveSandboxEnv(
+			profile({ gitconfigFile: ".gitconfig.burrow", setEnv: { GIT_CONFIG_GLOBAL: "/x" } }),
+			cmd(),
+			opts,
+		);
+		expect(overridden.GIT_CONFIG_GLOBAL).toBe("/x");
+	});
+
 	test("falls back to /usr/bin:/bin when no toolchain paths are declared", () => {
 		const env = resolveSandboxEnv(profile(), cmd(), { homePath: "/home-dir", hostEnv: {} });
 		expect(env.PATH).toBe("/usr/bin:/bin");

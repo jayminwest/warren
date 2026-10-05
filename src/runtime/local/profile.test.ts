@@ -215,6 +215,23 @@ describe("buildLocalSandboxProfile", () => {
 		expect(profile.envPassthrough).toContain("ANTHROPIC_API_KEY");
 	});
 
+	test("points the sandbox at the workspace gitconfig only when an identity was written", async () => {
+		const bare = await buildLocalSandboxProfile({
+			spec: makeSpec(),
+			env: {},
+			workspace: fakeWorkspace(),
+			homePath: "/tmp/home",
+		});
+		expect(bare.gitconfigFile).toBeUndefined();
+		const withIdentity = await buildLocalSandboxProfile({
+			spec: makeSpec(),
+			env: {},
+			workspace: { ...fakeWorkspace(), identity: { name: "Bot", email: "bot@example.com" } },
+			homePath: "/tmp/home",
+		});
+		expect(withIdentity.gitconfigFile).toBe(".gitconfig.burrow");
+	});
+
 	test("mounts the git common dir for worktree-backed workspaces", async () => {
 		const workspace: MaterializedWorkspace = {
 			workspacePath: "/tmp/ws",
