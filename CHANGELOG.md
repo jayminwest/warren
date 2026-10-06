@@ -12,6 +12,17 @@ Releases **0.9.10 and earlier** live in
 
 ### Added
 
+- **GitLab forge (GH#1028).** `WARREN_FORGE=gitlab` resolves `GitLabForge`
+  (`src/forge/gitlab/`), the third in-core arm of the `Forge` contract. It
+  answers for one instance, named by `WARREN_GITLAB_URL` (default
+  `https://gitlab.com`, relative URL roots kept), and reads the access
+  token from `WARREN_GIT_TOKEN`. Nested groups fold into one on-disk owner,
+  so same-named projects in different groups stay apart. Merge requests
+  cover open, find, read and body edits, and a duplicate open resolves to
+  the existing one. The CI-fixer reads the jobs of the newest pipeline and
+  tails a failed job's trace. The deadline fetch the Azure DevOps arm used
+  moved to `src/forge/fetch-deadline.ts`, shared by both arms.
+
 - **Per-project sandboxed RuntimeClass (warren-9bd3).** `.warren/config.yaml`
   `resources.runtimeClass` (for example `gvisor`) puts that project's run
   pods on a sandboxed runtime such as GKE Sandbox. GKE Sandbox rejects

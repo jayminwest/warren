@@ -30,6 +30,9 @@ import { GitHubForge } from "./github/provider.ts";
 import { stubGitHubServer } from "./github/stub-server.ts";
 import { GitHubAppForge } from "./github-app/provider.ts";
 import { generateTestAppKeyPair, stubGitHubAppServer } from "./github-app/test-helpers.ts";
+import { GitLabForge } from "./gitlab/provider.ts";
+import { stubGitLabServer } from "./gitlab/stub-server.ts";
+import { gitLabDotCom } from "./gitlab/test-helpers.ts";
 
 /** Compile-time mutual assignability: `A extends B` and `B extends A`. */
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -307,4 +310,26 @@ describe("AdoForge conforms to the Forge contract", () => {
 		foreignUrls: ["fake://projects/widget", "https://github.com/o/r.git", "git@github.com:o/r.git"],
 		botIdentity: false,
 	});
+});
+
+describe("GitLabForge conforms to the Forge contract", () => {
+	forgeConformanceSuite(
+		() =>
+			new GitLabForge({
+				instance: gitLabDotCom(),
+				token: "glpat-test",
+				fetch: stubGitLabServer().fetch,
+			}),
+		{
+			cloneUrl: "https://gitlab.com/acme/platform/widget.git",
+			forgeKind: "gitlab",
+			foreignUrls: [
+				"fake://projects/widget",
+				"https://github.com/o/r.git",
+				"git@github.com:o/r.git",
+				"https://gitlab.example.com/o/r.git",
+			],
+			botIdentity: true,
+		},
+	);
 });

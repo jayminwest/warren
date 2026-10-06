@@ -45,7 +45,7 @@ advance only when pilot evidence supplies their payer.
 | Storage | dialect-aware db layer (`src/db/client.ts`) | **Live** — sqlite + postgres. |
 | Auth | `AuthProvider` (`src/server/auth.ts`) | **Live** — `NoAuth`, `BearerToken`, `PublicRead` behind `WARREN_AUTH` (pl-b82d). The multi-user widening moved to Deferred until paid (2026-08-03). |
 | Extensions (Tier 1) | lifecycle bus (`src/runs/lifecycle-bus.ts`, `warren-ext/v1`) | **Live, observe-only** — all 6 hooks emit in production (`run_started` + `event_emitted` wired in v0.13.1, warren-28ca). |
-| Forge | `Forge` — repo refs, git auth, PR open/find, checks, auto-merge arming, error taxonomy | **Live** (v0.15.0, pl-d1c9) — GitHubForge (PAT) + GitHubApp (installation tokens) + AdoForge (Azure DevOps Repos, PAT) + FakeForge, boot-resolved via `WARREN_FORGE`, boundary held by `check:layers` rules. `armAutoMerge` over GraphQL shipped with pl-92a3 behind the per-project `pr.autoMerge` opt-in. Design record: `docs/design/forge-contract.md`. Further forges (GitLab, then Forgejo/Gitea) land in-core as registry arms, not as extensions (Decisions, 2026-08-20). |
+| Forge | `Forge` — repo refs, git auth, PR open/find, checks, auto-merge arming, error taxonomy | **Live** (v0.15.0, pl-d1c9) — GitHubForge (PAT) + GitHubApp (installation tokens) + AdoForge (Azure DevOps Repos, PAT) + GitLabForge (GitLab.com or self-hosted, access token) + FakeForge, boot-resolved via `WARREN_FORGE`, boundary held by `check:layers` rules. `armAutoMerge` over GraphQL shipped with pl-92a3 behind the per-project `pr.autoMerge` opt-in. Design record: `docs/design/forge-contract.md`. Further forges (Forgejo/Gitea next) land in-core as registry arms, not as extensions (Decisions, 2026-08-20). |
 | Issue tracker | `IssueTracker` — capability-flagged (`supportsPlans`, `isGitNative`). Seeds in-core. External trackers arrive through the `RemoteTracker` bridge speaking `warren-tracker/v1` (wire protocol experimental until a foreign implementation survives the conformance suite). | **Live** (v0.18.0, pl-a37b) — `SeedsTracker` + `RemoteTracker`, per-project `tracker` block in `.warren/config.yaml`. `extensions/tracker-jira/` (v0.19.0) and `extensions/tracker-ado/` (v0.19.1) are the first two external implementations of the wire protocol; both pass the conformance suite unchanged. The protocol's status vocabulary was fixed to `open`/`closed`/`other` in v0.19.1. Design record: `docs/design/issue-tracker.md`. |
 | Agent runtime | `AgentRuntimeAdapter` phase 1 — terminal detect, usage, error classes, seed layout | **Live** — phase 2 (harness repatriation) shipped with pl-3007 in v0.17.0. The adapters are warren-owned (`src/runtime/adapters/`). Phase 1 completed with `runtimeId` typed off the union + the `check:runtime-ids` guard (GH#846 items 4–5, PR #964). |
 
@@ -86,9 +86,9 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
   (`extensions/tracker-ado/`). Linear follows the same path when a payer appears.
 
   Azure DevOps Repos arrived as the second in-core Forge (`src/forge/ado/`, GH#1172),
-  paid for by a deployment running on it. GitLab remains the intended third:
-  warren-1b6f was its no-regret pre-work, and warren-7ba8 is the provider issue.
-  Forgejo/Gitea follows GitLab when a real Codeberg or self-hosted user appears.
+  paid for by a deployment running on it. GitLab is the third (`src/forge/gitlab/`,
+  GH#1028, warren-7ba8). Forgejo/Gitea follows when a real Codeberg or self-hosted
+  user appears.
 
   Price of admission: a concrete deployment prepared to exercise the implementation and
   its conformance or acceptance suite.

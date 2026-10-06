@@ -4,6 +4,8 @@ import { AdoForge } from "../forge/ado/provider.ts";
 import type { Forge } from "../forge/contract.ts";
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { GitHubForge } from "../forge/github/provider.ts";
+import { GitLabForge } from "../forge/gitlab/provider.ts";
+import { parseGitLabInstance } from "../forge/gitlab/repo-ref.ts";
 import {
 	assertNoUserinfo,
 	normalizeGitHubUrl,
@@ -190,6 +192,20 @@ describe("parseProjectUrl", () => {
 		expect(parseProjectUrl("https://dev.azure.com/org/Proj/_git/repo", ado)).toEqual({
 			owner: "org-Proj",
 			name: "repo",
+		});
+	});
+
+	test("lays a GitLab project in nested groups out under one folded owner", () => {
+		const instance = parseGitLabInstance("https://gitlab.com");
+		if (instance === null) throw new Error("unreachable");
+		const gitlab = new GitLabForge({ instance, token: "t" });
+		expect(parseProjectUrl("https://gitlab.com/acme/platform/widget.git", gitlab)).toEqual({
+			owner: "acme-platform",
+			name: "widget",
+		});
+		expect(parseProjectUrl("git@gitlab.com:acme/widget.git", gitlab)).toEqual({
+			owner: "acme",
+			name: "widget",
 		});
 	});
 

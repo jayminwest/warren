@@ -11,6 +11,7 @@ import { FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
 import { type GitHubAppCredentials, GitHubAppForge } from "./github-app/provider.ts";
 import { generateTestAppKeyPair } from "./github-app/test-helpers.ts";
+import { GitLabForge } from "./gitlab/provider.ts";
 import {
 	DEFAULT_FORGE_KIND,
 	FORGE_KINDS,
@@ -53,20 +54,21 @@ describe("resolveForgeKind", () => {
 	});
 
 	test("accepts all registered kinds", () => {
-		expect(FORGE_KINDS).toEqual(["github", "app", "ado", "fake"]);
+		expect(FORGE_KINDS).toEqual(["github", "app", "ado", "gitlab", "fake"]);
 		expect(resolveForgeKind({ WARREN_FORGE: "github" })).toBe("github");
 		expect(resolveForgeKind({ WARREN_FORGE: "app" })).toBe("app");
 		expect(resolveForgeKind({ WARREN_FORGE: "ado" })).toBe("ado");
+		expect(resolveForgeKind({ WARREN_FORGE: "gitlab" })).toBe("gitlab");
 		expect(resolveForgeKind({ WARREN_FORGE: "fake" })).toBe("fake");
 	});
 
 	test("fails loudly on an unknown value rather than falling back", () => {
-		expect(() => resolveForgeKind({ WARREN_FORGE: "gitlab" })).toThrow(UnknownForgeError);
+		expect(() => resolveForgeKind({ WARREN_FORGE: "forgejo" })).toThrow(UnknownForgeError);
 	});
 
 	test("the unknown-kind error lists the legal values in its recoveryHint", () => {
 		try {
-			resolveForgeKind({ WARREN_FORGE: "gitlab" });
+			resolveForgeKind({ WARREN_FORGE: "forgejo" });
 			throw new Error("unreachable");
 		} catch (e) {
 			expect(e).toBeInstanceOf(UnknownForgeError);
@@ -348,5 +350,81 @@ describe("the github arm's static secret", () => {
 		const ref = forge.parseRepoRef("https://github.com/x/y.git");
 		const cred = await forge.gitCredential(ref as NonNullable<typeof ref>);
 		expect(cred.ok && cred.value.secret).toBe("legacy");
+	});
+});
+
+describe("resolveForge gitlab arm", () => {
+	const gitlabArmDeps: ForgeDeps = {
+		githubToken: (): string => {
+			throw new Error("githubToken factory must not be called when WARREN_FORGE=gitlab");
+		},
+		githubApp: (): GitHubAppCredentials => {
+			throw new Error("githubApp factory must not be called when WARREN_FORGE=gitlab");
+		},
+		adoToken: (): string => {
+			throw new Error("adoToken factory must not be called when WARREN_FORGE=gitlab");
+		},
+		fakeStore: (): FakeForgeStore => {
+			throw new Error("fakeStore factory must not be called when WARREN_FORGE=gitlab");
+		},
+		gitlabToken: () => "glpat-injected",
+	};
+
+	test("resolves GitLabForge bound to gitlab.com when WARREN_GITLAB_URL is unset", () => {
+		const forge = resolveForge(gitlabArmDeps, { WARREN_FORGE: "gitlab" });
+		expect(forge).toBeInstanceOf(GitLabForge);
+		expect(forge.capabilities.credentialLifetime).toBe("static");
+		expect(forge.parseRepoRef("https://gitlab.com/group/sub/app.git")?.forge).toBe("gitlab");
+		expect(forge.parseRepoRef("https://git.example.com/group/app.git")).toBeNull();
+	});
+
+	test("binds the arm to the instance WARREN_GITLAB_URL names", () => {
+		const forge = resolveForge(gitlabArmDeps, {
+			WARREN_FORGE: "gitlab",
+			WARREN_GITLAB_URL: " https://git.example.com/gitlab ",
+		});
+		expect(forge.parseRepoRef("https://git.example.com/gitlab/group/app.git")?.key).toBe(
+			"git.example.com/group/app",
+		);
+		expect(forge.parseRepoRef("https://gitlab.com/group/app.git")).toBeNull();
+	});
+
+	test("fails loud at boot on a WARREN_GITLAB_URL that names no instance", () => {
+		expect(() =>
+			resolveForge(gitlabArmDeps, {
+				WARREN_FORGE: "gitlab",
+				WARREN_GITLAB_URL: "gitlab.example.com",
+			}),
+		).toThrow(ForgeConfigError);
+	});
+
+	test("the default gitlab token factory reads WARREN_GIT_TOKEN, never GITHUB_TOKEN", async () => {
+		const url = "https://gitlab.com/group/app.git";
+		const viaWarren = resolveForge({}, { WARREN_FORGE: "gitlab", WARREN_GIT_TOKEN: "glpat-env" });
+		const ref = viaWarren.parseRepoRef(url);
+		if (ref === null) throw new Error("unreachable");
+		const credential = await viaWarren.gitCredential(ref);
+		expect(credential.ok && credential.value).toEqual({
+			username: "oauth2",
+			secret: "glpat-env",
+			expiresAt: null,
+		});
+		const viaGitHub = resolveForge({}, { WARREN_FORGE: "gitlab", GITHUB_TOKEN: "gh-token" });
+		const missing = await viaGitHub.gitCredential(ref);
+		expect(missing.ok).toBe(false);
+		if (!missing.ok) expect(missing.error.kind).toBe("no_credential");
+	});
+
+	test("the other arms never touch the gitlab arm's inputs", () => {
+		const throwingGitLab: ForgeDeps = {
+			gitlabToken: (): string => {
+				throw new Error("gitlabToken factory must not be called for other arms");
+			},
+		};
+		for (const kind of ["github", "ado", "fake"]) {
+			expect(() =>
+				resolveForge(throwingGitLab, { WARREN_FORGE: kind, WARREN_GITLAB_URL: "not a url" }),
+			).not.toThrow();
+		}
 	});
 });

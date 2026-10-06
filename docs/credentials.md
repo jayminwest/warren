@@ -57,6 +57,18 @@ WARREN_GIT_AUTHOR_EMAIL=1234567+your-bot-login@users.noreply.github.com
 
 Use a dedicated GitHub machine account and its noreply address. The two values are not secrets. When both are absent, warren warns and falls back to the host identity, which is usually unset in a fresh container. The `warren up` wizard derives both from your token's GitHub login when it collects a token interactively.
 
+## GitLab credentials
+
+`WARREN_FORGE=gitlab` selects the GitLab forge. Warren reads the token from `WARREN_GIT_TOKEN` and never from `GITHUB_TOKEN`:
+
+```bash
+WARREN_FORGE=gitlab
+WARREN_GIT_TOKEN=glpat-...
+WARREN_GITLAB_URL=https://gitlab.example.com   # omit for gitlab.com
+```
+
+Use a project or group access token with the Developer role and the `api` scope. The `api` scope covers merge requests, pipelines and git over HTTPS. A personal access token with the same scope also works, but then runs push as that person. `WARREN_GITLAB_URL` names one instance, and warren only registers projects on that host. Keep the relative URL root if your instance has one, for example `https://example.com/gitlab`.
+
 ## Where warren stores credentials
 
 - `~/.warren/env` — values the `warren up` wizard collects, mode 0600. Real environment variables always win over this file.

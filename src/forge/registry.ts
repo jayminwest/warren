@@ -20,6 +20,10 @@
  *     input throws `ForgeConfigError` at boot (fail loud, §4).
  *   - `ado`    → `AdoForge` (Azure DevOps Repos) over the personal access
  *     token in `WARREN_GIT_TOKEN`.
+ *   - `gitlab` → `GitLabForge` (GH#1028) over the access token in
+ *     `WARREN_GIT_TOKEN`, bound to the instance in `WARREN_GITLAB_URL`
+ *     (blank → `https://gitlab.com`); an unparseable URL throws
+ *     `ForgeConfigError` at boot.
  *   - `fake`   → `FakeForge` with its in-memory PR store.
  *   - anything else → `UnknownForgeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong forge).
@@ -33,7 +37,7 @@
 
 import { AdoForge } from "./ado/provider.ts";
 import type { Forge } from "./contract.ts";
-import { UnknownForgeError } from "./errors.ts";
+import { ForgeConfigError, UnknownForgeError } from "./errors.ts";
 import { FakeForge, type FakeForgeOptions } from "./fake/fake-forge.ts";
 import {
 	FAKE_FORGE_AUTO_MERGE_ARM_ENV,
@@ -46,15 +50,17 @@ import {
 	GitHubAppForge,
 	loadGitHubAppCredentialsFromEnv,
 } from "./github-app/provider.ts";
+import { GitLabForge } from "./gitlab/provider.ts";
+import { DEFAULT_GITLAB_URL, parseGitLabInstance } from "./gitlab/repo-ref.ts";
 
 /** Forge backends the selector understands. */
-export type ForgeKind = "github" | "app" | "ado" | "fake";
+export type ForgeKind = "github" | "app" | "ado" | "gitlab" | "fake";
 
 /** Selector default when `WARREN_FORGE` is unset — the real forge. */
 export const DEFAULT_FORGE_KIND: ForgeKind = "github";
 
 /** Every recognized `WARREN_FORGE` value (used for validation + error hints). */
-export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "ado", "fake"];
+export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "ado", "gitlab", "fake"];
 
 /** Minimal env surface the selector reads. */
 export type ForgeEnv = Readonly<Record<string, string | undefined>>;
@@ -112,6 +118,18 @@ export interface ForgeDeps {
 	 * constructed `AdoForge` never reaches the network.
 	 */
 	readonly adoFetch?: typeof fetch;
+	/**
+	 * Lazy static-secret factory for the `gitlab` arm. Optional — when
+	 * omitted the selector reads `WARREN_GIT_TOKEN` from the same env the
+	 * selection came from. A test injects a throwing factory here to prove
+	 * the other arms never touch the gitlab arm's inputs.
+	 */
+	readonly gitlabToken?: () => string;
+	/**
+	 * OPTIONAL fetch seam for the `gitlab` arm — a test injects a stub so
+	 * the constructed `GitLabForge` never reaches the network.
+	 */
+	readonly gitlabFetch?: typeof fetch;
 	/**
 	 * Lazy store factory for the `fake` arm — only consulted for
 	 * `WARREN_FORGE=fake`. Optional: the `FakeForge` defaults to a fresh
@@ -182,6 +200,8 @@ export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env):
 		}
 		case "ado":
 			return buildAdoForge(deps, env);
+		case "gitlab":
+			return buildGitLabForge(deps, env);
 		case "fake":
 			return buildFakeForge(deps, env);
 	}
@@ -192,6 +212,23 @@ function buildAdoForge(deps: ForgeDeps, env: ForgeEnv): Forge {
 	return new AdoForge({
 		token: tokenFactory(),
 		...(deps.adoFetch !== undefined ? { fetch: deps.adoFetch } : {}),
+	});
+}
+
+function buildGitLabForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	const url = env.WARREN_GITLAB_URL?.trim() || DEFAULT_GITLAB_URL;
+	const instance = parseGitLabInstance(url);
+	if (instance === null) {
+		throw new ForgeConfigError(`WARREN_GITLAB_URL is not a GitLab instance URL: "${url}"`, {
+			recoveryHint:
+				"Set WARREN_GITLAB_URL to the instance root, e.g. https://gitlab.example.com (or leave it unset for gitlab.com).",
+		});
+	}
+	const tokenFactory = deps.gitlabToken ?? (() => firstToken(env.WARREN_GIT_TOKEN));
+	return new GitLabForge({
+		instance,
+		token: tokenFactory(),
+		...(deps.gitlabFetch !== undefined ? { fetch: deps.gitlabFetch } : {}),
 	});
 }
 

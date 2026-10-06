@@ -16,6 +16,7 @@
  */
 
 import type { ForgeError, ForgeResult } from "../contract.ts";
+import { fetchWithDeadline } from "../fetch-deadline.ts";
 import {
 	networkError,
 	parseRetryAfterMs,
@@ -122,22 +123,6 @@ export function classifyAdoHttpError(
 	return { ...base, kind: "http_error" };
 }
 
-/** Statuses whose `Response` must carry no body. */
-const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
-
-/**
- * Drain `res` and hand back an equivalent response whose body is already
- * in memory, so no later read can block.
- */
-async function bufferResponse(res: Response): Promise<Response> {
-	const text = await res.text();
-	return new Response(NULL_BODY_STATUSES.has(res.status) ? null : text, {
-		status: res.status,
-		statusText: res.statusText,
-		headers: res.headers,
-	});
-}
-
 /**
  * Execute one Azure DevOps REST request. Never throws — a thrown fetch
  * (including the deadline firing) surfaces as a `network` error.
@@ -152,25 +137,11 @@ export async function requestAdo(input: AdoRequestInput): Promise<AdoTransportRe
 	const timeoutMs = input.timeoutMs ?? DEFAULT_ADO_TIMEOUT_MS;
 
 	const retried = await withGitHubRetry(async () => {
-		// An explicit timer rather than `AbortSignal.timeout`: that signal
-		// does not retain the event loop on every platform, so a pending
-		// fetch could outlive the deadline it was supposed to cut.
-		const controller = new AbortController();
-		const deadline = setTimeout(
-			() => controller.abort(new DOMException("request timed out at the deadline", "TimeoutError")),
-			timeoutMs,
-		);
-		// The body is consumed inside the same window: a proxy that sends
-		// the headers and then stalls the body would otherwise hang a
-		// caller's read after the timer was already cleared.
 		let res: Response;
 		try {
-			const fetched = await fetchImpl(input.url, { ...init, signal: controller.signal });
-			res = await bufferResponse(fetched);
+			res = await fetchWithDeadline(fetchImpl, input.url, init, timeoutMs);
 		} catch (err) {
 			return { ok: false, error: networkError(err, input.context) };
-		} finally {
-			clearTimeout(deadline);
 		}
 		if (!res.ok || res.status === 203) {
 			const text = truncate(await readText(res), ERROR_BODY_MAX_CHARS);

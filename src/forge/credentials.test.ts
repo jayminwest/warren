@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { GitCredentialMintError, mintGitCredential } from "./credentials.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { GitHubForge } from "./github/provider.ts";
+import { GitLabForge } from "./gitlab/provider.ts";
+import { parseGitLabInstance } from "./gitlab/repo-ref.ts";
 
 describe("mintGitCredential", () => {
 	test("returns undefined for a URL the forge does not own", async () => {
@@ -73,5 +75,15 @@ describe("mintGitCredential", () => {
 		await expect(mintGitCredential(forge, "https://github.com/x/y.git")).rejects.toBeInstanceOf(
 			GitCredentialMintError,
 		);
+	});
+
+	test("mints the GitLab token under the oauth2 username, for the instance's host and port", async () => {
+		const instance = parseGitLabInstance("https://git.example.com:8443/gitlab");
+		if (instance === null) throw new Error("unreachable");
+		const forge = new GitLabForge({ instance, token: "glpat-x" });
+		expect(
+			await mintGitCredential(forge, "https://git.example.com:8443/gitlab/group/sub/app.git"),
+		).toEqual({ username: "oauth2", secret: "glpat-x", host: "git.example.com:8443" });
+		expect(await mintGitCredential(forge, "https://gitlab.com/group/app.git")).toBeUndefined();
 	});
 });

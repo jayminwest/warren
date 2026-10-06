@@ -173,10 +173,11 @@ loudly). Settled as follows:
 ```ts
 // Opaque handle — the domain compares and passes these, and reads nothing
 // out of them. A GitHubForge packs owner/repo/host; AdoForge packs the
-// org/project/repo triple; FakeForge packs a directory path. NOTHING
-// outside the provider destructures a RepoRef.
+// org/project/repo triple; GitLabForge packs host plus the full group path;
+// FakeForge packs a directory path. NOTHING outside the provider
+// destructures a RepoRef.
 interface RepoRef {
-  readonly forge: string;  // registry key: "github" | "ado" | "fake"
+  readonly forge: string;  // registry key: "github" | "ado" | "gitlab" | "fake"
   readonly key: string;    // provider-private, stable, safe to log
 }
 
@@ -461,14 +462,14 @@ PAT-only degradation as the primary path — is retired.
 Every declared flag gets a stated fallback. `unsupported` is the error kind a
 provider returns when the domain calls past a false flag.
 
-| Capability | GitHubApp | GitHubPat | AdoForge | FakeForge | Domain behavior when absent |
-| --- | --- | --- | --- | --- | --- |
-| `checkRuns` | yes | **no** | yes | yes | CI-fixer poller stays idle and logs one notice per project. No run dispatches. |
-| `jobLogs` | yes | yes | yes | synthetic | CI-fixer prompt omits the log tail and says so. |
-| `pullRequestBodyEdit` | yes | yes | yes | yes | Preview annotation sub-step reports `skipped`, and the reap continues. |
-| `branchDelete` | yes | yes | yes | yes | Acceptance cleanup logs and moves on. Never fails a scenario. |
-| `botIdentity` | yes | no | no | yes | Fall back to `WARREN_GIT_AUTHOR_*`, which is today's only source. |
-| `credentialLifetime` | `short-lived` | `static` | `static` | `static` | Re-mint path skipped when static. |
+| Capability | GitHubApp | GitHubPat | AdoForge | GitLabForge | FakeForge | Domain behavior when absent |
+| --- | --- | --- | --- | --- | --- | --- |
+| `checkRuns` | yes | **no** | yes | yes | yes | CI-fixer poller stays idle and logs one notice per project. No run dispatches. |
+| `jobLogs` | yes | yes | yes | yes | synthetic | CI-fixer prompt omits the log tail and says so. |
+| `pullRequestBodyEdit` | yes | yes | yes | yes | yes | Preview annotation sub-step reports `skipped`, and the reap continues. |
+| `branchDelete` | yes | yes | yes | yes | yes | Acceptance cleanup logs and moves on. Never fails a scenario. |
+| `botIdentity` | yes | no | no | yes | yes | Fall back to `WARREN_GIT_AUTHOR_*`, which is today's only source. |
+| `credentialLifetime` | `short-lived` | `static` | `static` | `static` | `static` | Re-mint path skipped when static. |
 
 `AdoForge` (`src/forge/ado/`, `WARREN_FORGE=ado`) is the Azure DevOps Repos
 arm. A personal access token with Code (read & write) and Build (read)
@@ -481,6 +482,27 @@ fork-qualified head (`owner:branch`) is `unsupported` rather than
 mis-targeted, and a duplicate open is a 409 (TF401179) that resolves to the
 existing PR. A rejected token is a 203 carrying the sign-in page, not a 401;
 the transport reads it as `unauthorized`.
+
+`GitLabForge` (`src/forge/gitlab/`, `WARREN_FORGE=gitlab`, GH#1028) is the
+GitLab arm. It answers for one instance, named by `WARREN_GITLAB_URL`
+(default `https://gitlab.com`), and owns only URLs on that host. A relative
+URL root such as `https://example.com/gitlab` is kept on the https and API
+paths. Nested groups pack into the key, and `repoLayout` folds every group
+into the on-disk owner, so `a/sub/app` and `b/sub/app` never share a
+directory. The token is sent as `PRIVATE-TOKEN`, and git gets it under the
+`oauth2` username, which GitLab accepts for personal, project and group
+access tokens. A pipeline job is the check run: `listChecks` reads the jobs
+of the newest pipeline for the commit, and a branch name resolves to its tip
+first, so merge-request pipelines count. A failed job with `allow_failure`
+is `neutral`, and a `manual` job is `skipped`. `botIdentity` reads `GET
+/user`, where a project or group access token is a bot user with a noreply
+commit email. `autoMergeArm` is false, but `getPullRequest` reports
+`merge_when_pipeline_succeeds` as `armed` or `unarmed`. A duplicate open is a
+409 that resolves to the existing merge request, and a fork-qualified head is
+`unsupported`. The K8s in-pod finalize still sends the `x-access-token`
+username out of `src/workspace/git/clone-url.ts`. GitLab does not validate
+the username for personal, project or group access tokens, so that push
+should authenticate as it is. No test here covers the K8s path.
 
 **`checkRuns` is the one that hurts, and it is not a warren limitation.** A
 fine-grained personal access token cannot call the Checks API. GitHub's own
