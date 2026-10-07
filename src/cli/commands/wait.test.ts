@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { pollUntilTerminal } from "../../client/client-helpers.ts";
 import {
 	type RunRow,
 	type WaitForRunOptions,
@@ -185,6 +186,42 @@ describe("runWait", () => {
 		);
 		expect(res.exitCode).toBe(1);
 		expect(err.join("")).toContain("wait_timeout");
+	});
+
+	test("retries-one-transient-500-then-exits-0-on-the-terminal-row", async () => {
+		const { context } = captureContext();
+		const rows: Array<RunRow | Error> = [
+			new WarrenClientError(500, "internal", "database unavailable"),
+			runRow({ state: "running" }),
+			runRow(),
+		];
+		let idx = 0;
+		const fetchRow = async (): Promise<RunRow> => {
+			const next = rows[Math.min(idx++, rows.length - 1)] ?? runRow();
+			if (next instanceof Error) throw next;
+			return next;
+		};
+		const res = await runWait(
+			context,
+			{
+				client: client({
+					// The real SDK poll loop (gh #1305), at a test-speed cadence.
+					waitForRun: (id, opts) =>
+						pollUntilTerminal({
+							label: "run",
+							id,
+							opts: { ...opts, intervalMs: 1, timeoutMs: 5_000 },
+							fetchRow,
+							isTerminal: (r) => r.state === "succeeded",
+							stateOf: (r) => r.state,
+						}),
+				}),
+			},
+			{ runId: "run-1" },
+		);
+		expect(res.exitCode).toBe(0);
+		expect(res.state).toBe("succeeded");
+		expect(idx).toBe(3);
 	});
 
 	test("summary-emits-the-compact-projection-as-one-line", async () => {

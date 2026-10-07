@@ -97,10 +97,9 @@ interface CreateRunResponse {
 	readonly run: RunRow;
 }
 
-/** Generous: the reap path runs branch_push (best-effort, skipped on push
- *  failure), then pr_open (best-effort, skipped without GITHUB_TOKEN),
- *  then preview_launch which spawns the sidecar and probes readiness for
- *  up to 60s. */
+/** Reap runs branch_push, pr_open, then preview_launch (bounded by the
+ *  fixture's connect/readiness caps) before the run turns terminal, so the
+ *  preview state has usually settled by the time this wait starts. */
 const LIVE_PREVIEW_TIMEOUT_MS = 90_000;
 
 const PREVIEW_HOST = "preview.warren.acceptance";

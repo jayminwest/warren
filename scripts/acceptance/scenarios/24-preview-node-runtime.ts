@@ -75,10 +75,15 @@ interface CreateRunResponse {
 	readonly run: RunRow;
 }
 
-/** Same generous budget as scenario 20: reap → branch_push → pr_open →
- *  preview_launch can take up to ~60s of readiness probing. */
+/** Reap runs branch_push → pr_open → preview_launch BEFORE the terminal
+ *  transition, so the run stays `running` through the sidecar launch; the
+ *  terminal budget covers the capped probe phases below (warren-deac). */
 const LIVE_PREVIEW_TIMEOUT_MS = 90_000;
-const TERMINAL_TIMEOUT_MS = 30_000;
+const TERMINAL_TIMEOUT_MS = 90_000;
+/** Caps on the probe phases (product defaults: 300s / 600s) so a sidecar
+ *  that never binds settles fast as `preview_state='failed'`. */
+const PREVIEW_CONNECT_TIMEOUT = "20s";
+const PREVIEW_READINESS_TIMEOUT = "20s";
 
 const PREVIEW_HOST = "preview.warren.acceptance";
 const PREVIEW_SANDBOX_PORT = 3000;
@@ -269,6 +274,8 @@ async function buildNodePreviewFixture(input: BuildFixtureInput): Promise<BuiltF
 				command: "node ./.warren/preview-server.js",
 				port: PREVIEW_SANDBOX_PORT,
 				readiness_path: "/",
+				connect_timeout: PREVIEW_CONNECT_TIMEOUT,
+				readiness_timeout: PREVIEW_READINESS_TIMEOUT,
 			},
 		},
 		null,

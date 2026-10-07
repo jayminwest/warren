@@ -37,9 +37,18 @@ export interface EventRow {
 	readonly payload: Record<string, unknown> | null;
 }
 
-/** A run that never reaches a terminal state inside this window is treated
- *  as a harness failure — the stub agent exits in well under a second. */
-const TERMINAL_TIMEOUT_MS = 30_000;
+/** Reap runs `preview_launch` BEFORE the terminal transition
+ *  (`src/runs/reap/run.ts`), so the run row stays `running` for the whole
+ *  sidecar launch. The budget covers the stub agent plus the bounded
+ *  connect + readiness phases below, with headroom (warren-deac). */
+const TERMINAL_TIMEOUT_MS = 90_000;
+
+/** Fixture caps on the two preview probe phases. The product defaults
+ *  (300s connect, 600s readiness) would hold the run in `running` far past
+ *  any scenario budget when the sidecar never binds; capping them makes a
+ *  broken launch settle fast as a named `preview_state='failed'`. */
+const PREVIEW_CONNECT_TIMEOUT = "20s";
+const PREVIEW_READINESS_TIMEOUT = "20s";
 
 const PREVIEW_SANDBOX_PORT = 3000;
 const PREVIEW_OK_BODY = "warren-preview-ok\n";
@@ -93,6 +102,8 @@ export async function buildPreviewProjectFixture(
 				command: `python3 -m http.server ${PREVIEW_SANDBOX_PORT} --bind 0.0.0.0 --directory ./.warren/preview-www`,
 				port: PREVIEW_SANDBOX_PORT,
 				readiness_path: "/",
+				connect_timeout: PREVIEW_CONNECT_TIMEOUT,
+				readiness_timeout: PREVIEW_READINESS_TIMEOUT,
 			},
 		},
 		null,
@@ -168,7 +179,8 @@ export async function waitForRunTerminal(
 	logger.debug(`scenario-20: run ${runId} terminal in state=${row.state}`);
 	if (row.state !== "succeeded") {
 		throw new AcceptanceError(
-			`expected run ${runId} to succeed (preview launches only on success); got state=${row.state}`,
+			`expected run ${runId} to succeed (preview launches only on success); got state=${row.state}` +
+				` preview_state=${String(row.previewState ?? null)}`,
 		);
 	}
 }
