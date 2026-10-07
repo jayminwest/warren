@@ -39,6 +39,7 @@ import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "../plan-ru
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
+import { MigrationPreflightError } from "../runs/spawn/migration-preflight.ts";
 import {
 	RuntimeAdmissionError,
 	RuntimeConflictError,
@@ -225,6 +226,9 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof ProjectLacksTrackerError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
 	if (err instanceof StateTransitionError) return 409;
+	// warren-236d: the branch's drizzle migration journal collides with main's
+	// during dispatch preflight — the branch state conflicts with main, so 409.
+	if (err instanceof MigrationPreflightError) return 409;
 	// Provider-neutral runtime errors (warren-36cb): K8sProvider transport
 	// failures ride `RuntimeUnreachableError`; run-not-found maps to 404 and a
 	// backend state clash (`RuntimeConflictError`) to 409.
