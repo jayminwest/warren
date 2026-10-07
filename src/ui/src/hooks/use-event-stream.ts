@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
 import { runsApi, streamRunEvents, UnauthorizedError } from "@/api/client.ts";
-import { isTerminalRunState, type RunEvent } from "@/api/types.ts";
+import { isTerminalRunState } from "@/api/types.ts";
 import {
 	appendRunEvent,
 	type EventStreamLoopDeps,
+	type EventStreamState,
+	emptyStreamState,
 	runEventStreamLoop,
-	type StreamStatus,
+	streamStateForRun,
 } from "@/hooks/use-event-stream.helpers.ts";
-
-interface State {
-	events: RunEvent[];
-	status: StreamStatus;
-	error: string | null;
-}
 
 /**
  * Subscribe to /runs/:id/events and accumulate the parsed NDJSON
@@ -32,14 +28,14 @@ interface State {
  * The reconnect policy lives in `use-event-stream.helpers.ts`; this
  * file is only the React binding.
  */
-export function useEventStream(runId: string, follow: boolean): State {
-	const [state, setState] = useState<State>({
-		events: [],
-		status: "connecting",
-		error: null,
-	});
+export function useEventStream(runId: string, follow: boolean): EventStreamState {
+	const [state, setState] = useState<EventStreamState>(() => emptyStreamState(runId));
 
 	useEffect(() => {
+		// Isolate per run: a run-id change (without a remount) resets the
+		// accumulated tail; a follow flip on the same run keeps it.
+		setState((s) => streamStateForRun(s, runId));
+
 		let cancelled = false;
 		const ctrl = new AbortController();
 
@@ -66,10 +62,14 @@ export function useEventStream(runId: string, follow: boolean): State {
 			isAuthError: (err) => err instanceof UnauthorizedError,
 			onEvent: (evt) =>
 				setState((s) => {
+					// Drop a stale event from a previous run's stream — the
+					// aborted loop may still deliver one in-flight envelope.
+					if (s.runId !== runId) return s;
 					const events = appendRunEvent(s.events, evt);
 					return events === s.events ? s : { ...s, events };
 				}),
-			onStatus: (status, error) => setState((s) => ({ ...s, status, error })),
+			onStatus: (status, error) =>
+				setState((s) => (s.runId === runId ? { ...s, status, error } : s)),
 		};
 		void runEventStreamLoop(deps);
 

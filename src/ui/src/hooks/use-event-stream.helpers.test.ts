@@ -4,6 +4,7 @@ import {
 	appendRunEvent,
 	runEventStreamLoop,
 	type StreamStatus,
+	streamStateForRun,
 } from "./use-event-stream.helpers.ts";
 
 /**
@@ -236,5 +237,33 @@ describe("appendRunEvent", () => {
 	test("returns the same array when nothing is added", () => {
 		const events = [evt(1), evt(2)];
 		expect(appendRunEvent(events, evt(2))).toBe(events);
+	});
+});
+
+describe("streamStateForRun", () => {
+	const evt = (seq: number) => ({ seq }) as RunEvent;
+
+	test("keeps the same state object when the run id matches", () => {
+		const prev = {
+			runId: "run_a",
+			events: [evt(1), evt(2)],
+			status: "live" as StreamStatus,
+			error: null,
+		};
+		expect(streamStateForRun(prev, "run_a")).toBe(prev);
+	});
+
+	test("starts empty when the run id changes, dropping the previous run's events", () => {
+		const prev = {
+			runId: "run_a",
+			events: [evt(1), evt(2)],
+			status: "live" as StreamStatus,
+			error: null,
+		};
+		const next = streamStateForRun(prev, "run_b");
+		expect(next.runId).toBe("run_b");
+		expect(next.events).toEqual([]);
+		expect(next.status).toBe("connecting");
+		expect(next.error).toBeNull();
 	});
 });

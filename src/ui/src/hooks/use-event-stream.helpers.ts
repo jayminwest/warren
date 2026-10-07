@@ -128,3 +128,29 @@ export function appendRunEvent(events: readonly RunEvent[], evt: RunEvent): RunE
 	if (last !== undefined && evt.seq <= last.seq) return events as RunEvent[];
 	return [...events, evt];
 }
+
+/** The React state carried by {@link useEventStream}. */
+export interface EventStreamState {
+	/** The run this state belongs to — used to isolate one run's tail. */
+	runId: string;
+	events: RunEvent[];
+	status: StreamStatus;
+	error: string | null;
+}
+
+/** A fresh, empty stream state for `runId`. */
+export function emptyStreamState(runId: string): EventStreamState {
+	return { runId, events: [], status: "connecting", error: null };
+}
+
+/**
+ * The run-id isolation guard for `useEventStream` (warren-1cd1). When the
+ * state belongs to a different run than the one being rendered, start empty —
+ * a new run's tail must never show the previous run's events, which
+ * `appendRunEvent`'s per-run seq dedupe would otherwise drop entirely. When
+ * the state already belongs to `runId` (a `follow` flip reuses the same run),
+ * keep it so the history replay dedupes against the retained events.
+ */
+export function streamStateForRun(prev: EventStreamState, runId: string): EventStreamState {
+	return prev.runId === runId ? prev : emptyStreamState(runId);
+}
