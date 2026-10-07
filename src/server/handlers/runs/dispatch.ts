@@ -1,5 +1,7 @@
 import { ValidationError } from "../../../core/errors.ts";
+import { IssueNotFoundError } from "../../../core/wire.ts";
 import { mintGitCredential } from "../../../forge/credentials.ts";
+import { refreshProject } from "../../../projects/manage.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { validateBaseCommit, validateDispatchRef } from "../../../runs/base-commit.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
@@ -65,7 +67,27 @@ async function validateSeedId(deps: ServerDeps, projectId: string, seedId: strin
 	if (deps.issueTracker === undefined) return;
 	const project = await deps.repos.projects.require(projectId);
 	const ctx: TrackerContext = { projectId: project.id, localPath: project.localPath };
-	await deps.issueTracker.getIssue(ctx, seedId);
+	try {
+		await deps.issueTracker.getIssue(ctx, seedId);
+	} catch (err) {
+		if (!(err instanceof IssueNotFoundError)) throw err;
+		// warren-a25a: a just-pushed issue is invisible until the server's
+		// clone is refreshed (spawnRun refreshes later, but the check runs
+		// first). For a git-native tracker with a spawn seam, refresh once and
+		// retry; a second miss still surfaces as the same 404.
+		if (!deps.issueTracker.capabilities.isGitNative || deps.spawn === undefined) throw err;
+		const { gitCredential } = await mintSpawnGitCredential(deps, projectId);
+		await refreshProject({
+			repo: deps.repos.projects,
+			config: deps.projectsConfig,
+			id: project.id,
+			gitCredential,
+			spawn: deps.spawn,
+			...(deps.now !== undefined ? { now: deps.now } : {}),
+			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
+		});
+		await deps.issueTracker.getIssue(ctx, seedId);
+	}
 }
 
 /**
