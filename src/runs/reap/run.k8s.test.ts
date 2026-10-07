@@ -461,11 +461,15 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(result.workspaceDestroyed).toBe(false);
 	});
 
-	test("workspaceInfo throwing skips the pipeline and records workspace_lookup", async () => {
+	test("workspaceInfo throwing fails closed and preserves the workspace (warren-d31b)", async () => {
+		let terminated = 0;
 		const provider = {
 			capabilities: {},
 			workspaceInfo: async () => {
 				throw new Error("pod list failed");
+			},
+			terminate: async () => {
+				terminated += 1;
 			},
 		} as unknown as RuntimeProvider;
 		const e = fakeExec();
@@ -483,7 +487,10 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(result.branchPushed).toBe(false);
 		// No pipeline git work ran.
 		expect(e.calls).toHaveLength(0);
-		// The run still terminalizes.
-		expect(result.state).toBe("succeeded");
+		// Delivery is unknown: the run fails closed and the workspace survives.
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("finalize_failed");
+		expect(terminated).toBe(0);
+		expect(result.workspaceDestroyed).toBe(false);
 	});
 });

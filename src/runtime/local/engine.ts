@@ -31,7 +31,6 @@ import { collectProviderEnv } from "../../core/providers.ts";
 import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import { defaultFs } from "../../runs/reap/util.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
-import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
 import { branchExists, discoverHostClone } from "../../workspace/git/worktree.ts";
 import {
 	type MaterializedWorkspace,
@@ -201,27 +200,27 @@ export class LocalEngine {
 
 	/**
 	 * Merge the DOMAIN env with the provider's OWN plumbing
-	 * (`BUN_INSTALL_CACHE_DIR` + the computed `WARREN_API_URL` callback, §6.3).
-	 * Unchanged from the burrow-backed mode: the callback URL rides only when
-	 * the domain supplied a token.
+	 * (`BUN_INSTALL_CACHE_DIR`).
 	 *
 	 * warren-fb8d: every provider credential the server env holds (the core
 	 * registry's keys, delivered opaquely — the provider does not interpret
 	 * them) folds into the sandbox env. The DOMAIN env wins on overlap (an
 	 * OAuth-token flow's ANTHROPIC_API_KEY must not be shadowed).
+	 *
+	 * warren-f737: the run-scoped `WARREN_API_TOKEN` (and the `WARREN_API_URL`
+	 * callback it pairs with) never reaches the sandbox. Local and docker runs
+	 * have no in-sandbox entrypoint (the harness argv IS the sandboxed
+	 * process), and the callbacks the token authorizes (inbox, finalize,
+	 * salvage, credential remint) all run host-side in this engine. An agent
+	 * holding it could mint a push credential via `/runs/:id/git-credential`,
+	 * the hole warren-ccef closed for the K8s agent child.
 	 */
 	private composeSandboxEnv(domainEnv: Record<string, string>): Record<string, string> {
-		const env: Record<string, string> = {
+		return scrubSandboxEnv({
 			...collectProviderEnv(this.serverEnv ?? process.env),
 			...domainEnv,
 			BUN_INSTALL_CACHE_DIR,
-		};
-		const token = domainEnv.WARREN_API_TOKEN;
-		if (token !== undefined && token !== "") {
-			const url = loopbackApiUrl(this.serverEnv ?? process.env);
-			if (url !== null) env.WARREN_API_URL = url;
-		}
-		return env;
+		});
 	}
 
 	/**
@@ -438,6 +437,23 @@ export class LocalEngine {
 			deletedRuns: record !== undefined ? 1 : 0,
 		};
 	}
+}
+
+/**
+ * Callback-only env keys the sandboxed harness must never inherit
+ * (warren-f737). Mirrors the K8s agent-child scrub in `../k8s/agent-io.ts`
+ * (warren-ccef): only an in-sandbox entrypoint may hold the run-scoped
+ * callback token, and the local and docker paths have none.
+ */
+const SANDBOX_SCRUBBED_ENV_KEYS: readonly string[] = ["WARREN_API_TOKEN", "WARREN_API_URL"];
+
+/** Drop the callback-only keys from a composed sandbox env. Pure for tests. */
+export function scrubSandboxEnv(env: Record<string, string>): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (!SANDBOX_SCRUBBED_ENV_KEYS.includes(key)) out[key] = value;
+	}
+	return out;
 }
 
 /** Frontmatter reader for the profile's env allowlist (pi provider override). */
