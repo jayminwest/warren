@@ -42,7 +42,13 @@ export interface CreateRunResponse {
 /** Same generous budget as scenario 20: reap → branch_push → pr_open →
  *  preview_launch can take up to ~60s of readiness probing. */
 export const LIVE_PREVIEW_TIMEOUT_MS = 90_000;
-export const TERMINAL_TIMEOUT_MS = 30_000;
+/** Reap runs `preview_launch` before the terminal transition, so the run
+ *  stays `running` through the sidecar launch (warren-deac). */
+export const TERMINAL_TIMEOUT_MS = 90_000;
+/** Fixture caps on the probe phases (product defaults: 300s / 600s), so a
+ *  sidecar that never binds settles fast as `preview_state='failed'`. */
+const PREVIEW_CONNECT_TIMEOUT = "20s";
+const PREVIEW_READINESS_TIMEOUT = "20s";
 
 export const PREVIEW_SANDBOX_PORT = 3000;
 export const PREVIEW_OK_MARKER = "warren-preview-ok";
@@ -96,6 +102,8 @@ export async function buildPreviewProjectFixture(
 				command: `python3 -m http.server ${PREVIEW_SANDBOX_PORT} --bind 0.0.0.0 --directory ./.warren/preview-www`,
 				port: PREVIEW_SANDBOX_PORT,
 				readiness_path: "/",
+				connect_timeout: PREVIEW_CONNECT_TIMEOUT,
+				readiness_timeout: PREVIEW_READINESS_TIMEOUT,
 			},
 		},
 		null,
