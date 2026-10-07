@@ -16,16 +16,17 @@ import type { RunHandle } from "../../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
 import { resolveCostCapUsd } from "../cost-cap.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
-import {
-	accumulatePiUsage,
-	extractClaudeUsage,
-	newSessionStatsAccumulator,
-	type SessionStatsAccumulator,
-} from "../usage-aggregate.ts";
+import { accumulatePiUsage, extractClaudeUsage } from "../usage-aggregate.ts";
 import { appendOrDrop, newAppendGuard } from "./append-guard.ts";
-import { type CancelBurrowRunFn, enforceBudgetCap } from "./budget.ts";
+import {
+	type CancelBurrowRunFn,
+	type EnforceBudgetCapInput,
+	enforceBudgetCap,
+	persistObservedUsage,
+} from "./budget.ts";
 import { isPerDeltaNoiseEvent } from "./delta-noise.ts";
 import { providerStreamSource } from "./provider-source.ts";
+import { seedResumeUsage } from "./resume-usage.ts";
 import { defaultRunStateProbe, runStatePoller } from "./run-state-poller.ts";
 import { persistInStreamUsage, persistPiStatsDelta, snapshotStats } from "./stats.ts";
 import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
@@ -161,16 +162,33 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// delta persisted, for wire formats that don't carry usage.
 	let statsBaseline: Promise<SessionStats | null> | undefined;
 	let statsPersisted = false;
-	const piUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
 	// claude-code cost tracking (warren-87f9). Single-shot: one `result`
 	// envelope at run end carries `total_cost_usd` + `usage.*_tokens`.
 	// Shape-sniffed in `extractClaudeUsage`; persisted on terminal only when
-	// no pi usage was observed (pi path wins for parity).
-	const claudeUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
+	// no pi usage was observed (pi path wins for parity). warren-1247: a
+	// resumed bridge seeds both from the persisted events up to the cursor.
+	const { piUsage, claudeUsage } = await seedResumeUsage(repos, runId, resumeSeq, input.logger);
 	const appendGuard = newAppendGuard();
+	const capInput: EnforceBudgetCapInput = {
+		runId,
+		sandboxRunId,
+		costCapUsd,
+		piUsage,
+		claudeUsage,
+		repos,
+		broker,
+		cancelBurrowRun,
+		...(input.logger !== undefined ? { logger: input.logger } : {}),
+	};
+	// warren-1247: a seeded total already over the cap (crash after the event
+	// persisted but before the cap fired) trips once, before any new event.
+	if (resumeSeq > 0 && (await enforceBudgetCap(capInput))) {
+		statsPersisted = true;
+		terminalDetected = { outcome: "cancelled" };
+	}
 
 	try {
-		for await (const event of source(ctrl.signal)) {
+		for await (const event of terminalDetected === undefined ? source(ctrl.signal) : []) {
 			if (ctrl.signal.aborted) break;
 			if (!claimed) {
 				const claimedRun = await repos.runs.claimById(runId);
@@ -205,6 +223,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				const resumedOutcome = detectRuntimeTerminal(event);
 				if (resumedOutcome !== null) {
 					terminalDetected = { outcome: resumedOutcome };
+					// warren-1247: re-persist the seeded totals (an idempotent overwrite)
+					// in case the prior pass died before its terminal checkpoint.
+					if (input.piStats === undefined) await persistObservedUsage(capInput);
 					input.logger?.info?.(
 						{ runId, sandboxRunId, outcome: resumedOutcome, seq: event.seq },
 						"bridge observed runtime-terminal on an already-persisted event; reap will finalize",
@@ -272,23 +293,10 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			// warren-a63d: enforce the spend cap as cumulative cost crosses it. On
 			// exceed the helper persists usage + emits `budget.exceeded` + cancels
 			// the burrow run; we break `cancelled` so reap finalizes the warren row.
-			if (costCapUsd !== null) {
-				const exceeded = await enforceBudgetCap({
-					runId,
-					sandboxRunId,
-					costCapUsd,
-					piUsage,
-					claudeUsage,
-					repos,
-					broker,
-					cancelBurrowRun,
-					...(input.logger !== undefined ? { logger: input.logger } : {}),
-				});
-				if (exceeded) {
-					statsPersisted = true;
-					terminalDetected = { outcome: "cancelled" };
-					break;
-				}
+			if (await enforceBudgetCap(capInput)) {
+				statsPersisted = true;
+				terminalDetected = { outcome: "cancelled" };
+				break;
 			}
 
 			if (!statsPersisted && isPiAgentEnd(event)) {
@@ -334,26 +342,10 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 							signal: ctrl.signal,
 							logger: input.logger,
 						});
-					} else if (piUsage.seen) {
+					} else {
 						// Prefer pi if observed (mixed-shape stream); claude-code
 						// usage is the fallback when no pi `turn_end` ever fired.
-						await persistInStreamUsage({
-							usage: piUsage,
-							runtime: "pi",
-							runId,
-							sandboxRunId,
-							repos,
-							logger: input.logger,
-						});
-					} else {
-						await persistInStreamUsage({
-							usage: claudeUsage,
-							runtime: "claude-code",
-							runId,
-							sandboxRunId,
-							repos,
-							logger: input.logger,
-						});
+						await persistObservedUsage(capInput);
 					}
 				}
 				break;
