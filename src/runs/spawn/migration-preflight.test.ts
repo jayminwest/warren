@@ -25,6 +25,16 @@ interface SpawnCall {
 	readonly cwd: string;
 }
 
+/** Content returned for a `git show` of a tracked migration file. */
+function showResult(joined: string): SpawnResult {
+	// drizzle-kit names snapshots by zero-padded index only; a tag-named
+	// snapshot path does not exist on main (the real failure mode).
+	if (joined.includes("_snapshot.json") && !/\/\d{4}_snapshot\.json$/.test(joined)) {
+		return { stdout: "", stderr: "fatal: path does not exist in origin/main", exitCode: 128 };
+	}
+	return { stdout: "-- sql from main\n", stderr: "", exitCode: 0 };
+}
+
 function makeSpawn(
 	mainJournal: unknown | null,
 	journals: readonly string[] = [SQLITE_JOURNAL],
@@ -43,7 +53,7 @@ function makeSpawn(
 			return { stdout: JSON.stringify(mainJournal), stderr: "", exitCode: 0 };
 		}
 		if (joined.includes("show")) {
-			return { stdout: "-- sql from main\n", stderr: "", exitCode: 0 };
+			return showResult(joined);
 		}
 		if (joined.includes("rev-parse")) {
 			return { stdout: "deadbeef".repeat(5), stderr: "", exitCode: 0 };
@@ -70,7 +80,7 @@ async function seedBranchTree(
 	for (const entry of entries) {
 		await writeFile(join(root, SQLITE_DIR, `${entry.tag}.sql`), `-- ${entry.tag}\n`);
 		await writeFile(
-			join(root, SQLITE_DIR, "meta", `${entry.tag}_snapshot.json`),
+			join(root, SQLITE_DIR, "meta", `${String(entry.idx).padStart(4, "0")}_snapshot.json`),
 			JSON.stringify({ tag: entry.tag }),
 		);
 	}
@@ -161,11 +171,13 @@ describe("healMigrationJournalCollisions (warren-1f03)", () => {
 			{ migrationsDir: SQLITE_DIR, idx: 46, branchTag: "0046_branch", mainTag: "0046_main" },
 		]);
 		expect(outcome.commitSha).toBe("deadbeef".repeat(5));
-		// Colliding artifacts are gone.
+		// The colliding SQL artifact is gone.
 		expect(await Bun.file(join(root, SQLITE_DIR, "0046_branch.sql")).exists()).toBe(false);
-		expect(
-			await Bun.file(join(root, SQLITE_DIR, "meta", "0046_branch_snapshot.json")).exists(),
-		).toBe(false);
+		// The idx-named snapshot was restored from main (drizzle names snapshots
+		// by zero-padded index, not tag — warren-236d).
+		expect(await readFile(join(root, SQLITE_DIR, "meta", "0046_snapshot.json"), "utf8")).toBe(
+			"-- sql from main\n",
+		);
 		// The journal is re-synced to main's entries.
 		const healed = JSON.parse(await readFile(join(root, SQLITE_JOURNAL), "utf8")) as {
 			entries: { idx: number; tag: string }[];
@@ -177,6 +189,10 @@ describe("healMigrationJournalCollisions (warren-1f03)", () => {
 		const commitAt = joined.findIndex((c) => c.includes("commit"));
 		expect(generateAt).toBeGreaterThanOrEqual(0);
 		expect(commitAt).toBeGreaterThan(generateAt);
+		// The restore fetched the idx-named snapshot path, never a tag-named one.
+		expect(joined.some((c) => c.includes("meta/0046_snapshot.json"))).toBe(true);
+		expect(joined.some((c) => c.includes("meta/0046_branch_snapshot.json"))).toBe(false);
+		expect(joined.some((c) => c.includes("meta/0046_main_snapshot.json"))).toBe(false);
 		// The commit is authored by the canonical warren bot identity.
 		const commitCmd = calls[commitAt]?.cmd.join(" ") ?? "";
 		expect(commitCmd).toContain("user.name=warren");
