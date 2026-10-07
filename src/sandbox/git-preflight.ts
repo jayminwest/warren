@@ -46,7 +46,8 @@ export const SANDBOX_GIT_PREFLIGHT_TIMEOUT_MS = 10_000;
 
 const INSTALL_HINT =
 	"this git cannot run inside the sandbox; install a system git " +
-	"(/usr/bin/git on macOS) or adjust PATH before booting warren, or set " +
+	"(on macOS, /usr/bin/git with Xcode or the Command Line Tools selected via " +
+	"xcode-select) or adjust PATH before booting warren, or set " +
 	`${WARREN_SANDBOX_GIT_ENV}=/path/to/git to pin a working binary`;
 
 /**
