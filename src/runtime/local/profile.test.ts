@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,6 +102,18 @@ describe("resolveEnvPassthrough", () => {
 });
 
 describe("resolveToolchainPaths", () => {
+	// The macOS git preflight records a /usr/bin/git substitution on
+	// process.env (warren-1219). Another suite's real preflight can leave it
+	// set, which would leak /usr/bin into these injected-`which` results.
+	const savedSandboxGit = process.env.WARREN_SANDBOX_GIT;
+	beforeEach(() => {
+		delete process.env.WARREN_SANDBOX_GIT;
+	});
+	afterEach(() => {
+		if (savedSandboxGit === undefined) delete process.env.WARREN_SANDBOX_GIT;
+		else process.env.WARREN_SANDBOX_GIT = savedSandboxGit;
+	});
+
 	// Empty third arg suppresses the host bun-install auto-grant so these
 	// tests stay hermetic regardless of whether ~/.bun exists on the runner.
 	test("adds the resolved bin dir for agent + common binaries", () => {

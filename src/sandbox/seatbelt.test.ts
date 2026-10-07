@@ -5,6 +5,7 @@ import {
 	buildSeatbeltProfile,
 	resolveHostBunInstall,
 	SYSTEM_READ_SUBPATHS,
+	xcodeBundleContents,
 } from "./seatbelt.ts";
 import type { SandboxProfile } from "./types.ts";
 
@@ -141,6 +142,34 @@ describe("buildSeatbeltProfile", () => {
 		if (hostHome !== null && hostHome.length > 1) {
 			expect(out).not.toContain(`(allow file-read* (subpath "${hostHome}"))`);
 		}
+	});
+
+	test("Xcode developer dir grants read on the bundle Contents only (warren-11e6)", () => {
+		const out = buildSeatbeltProfile(baseProfile(), {
+			developerDir: "/nonexistent/Xcode.app/Contents/Developer",
+		});
+		expect(out).toContain('(allow file-read* (subpath "/nonexistent/Xcode.app/Contents"))');
+		expect(out).not.toContain('(subpath "/nonexistent")');
+		expect(out).not.toContain('(subpath "/nonexistent/Xcode.app")');
+	});
+
+	test("Command Line Tools developer dir adds no extra grant (warren-11e6)", () => {
+		const clt = buildSeatbeltProfile(baseProfile(), {
+			developerDir: "/Library/Developer/CommandLineTools",
+		});
+		const none = buildSeatbeltProfile(baseProfile(), { developerDir: null });
+		expect(clt).toBe(none);
+		expect(none).not.toContain(".app/Contents");
+	});
+
+	test("xcodeBundleContents skips failed lookups and non-bundle dirs", () => {
+		expect(xcodeBundleContents(null)).toBeNull();
+		expect(xcodeBundleContents("")).toBeNull();
+		expect(xcodeBundleContents("/opt/dev")).toBeNull();
+		expect(xcodeBundleContents("/Library/Xcode.app/Contents/Developer")).toBeNull();
+		expect(xcodeBundleContents("/nonexistent/Xcode-beta.app/Contents/Developer/")).toBe(
+			"/nonexistent/Xcode-beta.app/Contents",
+		);
 	});
 
 	test("resolveHostBunInstall prefers BUN_INSTALL over ~/.bun", () => {

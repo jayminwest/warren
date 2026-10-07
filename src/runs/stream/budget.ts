@@ -60,14 +60,7 @@ export async function enforceBudgetCap(input: EnforceBudgetCapInput): Promise<bo
 	);
 
 	// Persist the spend that tripped the cap so cost_usd isn't left null.
-	await persistInStreamUsage({
-		usage: usePi ? input.piUsage : input.claudeUsage,
-		runtime: usePi ? "pi" : "claude-code",
-		runId: input.runId,
-		sandboxRunId: input.sandboxRunId,
-		repos: input.repos,
-		...(input.logger !== undefined ? { logger: input.logger } : {}),
-	});
+	await persistObservedUsage(input);
 
 	await emitBudgetEvent(input, observedCostUsd, capUsd);
 
@@ -84,6 +77,27 @@ export async function enforceBudgetCap(input: EnforceBudgetCapInput): Promise<bo
 		);
 	}
 	return true;
+}
+
+/**
+ * Persist observed usage with the bridge's pi-wins tiebreak: pi when a
+ * `turn_end` was observed, else claude-code. No-op when neither was seen.
+ */
+export async function persistObservedUsage(
+	input: Pick<
+		EnforceBudgetCapInput,
+		"runId" | "sandboxRunId" | "piUsage" | "claudeUsage" | "repos" | "logger"
+	>,
+): Promise<void> {
+	const usePi = input.piUsage.seen;
+	await persistInStreamUsage({
+		usage: usePi ? input.piUsage : input.claudeUsage,
+		runtime: usePi ? "pi" : "claude-code",
+		runId: input.runId,
+		sandboxRunId: input.sandboxRunId,
+		repos: input.repos,
+		...(input.logger !== undefined ? { logger: input.logger } : {}),
+	});
 }
 
 async function emitBudgetEvent(
