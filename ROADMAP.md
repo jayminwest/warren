@@ -79,14 +79,14 @@ advance only when pilot evidence supplies their payer.
 
 Honest replacements for old sequencing steps with no payer. Each entry names its price of admission.
 
-- **Integration breadth: Linear, GitLab, and Forgejo/Gitea.** The contracts are ready,
+- **Integration breadth: Linear and Forgejo/Gitea.** The contracts are ready,
   but no waiting deployment currently pays for another implementation. Jira shipped as
   the first external tracker behind `warren-tracker/v1` (v0.19.0,
   `extensions/tracker-jira/`), and Azure DevOps Boards followed as the second
   (`extensions/tracker-ado/`). Linear follows the same path when a payer appears.
 
   Azure DevOps Repos arrived as the second in-core Forge (`src/forge/ado/`, GH#1172),
-  paid for by a deployment running on it. GitLab is the third (`src/forge/gitlab/`,
+  paid for by a deployment running on it. GitLab shipped as the third in v0.19.3 (`src/forge/gitlab/`,
   GH#1028, warren-7ba8). Forgejo/Gitea follows when a real Codeberg or self-hosted
   user appears.
 
@@ -147,6 +147,9 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 | In-cluster Postgres — kustomize component, nightly `pg_dump` to GCS, `pg-migrate` cutover tooling, Supabase decommissioned; Spot run pods with preemption classified as retryable | v0.19.1 | pl-6076 (30-day cost review still open), `docs/RUNBOOK-K8S.md` |
 | Console operator-review patches — burn and runtime in the topbar, windowed ops overview, run-detail spend and phase rail, delivery/autonomy/economics analytics rendered in telemetry | v0.19.1 | pl-9fa9, `docs/design/agent-analytics.md` |
 | Warren-armed auto-merge — `pr.autoMerge` opt-in, `armAutoMerge` over a GraphQL transport, fail-closed arming policy, the three `reap.auto_merge_*` events, the plan-run stall warning; migration off the per-repo workflow | v0.19.2 | pl-92a3, `docs/design/forge-auto-merge.md` |
+| GitLab forge — `GitLabForge`, the third in-core `Forge` arm, behind `WARREN_FORGE=gitlab` | v0.19.3 | GH#1028, warren-7ba8, `docs/design/forge-contract.md` |
+| Sandbox hardening — narrowed local-run git-metadata scope, run token scrubbed from local/docker sandboxes, per-project sandboxed RuntimeClass for run pods | v0.19.3 | warren-8926, warren-f737, warren-9bd3, pl-5b2c, `docs/RUNBOOK-K8S.md` |
+| Automatic run admission — per-instance cap and time window for automatic work | v0.19.3 | #1297, `docs/design/automatic-run-admission.md` |
 
 ## Deliberately not in core
 

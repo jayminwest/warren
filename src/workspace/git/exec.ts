@@ -12,6 +12,7 @@
  */
 
 import { WorkspaceMaterializationError } from "../errors.ts";
+import { hardenHostGit } from "./host-git.ts";
 
 export interface RunGitOptions {
 	cwd?: string;
@@ -27,8 +28,11 @@ export interface RunGitResult {
 }
 
 export async function runGit(args: string[], opts: RunGitOptions = {}): Promise<RunGitResult> {
-	const env = filterUndefined(opts.env ?? process.env);
-	const proc = Bun.spawn([opts.gitBin ?? "git", ...args], {
+	// warren-8926: host-side git never takes hooks/fsmonitor from repo state,
+	// and a pinned run workspace resolves only to its validated git dirs.
+	const git = hardenHostGit(args, opts.cwd);
+	const env = { ...filterUndefined(opts.env ?? process.env), ...git.env };
+	const proc = Bun.spawn([opts.gitBin ?? "git", ...git.args], {
 		cwd: opts.cwd,
 		env,
 		stdin: opts.stdin !== undefined ? "pipe" : "ignore",

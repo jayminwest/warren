@@ -224,6 +224,12 @@ function canonicalizeProfilePaths(profile: SandboxProfile): SandboxProfile {
 		sshAuthSock: profile.sshAuthSock ? realpathOrSelf(profile.sshAuthSock) : profile.sshAuthSock,
 	};
 	if (profile.workspaceGitdir) out.workspaceGitdir = realpathOrSelf(profile.workspaceGitdir);
+	if (profile.workspaceGitWritable) {
+		out.workspaceGitWritable = profile.workspaceGitWritable.map(realpathOrSelf);
+	}
+	if (profile.workspaceGitProtected) {
+		out.workspaceGitProtected = profile.workspaceGitProtected.map(realpathOrSelf);
+	}
 	return out;
 }
 

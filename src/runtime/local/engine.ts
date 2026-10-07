@@ -54,6 +54,7 @@ import type {
 import { RuntimeProviderError, RuntimeRunNotFoundError } from "../errors.ts";
 import { type DriveDeps, driveLocalRun } from "./drive.ts";
 import { finalizeLocalWorkspace } from "./finalize.ts";
+import { ensureWorkspaceGitPin, pinWorkspaceGit, unpinWorkspaceGit } from "./git-pin.ts";
 import {
 	type LocalRunManifest,
 	readLocalRunManifest,
@@ -152,7 +153,8 @@ export class LocalEngine {
 				...(checkoutExisting ? { detached: true as const } : { createBranch: true as const }),
 				baseBranch: spec.baseBranch,
 				projectRoot: spec.hostClonePathHint,
-				originUrl: spec.originUrl,
+				// warren-8926: no originUrl — the clone fallback is refused for
+				// local/docker runs (see pinWorkspaceGit), so fail fast instead.
 			});
 			await writeWorkspaceSeedFiles(workspacePath, spec.seedFiles);
 		} catch (err) {
@@ -165,13 +167,28 @@ export class LocalEngine {
 
 		const env = this.composeSandboxEnv(spec.env);
 		const frontmatter = readFrontmatterForProfile(spec.metadata);
-		const profile = await buildLocalSandboxProfile({
-			spec,
-			env,
-			workspace,
-			homePath,
-			...(frontmatter !== undefined ? { frontmatter } : {}),
-		});
+		let profile: Awaited<ReturnType<typeof buildLocalSandboxProfile>>;
+		try {
+			// warren-8926: validate the worktree git scope BEFORE the agent runs
+			// and pin host-side git for this workspace to it.
+			const gitScope = pinWorkspaceGit(workspace.workspacePath, workspace.source);
+			profile = await buildLocalSandboxProfile({
+				spec,
+				env,
+				workspace,
+				homePath,
+				gitScope,
+				...(frontmatter !== undefined ? { frontmatter } : {}),
+			});
+		} catch (err) {
+			unpinWorkspaceGit(workspace.workspacePath);
+			await removeMaterializedWorkspace({ workspacePath, source: workspace.source }).catch(
+				() => {},
+			);
+			await rm(homePath, { recursive: true, force: true }).catch(() => {});
+			await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
+			throw err;
+		}
 
 		const record = this.store.create({
 			runId: spec.runId,
@@ -359,6 +376,9 @@ export class LocalEngine {
 		}
 		const manifest = await readLocalRunManifest(this.roots, handle.sandboxId);
 		if (manifest !== null) {
+			// Post-restart: re-pin from the manifest (re-validated) before reap's
+			// host-side git touches the workspace (warren-8926).
+			ensureWorkspaceGitPin(manifest.workspacePath, manifest.source);
 			return { workspacePath: manifest.workspacePath, branch: manifest.branch };
 		}
 		throw new RuntimeProviderError(
@@ -418,6 +438,7 @@ export class LocalEngine {
 				await removeMaterializedWorkspace({ workspacePath, source }).catch(() => {});
 			}
 			await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
+			unpinWorkspaceGit(workspacePath);
 		}
 		if (homePath !== null) {
 			await rm(homePath, { recursive: true, force: true }).catch(() => {});

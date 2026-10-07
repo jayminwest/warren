@@ -119,19 +119,6 @@ export function buildSeatbeltProfile(
 		`(allow file-read-data file-read-metadata file-write* (subpath ${sbString(profile.home)}))`,
 	);
 
-	// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points
-	// at `<gitCommonDir>/worktrees/<id>`, outside the workspace subpath above.
-	// Allow read+write on the host's git common dir at the same path so the
-	// pointer dereferences and the agent can run `git commit`/`push` from
-	// inside its workspace (burrow-7a80). Write is required: git updates
-	// per-worktree HEAD/index and appends new objects to the shared object
-	// database during commits.
-	if (profile.workspaceGitdir) {
-		lines.push(
-			`(allow file-read-data file-read-metadata file-write* (subpath ${sbString(profile.workspaceGitdir)}))`,
-		);
-	}
-
 	// /private/tmp and /private/var/folders need read+write, not write-only.
 	// claude-code's Bash tool writes command output under /tmp/claude-${uid}/...
 	// (which resolves to /private/tmp via the /tmp symlink) and reads it back;
@@ -152,9 +139,47 @@ export function buildSeatbeltProfile(
 		lines.push(`(allow file-read* file-write-data (literal ${sbString(profile.sshAuthSock)}))`);
 	}
 
+	// Emitted after every broad grant: SBPL applies the LAST matching rule, so
+	// the git denies below hold even when the clone sits under /private/tmp.
+	lines.push(...renderWorkspaceGitRules(profile));
+
 	lines.push(...renderNetworkRules(profile));
 
 	return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points at
+ * `<gitCommonDir>/worktrees/<id>`, outside the workspace subpath. Read on the
+ * common dir lets the pointer dereference so the agent can run `git commit`
+ * in its workspace (burrow-7a80). Write is granted only on the validated
+ * carve-outs (own admin dir, objects/refs/logs, plus the packed-refs literals
+ * git locks during ref updates); the admin dir's binding/config files are
+ * denied again (warren-8926). Seatbelt resolves symlinks and refuses hard
+ * links and renames onto a denied path, so a carve-out cannot write through.
+ */
+function renderWorkspaceGitRules(profile: SandboxProfile): string[] {
+	const common = profile.workspaceGitdir;
+	if (!common) return [];
+	const rw = "file-read-data file-read-metadata file-write*";
+	const out = [
+		`(allow file-read-data file-read-metadata (subpath ${sbString(common)}))`,
+		`(deny file-write* (subpath ${sbString(common)}))`,
+	];
+	for (const name of ["packed-refs", "packed-refs.lock"]) {
+		out.push(`(allow ${rw} (literal ${sbString(join(common, name))}))`);
+	}
+	for (const path of profile.workspaceGitWritable ?? []) {
+		out.push(`(allow ${rw} (subpath ${sbString(path)}))`);
+		// A subpath grant also matches the root itself: forbid renaming or
+		// removing the carve-out root so it cannot be swapped for another dir
+		// (bwrap/docker get this for free — each root is a mount point).
+		out.push(`(deny file-write-unlink (literal ${sbString(path)}))`);
+	}
+	for (const path of profile.workspaceGitProtected ?? []) {
+		out.push(`(deny file-write* (subpath ${sbString(path)}))`);
+	}
+	return out;
 }
 
 export function buildSeatbeltArgv(

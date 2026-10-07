@@ -10,7 +10,40 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.19.3] — 2026-10-07
+
+The hardening patch. Local runs get a narrowed git-metadata sandbox, the
+run-scoped API token leaves every sandbox, and a batch of community fixes
+closes reap, dispatch, and stream gaps. Adds the GitLab forge arm,
+automatic-run admission limits, and stalled-turn detection.
+
 ### Added
+
+- **Automatic run admission (#1297).** `WARREN_AUTOMATIC_MAX_CONCURRENT_RUNS`
+  (default 1) caps non-terminal automatic runs per instance: cron, scheduled
+  seeds, the CI fixer, and plan-run coordination. `WARREN_AUTOMATIC_RUN_WINDOW`
+  (`HH:MM-HH:MM@IANA/Zone`) limits automatic dispatch and retries to a local
+  time window. Manual runs are not counted. See
+  `docs/design/automatic-run-admission.md`.
+
+- **Stalled and degenerate turn detection (#1242, #1281).** The event bridge
+  now cancels a run whose turn goes silent past `WARREN_TURN_STALL_MS`
+  (default 10 min), or that emits a long run of whitespace-only deltas. It
+  emits `turn.stalled` / `turn.degenerate`. The spend cap now also trips
+  mid-turn on partial usage.
+
+- **Dispatch-from-rescue (#1241, #1284).** `POST /runs` accepts
+  `rescueFromRunId`: a new run starts from a salvaged run's recovered work
+  (`salvageRef`) in one step.
+
+- **`warren init --project` works against a remote server (#1240, #1282).**
+  The `.warren/` writes for `init --project` and `config migrate --project`
+  now happen server-side.
+
+- **Mulch usage experiment.** `POST /runs` accepts `mulch: on|off` to force the
+  mulch arm per run. Finalize records a `mulch.usage` event with injection
+  counts. `scripts/eval-mulch` dispatches paired on/off runs and reports the
+  difference.
 
 - **GitLab forge (GH#1028).** `WARREN_FORGE=gitlab` resolves `GitLabForge`
   (`src/forge/gitlab/`), the third in-core arm of the `Forge` contract. It
@@ -33,6 +66,15 @@ Releases **0.9.10 and earlier** live in
 
 ### Security
 
+- **Local runs get a narrowed git-metadata sandbox (warren-8926).** The
+  clone's git common dir is now read-only inside the sandbox. A run may write
+  only its own `worktrees/<id>` admin dir plus `objects/`, `refs/` and
+  `logs/`. All paths are validated host-side before the sandbox starts.
+  Host-side git now runs with hooks and fsmonitor disabled, pinned to the
+  validated admin dir. Applies to bwrap, seatbelt and docker.
+- **The run token stays out of local and docker sandboxes (warren-f737).**
+  The local engine now scrubs `WARREN_API_TOKEN` and `WARREN_API_URL` from
+  the sandbox env, as K8s already did.
 - **The agent no longer holds the run token (warren-ccef).** K8s run pods
   now scrub `WARREN_API_TOKEN` from the agent's environment. Only the
   entrypoint needs it. Before this, an agent could call
@@ -55,6 +97,32 @@ Releases **0.9.10 and earlier** live in
   token in agent output is now redacted like other secrets.
 
 ### Fixed
+
+- **Reap fails closed when `workspaceInfo` or `finalize` throws (#1307).**
+  The run used to stay `succeeded` and its workspace was destroyed. It now
+  ends `failed/finalize_failed`, salvages, and keeps the workspace when
+  salvage cannot capture the work.
+- **A provider-error run that already pushed gets its PR (#1238, #1283).**
+- **Spend cap holds across stream reconnects (#1306).** A resumed bridge
+  seeds its usage totals from persisted events, so the cap and
+  `runs.cost_usd` see the whole run, not only the new segment.
+- **An operator-cancelled lost run finalizes `cancelled` (#1304).** It is no
+  longer auto-retried as infra-lost.
+- **`POST /runs` refreshes the clone before rejecting a new `seedId` (#1302).**
+- **Spawn tears down the runtime when persisting its handle fails
+  (warren-c2c8).** No untracked workload is left running.
+- **`warren run` survives a failed tail (#1305).** It polls for the real
+  terminal state. `warren wait` retries transient network errors and 5xx.
+- **Piped CLI output is no longer truncated at 64 KiB (warren-b5f3).**
+- **Agent commits honor `WARREN_GIT_AUTHOR_*` under `warren up` (#1298).**
+- **macOS: the seatbelt profile reads the Xcode bundle (#1303).** The git
+  preflight no longer fails with full Xcode selected.
+- **Migration preflight derives drizzle snapshot filenames from the journal
+  (#1301).**
+- **CI/tooling.** Autoheal pushes retry transient GitHub 5xx (#1229) and
+  commit as the minting GitHub App (#1319). `version:bump` no longer leaves
+  the prime goldens red (#1230). Campaign-controller PR footers link the
+  warren repo. Preview acceptance scenarios budget for reap-time launch.
 
 - **The dispatch manifest preview shows the real branch prefix.** With no
   project `runBranchPrefix`, it read `burrow/<new run>`. Runs push

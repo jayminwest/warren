@@ -33,6 +33,7 @@ import { dirname, join } from "node:path";
 import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
 import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import { WARREN_SANDBOX_GIT_ENV } from "../../sandbox/git-preflight.ts";
+import { resolveWorkspaceGitScope, type WorkspaceGitScope } from "../../sandbox/git-scope.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
 import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
@@ -305,6 +306,27 @@ export interface BuildProfileInput {
 	readonly frontmatter?: Record<string, unknown>;
 	/** Test seam for `Bun.which`. */
 	readonly which?: (name: string) => string | null;
+	/** Pre-resolved git scope (the engine pins it); resolved here when omitted. */
+	readonly gitScope?: WorkspaceGitScope | null;
+}
+
+/**
+ * warren-8926: worktree-backed workspaces expose the clone's common dir
+ * read-only plus a validated writable carve-out. A pointer that escapes the
+ * clone throws before the sandbox starts.
+ */
+function workspaceGitFields(
+	workspace: MaterializedWorkspace,
+	given: WorkspaceGitScope | null | undefined,
+): Pick<SandboxProfile, "workspaceGitdir" | "workspaceGitWritable" | "workspaceGitProtected"> {
+	const common = workspace.source.gitCommonDir;
+	if (common === undefined) return {};
+	const scope = given ?? resolveWorkspaceGitScope(workspace.workspacePath, common);
+	return {
+		workspaceGitdir: scope.commonDir,
+		workspaceGitWritable: scope.writable,
+		workspaceGitProtected: scope.protectedPaths,
+	};
 }
 
 /**
@@ -332,9 +354,7 @@ export async function buildLocalSandboxProfile(input: BuildProfileInput): Promis
 		setEnv: input.env,
 		toolchainPaths: resolveToolchainPaths(spec.runtimeId, input.which),
 		...(workspace.identity !== null ? { gitconfigFile: WORKSPACE_GITCONFIG_FILENAME } : {}),
-		...(workspace.source.gitCommonDir !== undefined
-			? { workspaceGitdir: workspace.source.gitCommonDir }
-			: {}),
+		...workspaceGitFields(workspace, input.gitScope),
 		// warren-fabb: per-project agent image override — consumed only by the
 		// container spawn seams (docker); the bwrap profile builder ignores it.
 		...(spec.agentImage !== undefined ? { agentImage: spec.agentImage } : {}),

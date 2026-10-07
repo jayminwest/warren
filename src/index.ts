@@ -4,4 +4,4 @@
  * `Client` class is deferred to V2.
  */
 
-export const VERSION = "0.19.2";
+export const VERSION = "0.19.3";

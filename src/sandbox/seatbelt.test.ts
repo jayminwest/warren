@@ -189,16 +189,39 @@ describe("buildSeatbeltProfile", () => {
 		expect(out).toContain('(allow file-write* (literal "/dev/null"))');
 	});
 
-	test("workspaceGitdir gets read+write subpath rule (burrow-7a80)", () => {
+	test("workspaceGitdir is read-only with ordered write carve-outs (burrow-7a80, warren-8926)", () => {
 		// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points
 		// at `<hostClonePath>/.git/worktrees/<id>`, outside the workspace subpath.
-		// The agent needs read+write on the host's git common dir at the same
-		// path so `git commit`/`git push` can update per-worktree HEAD/index and
-		// write new objects to the shared object database.
-		const out = buildSeatbeltProfile(baseProfile({ workspaceGitdir: "/Users/u/clone/.git" }));
-		expect(out).toContain(
-			'(allow file-read-data file-read-metadata file-write* (subpath "/Users/u/clone/.git"))',
+		// The common dir is readable but write-denied; only the carve-outs and the
+		// packed-refs literals are writable, the carve-out roots cannot be
+		// renamed away, and the admin binding files are denied again. SBPL applies the last matching rule, so order matters.
+		const admin = "/Users/u/clone/.git/worktrees/ws";
+		const out = buildSeatbeltProfile(
+			baseProfile({
+				workspaceGitdir: "/Users/u/clone/.git",
+				workspaceGitWritable: [admin],
+				workspaceGitProtected: [`${admin}/commondir`],
+			}),
 		);
+		const rw = "file-read-data file-read-metadata file-write*";
+		const rules = [
+			'(allow file-read-data file-read-metadata (subpath "/Users/u/clone/.git"))',
+			'(deny file-write* (subpath "/Users/u/clone/.git"))',
+			`(allow ${rw} (literal "/Users/u/clone/.git/packed-refs.lock"))`,
+			`(allow ${rw} (subpath "${admin}"))`,
+			// The carve-out root itself cannot be renamed or removed.
+			`(deny file-write-unlink (literal "${admin}"))`,
+			`(deny file-write* (subpath "${admin}/commondir"))`,
+		];
+		let last = -1;
+		for (const rule of rules) {
+			const at = out.indexOf(rule);
+			expect(at).toBeGreaterThan(last);
+			last = at;
+		}
+		expect(out).not.toContain(`(allow ${rw} (subpath "/Users/u/clone/.git"))`);
+		// Emitted after the broad /private/tmp grant so a clone there stays protected.
+		expect(out.indexOf('(subpath "/private/tmp")')).toBeLessThan(out.indexOf(rules[1] ?? ""));
 	});
 
 	test("workspaceGitdir rule is omitted when unset (clone-backed workspaces)", () => {

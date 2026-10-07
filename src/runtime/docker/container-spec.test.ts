@@ -122,18 +122,32 @@ describe("buildDockerRunSpec", () => {
 		);
 	});
 
-	test("mounts read-only mounts readonly and the worktree gitdir read-write", () => {
+	test("mounts the worktree gitdir readonly with writable carve-outs (warren-8926)", () => {
 		const spec = buildDockerRunSpec(
 			makeProfile({
 				readOnlyMounts: ["/opt/shared"],
 				workspaceGitdir: "/repo/.git",
+				workspaceGitWritable: ["/repo/.git/worktrees/ws", "/repo/.git/objects"],
+				workspaceGitProtected: ["/repo/.git/worktrees/ws/commondir", "/repo/.git/objects/info"],
 			}),
 			command,
 			config,
 			"/tmp/e.env",
 		);
 		expect(spec.argv).toContain("type=bind,source=/opt/shared,target=/opt/shared,readonly");
-		expect(spec.argv).toContain("type=bind,source=/repo/.git,target=/repo/.git");
+		expect(spec.argv).toContain("type=bind,source=/repo/.git,target=/repo/.git,readonly");
+		expect(spec.argv).not.toContain("type=bind,source=/repo/.git,target=/repo/.git");
+		expect(spec.argv).toContain(
+			"type=bind,source=/repo/.git/worktrees/ws,target=/repo/.git/worktrees/ws",
+		);
+		expect(spec.argv).toContain("type=bind,source=/repo/.git/objects,target=/repo/.git/objects");
+		expect(spec.argv).toContain(
+			"type=bind,source=/repo/.git/worktrees/ws/commondir,target=/repo/.git/worktrees/ws/commondir,readonly",
+		);
+		const info = "type=bind,source=/repo/.git/objects/info,target=/repo/.git/objects/info,readonly";
+		expect(
+			spec.argv.indexOf("type=bind,source=/repo/.git/objects,target=/repo/.git/objects"),
+		).toBeLessThan(spec.argv.indexOf(info));
 	});
 
 	test("maps network none to --network none and open to no flag", () => {

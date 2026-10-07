@@ -21,6 +21,7 @@
 import { rm } from "node:fs/promises";
 import type { WorkspaceDestroyer, WorkspaceDestroyOutcome } from "../../runs/reap/gc.ts";
 import { removeMaterializedWorkspace } from "../../workspace/materialize.ts";
+import { unpinWorkspaceGit } from "./git-pin.ts";
 import { readLocalRunManifest, removeLocalRunManifest } from "./manifest.ts";
 import { type LocalPathsEnv, resolveLocalStateRoots } from "./paths.ts";
 
@@ -34,6 +35,7 @@ export function createLocalWorkspaceDestroyer(env: LocalPathsEnv): WorkspaceDest
 	return async (sandboxId: string): Promise<WorkspaceDestroyOutcome> => {
 		const manifest = await readLocalRunManifest(roots, sandboxId);
 		if (manifest === null) return { status: "already-gone" };
+		unpinWorkspaceGit(manifest.workspacePath);
 		try {
 			await removeMaterializedWorkspace({
 				workspacePath: manifest.workspacePath,

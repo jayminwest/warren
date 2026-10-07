@@ -61,19 +61,31 @@ export interface SandboxProfile {
 	/** Linux only: gid the sandboxed process runs as. Defaults to 1000. */
 	runAsGid?: number;
 	/**
-	 * Host path of the parent clone's `.git` common dir, bound read-write at
+	 * Host path of the parent clone's `.git` common dir, exposed READ-ONLY at
 	 * the same path inside the sandbox. Set when the workspace is a git
 	 * worktree.
 	 *
 	 * `git worktree add` writes the worktree's `.git` *file* with an absolute
 	 * `gitdir:` pointer at `<gitCommonDir>/worktrees/<id>`; that path lives
 	 * outside the workspace bind, so without this mount every git invocation
-	 * inside the sandbox fails with `fatal: not a git repository` and the
-	 * agent can't commit or push its own work (burrow-7a80). It's read-write
-	 * because git needs to update per-worktree HEAD/index plus write new
-	 * objects into the shared object database when committing.
+	 * inside the sandbox fails with `fatal: not a git repository` (burrow-7a80).
+	 * Read-only so a run cannot rewrite the clone's config/hooks or a sibling
+	 * worktree's HEAD/index (warren-8926); `workspaceGitWritable` carves out
+	 * the paths a commit needs.
 	 */
 	workspaceGitdir?: string;
+	/**
+	 * Paths under `workspaceGitdir` exposed read-write (warren-8926): the
+	 * run's own `worktrees/<id>` admin dir plus the shared `objects/`,
+	 * `refs/`, `logs/` stores. Validated host-side by
+	 * `resolveWorkspaceGitScope` (`src/sandbox/git-scope.ts`).
+	 */
+	workspaceGitWritable?: string[];
+	/**
+	 * Files inside `workspaceGitWritable` re-protected read-only
+	 * (warren-8926): the admin dir's `commondir`, `gitdir`, `config.worktree`.
+	 */
+	workspaceGitProtected?: string[];
 	/**
 	 * Workspace-relative path of the run's gitconfig (`.gitconfig.burrow`,
 	 * written at materialization). The sandbox env exports it as

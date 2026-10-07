@@ -136,11 +136,18 @@ export function dockerMountArgs(profile: SandboxProfile): string[] {
 	for (const mount of profile.readOnlyMounts) {
 		args.push("--mount", `type=bind,source=${mount},target=${mount},readonly`);
 	}
+	// warren-8926: the git common dir is read-only; only the validated
+	// carve-outs are writable, with the admin dir's binding/config files
+	// re-protected. Docker orders nested mounts parent-first by target.
 	if (profile.workspaceGitdir !== undefined) {
-		args.push(
-			"--mount",
-			`type=bind,source=${profile.workspaceGitdir},target=${profile.workspaceGitdir}`,
-		);
+		const gitdir = profile.workspaceGitdir;
+		args.push("--mount", `type=bind,source=${gitdir},target=${gitdir},readonly`);
+		for (const path of profile.workspaceGitWritable ?? []) {
+			args.push("--mount", `type=bind,source=${path},target=${path}`);
+		}
+		for (const path of profile.workspaceGitProtected ?? []) {
+			args.push("--mount", `type=bind,source=${path},target=${path},readonly`);
+		}
 	}
 	return args;
 }
