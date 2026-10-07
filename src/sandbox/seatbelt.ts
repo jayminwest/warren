@@ -20,6 +20,7 @@
  *     restricted mode falls back to deny-everything.
  */
 
+import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -42,7 +43,19 @@ export interface BuildSeatbeltArgvOptions {
 	sandboxExecBin?: string;
 }
 
-export function buildSeatbeltProfile(profile: SandboxProfile): string {
+export interface BuildSeatbeltProfileOptions {
+	/**
+	 * Active Xcode developer dir (`xcode-select -p`). `undefined` resolves it
+	 * on the host (cached per process); `null` means the lookup failed. Tests
+	 * inject it so they never shell out.
+	 */
+	developerDir?: string | null;
+}
+
+export function buildSeatbeltProfile(
+	profile: SandboxProfile,
+	options: BuildSeatbeltProfileOptions = {},
+): string {
 	const lines: string[] = [];
 	lines.push(";; warren sandbox profile — lifted from burrow (warren-5af7)");
 	lines.push("(version 1)");
@@ -81,6 +94,19 @@ export function buildSeatbeltProfile(profile: SandboxProfile): string {
 	// Keep the grant scoped to the install root, never the whole host home.
 	// Canonicalize so seatbelt's path match doesn't miss a symlinked install.
 	lines.push(`(allow file-read* (subpath ${sbString(realpathOrSelf(resolveHostBunInstall()))}))`);
+
+	// Xcode developer bundle (warren-11e6, gh #1303). /usr/bin/git is an xcrun
+	// shim that dlopens libxcrun from the active developer dir, then runs the
+	// real git, which reads its gitconfig under Developer/ and frameworks under
+	// SharedFrameworks/. With full Xcode that dir lives in /Applications, which
+	// the system grants above do not cover, so git dies in-sandbox. Grant read
+	// on the bundle's Contents only, never /Applications.
+	const developerDir =
+		options.developerDir === undefined ? resolveHostDeveloperDir() : options.developerDir;
+	const xcodeContents = xcodeBundleContents(developerDir);
+	if (xcodeContents !== null) {
+		lines.push(`(allow file-read* (subpath ${sbString(xcodeContents)}))`);
+	}
 
 	lines.push(
 		`(allow file-read-data file-read-metadata file-write* (subpath ${sbString(profile.workspace)}))`,
@@ -172,6 +198,40 @@ export function resolveHostBunInstall(
 	const fromEnv = env.BUN_INSTALL;
 	if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
 	return join(home, ".bun");
+}
+
+let cachedDeveloperDir: string | null | undefined;
+
+/**
+ * Host's active developer dir via `xcode-select -p`, or null off darwin or
+ * when the lookup fails. Resolved once per process.
+ */
+export function resolveHostDeveloperDir(): string | null {
+	if (cachedDeveloperDir !== undefined) return cachedDeveloperDir;
+	cachedDeveloperDir = null;
+	if (process.platform !== "darwin") return cachedDeveloperDir;
+	try {
+		const res = spawnSync("xcode-select", ["-p"], { encoding: "utf8", timeout: 5_000 });
+		const out = res.status === 0 ? res.stdout.trim() : "";
+		if (out.length > 0) cachedDeveloperDir = out;
+	} catch {
+		// xcode-select missing: no grant
+	}
+	return cachedDeveloperDir;
+}
+
+/**
+ * The `<bundle>.app/Contents` dir to grant for an Xcode developer dir, or
+ * null when there is nothing extra to grant: no dir, a Command Line Tools
+ * dir (already under /Library), or a dir outside an app bundle.
+ */
+export function xcodeBundleContents(developerDir: string | null): string | null {
+	if (developerDir === null || developerDir.length === 0) return null;
+	const match = /^(\/.+\.app\/Contents)\/Developer\/?$/.exec(realpathOrSelf(developerDir));
+	const contents = match?.[1];
+	if (contents === undefined) return null;
+	const covered = SYSTEM_READ_SUBPATHS.some((p) => contents.startsWith(`${p}/`));
+	return covered ? null : contents;
 }
 
 function realpathOrSelf(path: string): string {
