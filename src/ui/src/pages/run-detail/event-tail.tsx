@@ -150,11 +150,13 @@ export function EventTail({
 	status,
 	error,
 	terminal,
+	runId,
 }: {
 	events: RunEvent[];
 	status: string;
 	error: string | null;
 	terminal: boolean;
+	runId: string;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
@@ -271,7 +273,7 @@ export function EventTail({
 				</span>
 				<span className="flex-1" />
 				<Link
-					to="/events"
+					to={`/events?runId=${encodeURIComponent(runId)}`}
 					className="text-[11px] leading-[14px] font-medium text-(--color-primary) hover:underline"
 				>
 					Full stream →

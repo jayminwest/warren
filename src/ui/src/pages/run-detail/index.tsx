@@ -422,6 +422,7 @@ export function RunDetailPage() {
 						status={stream.status}
 						error={stream.error}
 						terminal={isTerminal}
+						runId={id}
 					/>
 				</div>
 				<aside className="flex w-full shrink-0 flex-col gap-3 max-xl:contents xl:min-h-0 xl:w-[326px] xl:overflow-y-auto">

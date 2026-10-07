@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { buildFilter, collectExportLines, EXPORT_MAX_ROWS } from "./event-explorer-export.ts";
+import {
+	buildFilter,
+	collectExportLines,
+	EXPORT_MAX_ROWS,
+	readExplorerSearchParams,
+} from "./event-explorer-export.ts";
 
 describe("buildFilter", () => {
 	test("returns an empty filter for the default strip state", () => {
@@ -18,6 +23,23 @@ describe("buildFilter", () => {
 				rangeId: "1h",
 			}),
 		).toEqual({ stream: "stdout", kind: "toolcall", runId: "run_x", projectId: "p1" });
+	});
+});
+
+describe("readExplorerSearchParams", () => {
+	test("seeds runId and widens the range to all when runId is present", () => {
+		expect(readExplorerSearchParams(new URLSearchParams("runId=run_x"))).toEqual({
+			runId: "run_x",
+			rangeId: "all",
+		});
+	});
+
+	test("returns an empty seed when the parameter is missing", () => {
+		expect(readExplorerSearchParams(new URLSearchParams(""))).toEqual({});
+	});
+
+	test("returns an empty seed for an empty runId value", () => {
+		expect(readExplorerSearchParams(new URLSearchParams("runId="))).toEqual({});
 	});
 });
 

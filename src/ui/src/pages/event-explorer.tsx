@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Download, Pause, Play } from "lucide-react";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { type EventExplorerRow, eventsApi, projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -18,6 +19,7 @@ import {
 	collectExportLines,
 	EXPORT_MAX_ROWS,
 	type FilterState,
+	readExplorerSearchParams,
 } from "./event-explorer-export.ts";
 import {
 	formatEventClock,
@@ -48,13 +50,15 @@ const FOLLOW_POLL_MS = 5_000;
 const FALLBACK_POLL_MS = 45_000;
 
 export function EventExplorerPage() {
-	const [state, setState] = useState<FilterState>({
+	const [searchParams] = useSearchParams();
+	const [state, setState] = useState<FilterState>(() => ({
 		stream: "all",
 		kind: "",
 		runId: "",
 		projectId: "",
 		rangeId: "24h",
-	});
+		...readExplorerSearchParams(searchParams),
+	}));
 	const [offset, setOffset] = useState(0);
 	const [follow, setFollow] = useState(false);
 	const [expandedId, setExpandedId] = useState<number | null>(null);

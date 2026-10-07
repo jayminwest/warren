@@ -25,6 +25,18 @@ export function buildFilter(state: FilterState): EventsQueryFilterUI {
 	return filter;
 }
 
+/**
+ * Parse the explorer's query string into seed filter state. Only `runId` is
+ * a first-class deep-link today; a supplied run id also widens the time
+ * range to `all` so the default 24h window does not hide the target run's
+ * events. Accepts unknown input and keeps only valid fields.
+ */
+export function readExplorerSearchParams(params: URLSearchParams): Partial<FilterState> {
+	const runId = params.get("runId");
+	if (runId === null || runId.length === 0) return {};
+	return { runId, rangeId: "all" };
+}
+
 /** Export cap: 25 pages × the API's 500-row hard limit. */
 export const EXPORT_MAX_ROWS = 25 * 500;
 
