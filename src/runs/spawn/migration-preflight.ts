@@ -36,6 +36,7 @@ import {
 	warrenCommitIdentityArgs,
 	warrenCommitIdentityEnv,
 } from "../../bot-identity.ts";
+import { WarrenError } from "../../core/errors.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { DEFAULT_GIT_TIMEOUT_MS, type SpawnFn } from "../../projects/clone.ts";
 
@@ -44,6 +45,24 @@ export const DEFAULT_GENERATE_COMMAND: readonly string[] = ["bun", "run", "db:ge
 
 /** Directory-name suffix that marks a drizzle journal path. */
 const JOURNAL_SUFFIX = "meta/_journal.json";
+
+/** Snapshot filename drizzle-kit writes: `meta/<idx>_snapshot.json`, idx zero-padded to 4. */
+function snapshotName(idx: number): string {
+	return `${String(idx).padStart(4, "0")}_snapshot.json`;
+}
+
+/** Typed preflight failure (warren-236d): maps to HTTP 409 — the branch's migration journal conflicts with main. */
+export class MigrationPreflightError extends WarrenError {
+	readonly code = "migration_preflight_failed";
+
+	constructor(message: string) {
+		super(message, {
+			recoveryHint:
+				"the branch's drizzle migration journal conflicts with the default branch; rebase the branch onto the default branch before dispatching",
+		});
+		this.name = "MigrationPreflightError";
+	}
+}
 
 export interface JournalEntry {
 	readonly idx: number;
@@ -157,7 +176,9 @@ async function mustSpawn(
 		...(env !== undefined ? { env } : {}),
 	});
 	if (result.exitCode !== 0) {
-		throw new Error(`migration preflight: \`${cmd.join(" ")}\` failed: ${result.stderr.trim()}`);
+		throw new MigrationPreflightError(
+			`migration preflight: \`${cmd.join(" ")}\` failed: ${result.stderr.trim()}`,
+		);
 	}
 	return result.stdout;
 }
@@ -202,10 +223,12 @@ async function healOneJournal(
 		.filter((e) => !main.entries.some((m) => m.idx === e.idx || m.tag === e.tag));
 	const merged = [...main.entries, ...keptExtras].sort((a, b) => a.idx - b.idx);
 
-	// Delete the colliding migration artifacts (sql + snapshot).
-	for (const tag of collidingTags) {
-		await rm(join(input.projectPath, dir, `${tag}.sql`), { force: true });
-		await rm(join(input.projectPath, dir, "meta", `${tag}_snapshot.json`), { force: true });
+	// Delete the colliding migration artifacts (sql + snapshot). drizzle-kit
+	// names snapshot files by the zero-padded journal index only, while the
+	// `.sql` file carries the tag (warren-236d).
+	for (const { idx, branchTag } of found) {
+		await rm(join(input.projectPath, dir, `${branchTag}.sql`), { force: true });
+		await rm(join(input.projectPath, dir, "meta", snapshotName(idx)), { force: true });
 	}
 	// Re-sync the journal to main + kept extras.
 	await writeFile(
@@ -215,7 +238,7 @@ async function healOneJournal(
 	// Restore any main-side migration files the branch worktree lacks so
 	// the regenerate diffs against main's tip snapshot.
 	for (const entry of main.entries) {
-		for (const rel of [`${dir}/${entry.tag}.sql`, `${dir}/meta/${entry.tag}_snapshot.json`]) {
+		for (const rel of [`${dir}/${entry.tag}.sql`, `${dir}/meta/${snapshotName(entry.idx)}`]) {
 			const abs = join(input.projectPath, rel);
 			if (await pathExists(abs)) continue;
 			const content = await mustSpawn(
