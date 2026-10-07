@@ -88,6 +88,12 @@ A loopback `WARREN_API_URL` cannot reach the host from a sibling container.
 The env composer rewrites loopback hosts to `host.docker.internal`. Every
 run container gets that alias through `--add-host ...:host-gateway`.
 
+The shared local engine does not put the run-scoped `WARREN_API_TOKEN`
+or `WARREN_API_URL` in the container env (warren-f737). The harness argv
+runs directly, with no in-container entrypoint, and every callback that
+token authorizes runs host-side. The rewrite above applies only to a
+`WARREN_API_URL` that a profile sets by other means.
+
 ## Capability degradations
 
 The provider declares its flags honestly per contract §5.

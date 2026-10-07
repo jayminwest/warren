@@ -197,13 +197,20 @@ describe("LocalEngine.create", () => {
 		}
 	});
 
-	test("injects the provider-owned callback URL when a token rides the domain env", async () => {
+	test("keeps the run-scoped callback token and URL out of the sandbox env (warren-f737)", async () => {
 		const h = await makeHarness();
 		try {
-			await h.engine.create(makeSpec(h, "run_e2", { env: { WARREN_API_TOKEN: "tok" } }));
+			await h.engine.create(
+				makeSpec(h, "run_e2", {
+					env: { WARREN_API_TOKEN: "tok", WARREN_QUALITY_GATE: "bun test" },
+				}),
+			);
 			await awaitTerminal(h.engine, "run_e2");
-			expect(h.profiles[0]?.setEnv.WARREN_API_URL).toBe("http://localhost:8181");
-			expect(h.profiles[0]?.setEnv.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
+			const setEnv = h.profiles[0]?.setEnv ?? {};
+			expect(setEnv.WARREN_API_TOKEN).toBeUndefined();
+			expect(setEnv.WARREN_API_URL).toBeUndefined();
+			expect(setEnv.WARREN_QUALITY_GATE).toBe("bun test");
+			expect(setEnv.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
 		} finally {
 			await h.cleanup();
 		}

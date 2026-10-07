@@ -93,6 +93,7 @@ export type InfraLostRetryHook = (runId: string) => Promise<void>;
 /** Why a candidate run did NOT earn an automatic retry (log/event detail). */
 export type InfraLostRetrySkip =
 	| "not_infra_lost"
+	| "cancel_requested"
 	| "is_retry"
 	| "already_retried"
 	| "plan_run_child"
@@ -128,6 +129,9 @@ export async function decideInfraLostRetry(
 	if (run.state !== "failed" || !isInfraLostRunFailure(run.failureReason)) {
 		return no("not_infra_lost");
 	}
+	// warren-676c: an operator cancel is terminal and never retryable, whatever
+	// path labelled the run infra-lost (defence in depth for the reconcilers).
+	if (await repos.events.hasKind(run.id, "cancel.requested")) return no("cancel_requested");
 	// The retry-of link IS the budget: a retry that lands infra-lost stays
 	// terminal, and an original that already spawned one is spent.
 	if (run.retryOf !== null) return no("is_retry");

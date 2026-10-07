@@ -14,6 +14,7 @@
  *     provisioned sandbox — so this is purely the domain-row unwind).
  */
 
+import type { RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
 import type { SpawnLogger, SpawnRunInput } from "./types.ts";
 
 /**
@@ -144,12 +145,17 @@ function errorMessage(err: unknown): string {
  * seam (`RuntimeProvider.create()`) owns the sandbox and destroys any
  * partial provision itself, so the domain never learns a sandbox id on a
  * failed spawn (nor is one left stranded to reference).
+ *
+ * warren-c2c8: the exception is a failure AFTER `create()` succeeded. The
+ * domain then holds a real sandbox id, compensates it, and records it on the
+ * event so the torn-down workload stays accounted for.
  */
 async function persistSpawnFailure(
 	input: SpawnRunInput,
 	runId: string,
 	err: unknown,
 	log: SpawnLogger,
+	sandboxId?: string,
 ): Promise<void> {
 	const message = errorMessage(err);
 	const now = input.now?.() ?? new Date();
@@ -161,7 +167,7 @@ async function persistSpawnFailure(
 			ts: now.toISOString(),
 			kind: "spawn_failed",
 			stream: "system",
-			payload: { step: "spawn", message },
+			payload: { step: "spawn", message, ...(sandboxId !== undefined ? { sandboxId } : {}) },
 		});
 	} catch (eventErr) {
 		log.error(
@@ -202,6 +208,40 @@ export async function rollback(
 	runId: string,
 	log: SpawnLogger,
 	err: unknown,
+	sandboxId?: string,
 ): Promise<void> {
-	await persistSpawnFailure(input, runId, err, log);
+	await persistSpawnFailure(input, runId, err, log, sandboxId);
+}
+
+/**
+ * warren-c2c8: tear down a workload `create()` returned when a later spawn
+ * step throws (e.g. persisting the correlation ids). The provider's own
+ * partial-failure cleanup never covers this window, so without it the
+ * workload runs on untracked. The agent has only just started, so there is
+ * no work to salvage. Best-effort: `cancel` then `terminate`, each logged on
+ * failure and never thrown, so the caller still rethrows the original error.
+ */
+export async function compensateCreatedRuntime(
+	provider: RuntimeProvider,
+	handle: RunHandle,
+	log: SpawnLogger,
+): Promise<void> {
+	const steps = [
+		["cancel", () => provider.cancel(handle, "spawn_failed")],
+		["terminate", () => provider.terminate(handle)],
+	] as const;
+	for (const [step, run] of steps) {
+		try {
+			await run();
+		} catch (stepErr) {
+			log.error(
+				{
+					event: `spawn.compensate.${step}_failed`,
+					sandbox_id: handle.sandboxId,
+					error: errorMessage(stepErr),
+				},
+				`spawn compensation: provider.${step} failed`,
+			);
+		}
+	}
 }

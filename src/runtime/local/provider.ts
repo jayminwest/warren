@@ -41,8 +41,9 @@ import type { LocalRunStore } from "./run-store.ts";
 export interface LocalProviderDeps {
 	/**
 	 * Server-process env the provider reads to compute its OWN plumbing — the
-	 * loopback callback URL (`WARREN_API_URL`, §6.3) and the on-disk state
-	 * roots (`WARREN_DATA_DIR`). Defaults to `process.env`.
+	 * provider credentials and the on-disk state roots (`WARREN_DATA_DIR`).
+	 * No callback URL or token reaches the sandbox (warren-f737). Defaults to
+	 * `process.env`.
 	 */
 	readonly serverEnv?: EnvLike;
 	/**
