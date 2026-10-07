@@ -3,6 +3,7 @@ import type { CheckRun, Forge, PullRequestRef, RepoRef } from "../forge/contract
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { createPrMergeChecker } from "../runs/pr-merge.ts";
 import { type Harness, NOW, setup } from "./coordinator.test-helpers.ts";
+import { hasEmptyPushEvent } from "./merge-gate.ts";
 import {
 	createMergeStallProbe,
 	hasMergeStalledEvent,
@@ -295,6 +296,37 @@ describe("hasMergeStalledEvent", () => {
 			payload: {},
 		});
 		expect(await hasMergeStalledEvent(h.repos, runId)).toBe(true);
+	});
+});
+
+describe("hasEmptyPushEvent", () => {
+	let h: Harness;
+
+	beforeEach(async () => {
+		h = await setup();
+	});
+
+	afterEach(async () => {
+		await h.db.close();
+	});
+
+	test("returns false for a run with no empty-push event", async () => {
+		const runId = await h.makeRun("warren-b");
+		expect(await hasEmptyPushEvent(h.repos, runId)).toBe(false);
+	});
+
+	test("returns true once the event is persisted", async () => {
+		const runId = await h.makeRun("warren-b");
+		const seq = ((await h.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
+		await h.repos.events.append({
+			runId,
+			sandboxEventSeq: seq,
+			ts: NOW.toISOString(),
+			kind: "reap.empty_push",
+			stream: "system",
+			payload: {},
+		});
+		expect(await hasEmptyPushEvent(h.repos, runId)).toBe(true);
 	});
 });
 

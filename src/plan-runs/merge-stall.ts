@@ -79,20 +79,16 @@ export function createMergeStallProbe(input: { readonly forge: Forge }): MergeSt
 }
 
 /**
- * Has this child run already carried a `plan_run.merge_stalled` event? The
- * same persisted-event scan shape as `hasEmptyPushEvent`, so the one-shot
- * guarantee survives a server restart: the warning is derived from the
- * durable event stream, never from process memory.
+ * Has this child run already carried a `plan_run.merge_stalled` event? A
+ * `hasKind` existence probe — not a full `listByRun` scan — so the one-shot
+ * guarantee survives a server restart without loading the run's entire event
+ * history on every merge-poll tick.
  */
 export async function hasMergeStalledEvent(
 	repos: CoordinatorRepos,
 	runId: string,
 ): Promise<boolean> {
-	const events = await repos.events.listByRun(runId);
-	for (const ev of events) {
-		if (ev.kind === "plan_run.merge_stalled") return true;
-	}
-	return false;
+	return repos.events.hasKind(runId, "plan_run.merge_stalled");
 }
 
 /** Milliseconds since `baseline`, or null when the baseline is unusable. */
