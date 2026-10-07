@@ -205,6 +205,7 @@ export interface ReapStepError {
 
 export type ReapStep =
 	| "workspace_lookup"
+	| "finalize"
 	| "mulch_merge"
 	| "seeds_close"
 	| "plans_mirror"
