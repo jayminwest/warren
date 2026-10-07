@@ -75,9 +75,8 @@ export interface MaterializedWorkspaceSource {
 	 * for `/workspace` does not cover that path, so without an explicit
 	 * mount of `gitCommonDir` every git invocation inside the sandbox fails
 	 * with `fatal: not a git repository` (burrow-7a80). The sandbox profile
-	 * builders mount this read-write at the same host path so the pointer
-	 * dereferences and `git commit`/`git push` can write per-worktree HEAD,
-	 * index, and shared objects.
+	 * builders mount this read-only at the same host path, with only the
+	 * run's own admin dir plus objects/refs/logs writable (warren-8926).
 	 */
 	gitCommonDir?: string;
 	/** Origin URL used for fresh clones. Absent for worktrees. */

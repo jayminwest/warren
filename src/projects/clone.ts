@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { formatError } from "../core/errors.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import { gitCredentialGitEnv } from "../workspace/git/credential-env.ts";
+import { hardenHostGit, isGitCommand } from "../workspace/git/host-git.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 
@@ -92,14 +93,20 @@ export const defaultSpawn: SpawnFn = async (
 	cmd: readonly string[],
 	opts: SpawnOptions,
 ): Promise<SpawnResult> => {
+	// warren-8926: host-side git never takes hooks/fsmonitor from repo state.
+	const [bin, ...rest] = cmd;
+	const git = bin !== undefined && isGitCommand(bin) ? hardenHostGit(rest, opts.cwd) : null;
+	const pinEnv = git?.env ?? {};
 	const proc = Bun.spawn({
-		cmd: [...cmd],
+		cmd: git !== null && bin !== undefined ? [bin, ...git.args] : [...cmd],
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
 		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
 		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
-		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
+		...(opts.env !== undefined || Object.keys(pinEnv).length > 0
+			? { env: resolveSpawnEnv({ ...opts.env, ...pinEnv }) }
+			: {}),
 	});
 	const timer =
 		opts.timeoutMs !== undefined && opts.timeoutMs > 0

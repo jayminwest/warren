@@ -94,7 +94,7 @@ The current boundary is explicit:
 - One deployment serves one operator or trusted team.
 - One bearer credential guards the operator surface.
 - Warren has no named users, RBAC, or per-user attribution.
-- The shipped forge speaks GitHub through a GitHub App (the default) or a static token for operator and CI paths.
+- The default forge speaks GitHub through a GitHub App or a static token for operator and CI paths. Azure DevOps Repos and GitLab forges ship behind `WARREN_FORGE`.
 - Warren is self-hosted software, not a hosted SaaS.
 
 See [Security](SECURITY.md) for the full threat model and [Roadmap](ROADMAP.md) for future work.
@@ -186,7 +186,7 @@ See [Extensions](docs/design/extensions.md) for their contracts and current pack
 
 ## Status
 
-Stable (`0.19.2`). The run lifecycle is in continuous use on GKE. It operates against real repositories, including this one. [app.warren.run](https://app.warren.run) exposes the read-only run history and event streams without a login.
+Stable (`0.19.3`). The run lifecycle is in continuous use on GKE. It operates against real repositories, including this one. [app.warren.run](https://app.warren.run) exposes the read-only run history and event streams without a login.
 
 Warren is pre-1.0. Unit, integration, and scenario tests exercise the run lifecycle. The current shared-token trust model remains a deliberate limit.
 

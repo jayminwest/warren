@@ -224,18 +224,12 @@ export function isTerminalRun(run: RunRow): boolean {
 }
 
 /**
- * Walk warren's persisted event stream for the child's run looking for the
- * `reap.empty_push` system event (mx-ab8532). Presence ⇒ commitsAhead===0,
- * which is the trivial-merge signal the coordinator advances on directly.
- *
- * Listed in increasing seq order; the event always lands once per run if it
- * fires, so a linear scan with no limit is fine — runs that produce
- * thousands of events have already paid the persistence cost.
+ * Has this child run carried the `reap.empty_push` system event (mx-ab8532)?
+ * Presence ⇒ commitsAhead===0, which is the trivial-merge signal the
+ * coordinator advances on directly. A `hasKind` existence probe — not a full
+ * `listByRun` scan — so it stays cheap on runs that have written thousands
+ * of events.
  */
 export async function hasEmptyPushEvent(repos: CoordinatorRepos, runId: string): Promise<boolean> {
-	const events = await repos.events.listByRun(runId);
-	for (const ev of events) {
-		if (ev.kind === "reap.empty_push") return true;
-	}
-	return false;
+	return repos.events.hasKind(runId, "reap.empty_push");
 }

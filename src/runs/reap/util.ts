@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { RunRow, RunTerminalState } from "../../db/schema.ts";
 import { resolveSpawnEnv } from "../../projects/clone.ts";
 import { harnessStatePrefixes } from "../../runtime/adapters/index.ts";
+import { hardenHostGit, isGitCommand } from "../../workspace/git/host-git.ts";
 import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
@@ -297,8 +298,16 @@ export const defaultExec: ReapExec = {
 		// warren-035c/fa84: merge the caller's env OVER the inherited process env
 		// (a pinned GIT_AUTHOR_*/GIT_COMMITTER_* identity beats an inherited one);
 		// an `undefined` override unsets an inherited var. See resolveSpawnEnv.
-		if (opts.env !== undefined) execOpts.env = resolveSpawnEnv(opts.env);
-		const { stdout, stderr } = await execFileAsync(cmd, [...args], execOpts);
+		// warren-8926: host-side git is hardened and pinned to the validated
+		// run git dir (argv + GIT_COMMON_DIR); an unregistered run worktree is
+		// refused.
+		const git = isGitCommand(cmd)
+			? hardenHostGit(args, opts.cwd, { requirePin: true })
+			: { args: [...args], env: {} };
+		if (opts.env !== undefined || Object.keys(git.env).length > 0) {
+			execOpts.env = resolveSpawnEnv({ ...opts.env, ...git.env });
+		}
+		const { stdout, stderr } = await execFileAsync(cmd, git.args, execOpts);
 		return { stdout, stderr };
 	},
 };

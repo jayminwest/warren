@@ -61,6 +61,16 @@ export interface BuildBwrapOptions {
 	bwrapBin?: string;
 }
 
+/** Read-only common dir, writable carve-outs, then re-protected files. */
+function workspaceGitBinds(profile: SandboxProfile): string[] {
+	const common = profile.workspaceGitdir;
+	if (!common) return [];
+	const out = ["--ro-bind", common, common];
+	for (const path of profile.workspaceGitWritable ?? []) out.push("--bind", path, path);
+	for (const path of profile.workspaceGitProtected ?? []) out.push("--ro-bind", path, path);
+	return out;
+}
+
 export function buildBwrapArgv(
 	profile: SandboxProfile,
 	command: SpawnCommand,
@@ -103,12 +113,19 @@ export function buildBwrapArgv(
 	// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points at
 	// `<gitCommonDir>/worktrees/<id>` — outside the /workspace bind. Mount the
 	// host's git common dir at the same path inside the sandbox so the pointer
-	// dereferences and the agent can run `git status`/`commit`/`push` from
-	// inside its own workspace (burrow-7a80). Read-write because git writes
-	// per-worktree HEAD/index plus new objects to the shared object database.
-	if (profile.workspaceGitdir) {
-		argv.push("--bind", profile.workspaceGitdir, profile.workspaceGitdir);
-	}
+	// dereferences and the agent can run `git status`/`commit` from inside its
+	// own workspace (burrow-7a80). The common dir is read-only — config, hooks,
+	// and sibling worktrees stay out of reach (warren-8926) — and only the
+	// validated writable carve-outs (own admin dir, objects/refs/logs) are
+	// re-bound read-write on top, then the admin dir's binding/config files are
+	// re-bound read-only again. Order matters: nested binds follow the parent.
+	//
+	// Linux gap vs macOS: bind mounts cannot let git create the single file
+	// `<common>/packed-refs.lock` inside the read-only root, so ref updates
+	// print a harmless "Unable to create packed-refs.lock" error and ref
+	// deletion fails. Closing it needs private per-run git metadata (see
+	// `src/sandbox/git-scope.ts`), not a writable common-dir root.
+	argv.push(...workspaceGitBinds(profile));
 
 	// Real writable HOME, separate from the workspace (warren-c865). Bound
 	// before /workspace so a workspace nested under the host home path can

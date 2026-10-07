@@ -148,19 +148,36 @@ describe("buildBwrapArgv", () => {
 		expect(argv.slice(dashDash + 1)).toEqual(["echo", "hi"]);
 	});
 
-	test("workspaceGitdir is bound read-write at the same host path (burrow-7a80)", () => {
+	test("workspaceGitdir is bound read-only with writable carve-outs (burrow-7a80, warren-8926)", () => {
 		// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points
 		// at `<hostClonePath>/.git/worktrees/<id>`. The /workspace bind doesn't
 		// reach that path, so without this mount every git invocation inside the
-		// sandbox fails with `fatal: not a git repository`.
+		// sandbox fails with `fatal: not a git repository`. The common dir itself
+		// is read-only; only the carve-outs are writable, then the admin binding
+		// files are re-protected — in that order.
+		const admin = "/host/clone/.git/worktrees/ws";
 		const argv = buildBwrapArgv(
 			baseProfile({
 				workspace: "/host/ws",
 				workspaceGitdir: "/host/clone/.git",
+				workspaceGitWritable: [admin, "/host/clone/.git/objects"],
+				workspaceGitProtected: [`${admin}/commondir`, "/host/clone/.git/objects/info"],
 			}),
 			cmd(),
 		);
-		expectAdjacent(argv, "--bind", "/host/clone/.git", "/host/clone/.git");
+		expectAdjacent(argv, "--ro-bind", "/host/clone/.git", "/host/clone/.git");
+		expectAdjacent(argv, "--bind", admin, admin);
+		expectAdjacent(argv, "--bind", "/host/clone/.git/objects", "/host/clone/.git/objects");
+		expectAdjacent(argv, "--ro-bind", `${admin}/commondir`, `${admin}/commondir`);
+		const info = "/host/clone/.git/objects/info";
+		expectAdjacent(argv, "--ro-bind", info, info);
+		expect(argv.indexOf("/host/clone/.git/objects")).toBeLessThan(argv.indexOf(info));
+		expect(argv.join(" ")).not.toContain("--bind /host/clone/.git /host/clone/.git");
+		const roCommon = argv.indexOf("/host/clone/.git");
+		const rwAdmin = argv.indexOf(admin);
+		const roProtected = argv.indexOf(`${admin}/commondir`);
+		expect(roCommon).toBeLessThan(rwAdmin);
+		expect(rwAdmin).toBeLessThan(roProtected);
 		// The workspace bind must still be present (and downstream of the gitdir
 		// bind so `/workspace` doesn't shadow anything).
 		expectAdjacent(argv, "--bind", "/host/ws", "/workspace");
