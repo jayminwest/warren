@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { metaApi } from "@/api/client.ts";
-import { type Capabilities, resolveCapabilities, retryWhoami } from "./use-capabilities.helpers.ts";
+import {
+	type Capabilities,
+	resolveCapabilities,
+	retryWhoami,
+	WHOAMI_QUERY_KEY,
+} from "./use-capabilities.helpers.ts";
 
 export type { Capabilities, CapabilityStatus } from "./use-capabilities.helpers.ts";
 
@@ -19,7 +24,7 @@ export type { Capabilities, CapabilityStatus } from "./use-capabilities.helpers.
  * stored token does, and both sites that change it (`LoginPage`, `Layout`'s
  * log out) clear the query cache.
  */
-export const WHOAMI_QUERY_KEY = ["meta", "whoami"] as const;
+export { WHOAMI_QUERY_KEY } from "./use-capabilities.helpers.ts";
 
 /** Read this browser's capability set. See `WHOAMI_QUERY_KEY`. */
 export function useCapabilities(): Capabilities {

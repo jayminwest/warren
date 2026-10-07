@@ -6,6 +6,9 @@
 import { UnauthorizedError } from "../api/client.ts";
 import type { ActorIdentity, CapabilityName, WhoamiResponse } from "../api/types.ts";
 
+/** The react-query key for the `GET /whoami` answer (warren-e195). */
+export const WHOAMI_QUERY_KEY = ["meta", "whoami"] as const;
+
 /**
  * - `loading` — the one `/whoami` fetch is in flight. Affordances stay
  *   hidden; a route guard waits rather than bouncing.
@@ -79,4 +82,26 @@ export function resolveCapabilities(query: WhoamiQueryState): Capabilities {
 export function retryWhoami(failureCount: number, error: Error): boolean {
 	if (error instanceof UnauthorizedError) return false;
 	return failureCount < 2;
+}
+
+/** Is this query key the `GET /whoami` answer? */
+export function isWhoamiQueryKey(queryKey: unknown): boolean {
+	return (
+		Array.isArray(queryKey) &&
+		queryKey.length === 2 &&
+		queryKey[0] === WHOAMI_QUERY_KEY[0] &&
+		queryKey[1] === WHOAMI_QUERY_KEY[1]
+	);
+}
+
+/**
+ * Should a rejected credential force the cached `/whoami` answer to be
+ * re-read? A 401 from any non-whoami request means the stored token was
+ * revoked or rotated mid-session, so the cached identity is stale and the
+ * operator-only UI would keep rendering off it. The whoami query itself
+ * 401ing must NOT re-trigger — under `WARREN_AUTH=token` a tokenless
+ * `/whoami` also 401s, and re-reading it there would loop.
+ */
+export function shouldInvalidateWhoami(error: unknown, queryKey: unknown): boolean {
+	return error instanceof UnauthorizedError && !isWhoamiQueryKey(queryKey);
 }

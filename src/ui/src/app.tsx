@@ -1,10 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/auth-gate.tsx";
 import { ConsoleShell } from "@/components/console/console-shell.tsx";
 import { OperatorRoute } from "@/components/operator-only.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
+import { shouldInvalidateWhoami, WHOAMI_QUERY_KEY } from "@/hooks/use-capabilities.helpers.ts";
 import { useLifecycleStreamInvalidation } from "@/hooks/use-lifecycle-stream-invalidation.ts";
 import { AgentsPage } from "@/pages/agents.tsx";
 import { DispatchPage } from "@/pages/dispatch.tsx";
@@ -30,6 +31,26 @@ import {
 } from "@/pages/telemetry.tsx";
 
 const queryClient = new QueryClient({
+	queryCache: new QueryCache({
+		onError: (error, query) => {
+			// A mid-session 401 from any non-whoami request means the cached
+			// credential answer is stale — force /whoami to be re-read so the
+			// auth gate can redirect to /login (token mode) or drop to the
+			// spectator view (public mode).
+			if (shouldInvalidateWhoami(error, query.queryKey)) {
+				queryClient.invalidateQueries({ queryKey: WHOAMI_QUERY_KEY });
+			}
+		},
+	}),
+	mutationCache: new MutationCache({
+		onError: (error) => {
+			// Mutations never carry the whoami key, so any 401 here is a
+			// rejected credential and must reset the cached identity.
+			if (shouldInvalidateWhoami(error, undefined)) {
+				queryClient.invalidateQueries({ queryKey: WHOAMI_QUERY_KEY });
+			}
+		},
+	}),
 	defaultOptions: {
 		queries: {
 			retry: false,

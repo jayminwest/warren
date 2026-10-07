@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { UnauthorizedError } from "../api/client.ts";
 import type { WhoamiResponse } from "../api/types.ts";
-import { resolveCapabilities, retryWhoami } from "./use-capabilities.helpers.ts";
+import {
+	isWhoamiQueryKey,
+	resolveCapabilities,
+	retryWhoami,
+	shouldInvalidateWhoami,
+} from "./use-capabilities.helpers.ts";
 
 /**
  * The UI capability layer's whole decision (warren-f53e / pl-b82d step 19).
@@ -92,5 +97,39 @@ describe("retryWhoami", () => {
 		expect(retryWhoami(0, boom)).toBe(true);
 		expect(retryWhoami(1, boom)).toBe(true);
 		expect(retryWhoami(2, boom)).toBe(false);
+	});
+});
+
+describe("shouldInvalidateWhoami", () => {
+	const whoamiKey = ["meta", "whoami"];
+	const runsKey = ["runs"];
+
+	test("ignores the whoami query's own 401 (no loop under token mode)", () => {
+		expect(shouldInvalidateWhoami(new UnauthorizedError("nope"), whoamiKey)).toBe(false);
+	});
+
+	test("a 401 from a non-whoami query forces a whoami re-read", () => {
+		expect(shouldInvalidateWhoami(new UnauthorizedError("nope"), runsKey)).toBe(true);
+	});
+
+	test("a 401 without a query key (a mutation) forces a whoami re-read", () => {
+		expect(shouldInvalidateWhoami(new UnauthorizedError("nope"), undefined)).toBe(true);
+	});
+
+	test("a non-401 failure never forces a re-read", () => {
+		expect(shouldInvalidateWhoami(new Error("network down"), runsKey)).toBe(false);
+	});
+});
+
+describe("isWhoamiQueryKey", () => {
+	test("matches the whoami key", () => {
+		expect(isWhoamiQueryKey(["meta", "whoami"])).toBe(true);
+	});
+
+	test("rejects other keys and non-arrays", () => {
+		expect(isWhoamiQueryKey(["meta", "whoami", "extra"])).toBe(false);
+		expect(isWhoamiQueryKey(["meta"])).toBe(false);
+		expect(isWhoamiQueryKey("meta,whoami")).toBe(false);
+		expect(isWhoamiQueryKey(undefined)).toBe(false);
 	});
 });
