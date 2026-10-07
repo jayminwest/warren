@@ -3,6 +3,7 @@ import { NotFoundError, StateTransitionError, ValidationError } from "../core/er
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
+import { MigrationPreflightError } from "../runs/spawn/migration-preflight.ts";
 import {
 	RuntimeAdmissionError,
 	RuntimeConflictError,
@@ -37,6 +38,13 @@ describe("renderError — WarrenError mapping", () => {
 
 	test("StateTransitionError → 409", () => {
 		expect(renderError(new StateTransitionError("nope")).status).toBe(409);
+	});
+
+	test("MigrationPreflightError → 409 with code + hint (warren-236d)", () => {
+		const r = renderError(new MigrationPreflightError("migration preflight failed"));
+		expect(r.status).toBe(409);
+		expect(r.envelope.error.code).toBe("migration_preflight_failed");
+		expect(r.envelope.error.hint).toContain("rebase");
 	});
 
 	test("RuntimeAdmissionError → 429 with Retry-After header + reason hint (warren-b6f2)", () => {
