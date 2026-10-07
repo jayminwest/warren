@@ -192,6 +192,59 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect((await repos.runs.get(run.id))?.state).toBe("failed");
 	});
 
+	// warren-676c: a lost sandbox after an operator cancel is warren's own
+	// delete — finalize `cancelled` and never fire the infra-lost retry hook.
+	test("finalizes a cancel-requested lost run as cancelled without the retry hook", async () => {
+		const runId = await seedRun();
+		await repos.runs.markRunning(runId, new Date());
+		await repos.events.append({
+			runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "cancel.requested",
+			stream: "system",
+			payload: { mode: "forwarded" },
+		});
+		const retried: string[] = [];
+		await reconcileLostSandboxRun({
+			runId,
+			sandboxRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			runtimeProvider: makeProvider().provider,
+			onInfraLostRun: async (id) => {
+				retried.push(id);
+			},
+		});
+
+		const run = await repos.runs.get(runId);
+		expect(run?.state).toBe("cancelled");
+		expect(run?.failureReason).toBeNull();
+		expect(retried).toEqual([]);
+		const lost = (await repos.events.listByRun(runId)).filter((e) => e.kind === "bridge_lost");
+		expect(lost[0]?.payloadJson).toMatchObject({ finalized: true, cancelRequested: true });
+	});
+
+	test("finalizes a lost run without cancel intent as failed/sandbox_run_lost and retries it", async () => {
+		const runId = await seedRun();
+		const retried: string[] = [];
+		await reconcileLostSandboxRun({
+			runId,
+			sandboxRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			runtimeProvider: makeProvider().provider,
+			onInfraLostRun: async (id) => {
+				retried.push(id);
+			},
+		});
+
+		const run = await repos.runs.get(runId);
+		expect(run?.state).toBe("failed");
+		expect(run?.failureReason).toBe("sandbox_run_lost");
+		expect(retried).toEqual([runId]);
+	});
+
 	test("no bridge_stalled when reconnects stay under threshold", async () => {
 		const runId = await seedRun();
 		let calls = 0;

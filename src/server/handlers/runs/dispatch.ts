@@ -1,5 +1,7 @@
 import { ValidationError } from "../../../core/errors.ts";
+import { IssueNotFoundError } from "../../../core/wire.ts";
 import { mintGitCredential } from "../../../forge/credentials.ts";
+import { refreshProject } from "../../../projects/manage.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { validateBaseCommit, validateDispatchRef } from "../../../runs/base-commit.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
@@ -60,12 +62,60 @@ async function mintSpawnGitCredential(
  * No tracker wired → skip, matching `resolveSeedTracker`'s existing
  * "neither wired -> no write" precedent for the post-dispatch metadata
  * write, so an untracked project's dispatch stays unaffected.
+ *
+ * warren-a25a (#1302): a git-native tracker reads the server's host clone,
+ * which `spawnRun` only refreshes later. On a miss, refresh the clone once
+ * and retry, so an issue pushed after the last refresh is found. The common
+ * path (issue already known) pays no extra fetch.
  */
-async function validateSeedId(deps: ServerDeps, projectId: string, seedId: string): Promise<void> {
+async function validateSeedId(
+	deps: ServerDeps,
+	projectId: string,
+	seedId: string,
+	pin: SeedRefreshPin,
+): Promise<void> {
 	if (deps.issueTracker === undefined) return;
 	const project = await deps.repos.projects.require(projectId);
 	const ctx: TrackerContext = { projectId: project.id, localPath: project.localPath };
-	await deps.issueTracker.getIssue(ctx, seedId);
+	try {
+		await deps.issueTracker.getIssue(ctx, seedId);
+	} catch (err) {
+		if (!(err instanceof IssueNotFoundError)) throw err;
+		if (!(await refreshForSeedRetry(deps, projectId, pin))) throw err;
+		await deps.issueTracker.getIssue(ctx, seedId);
+	}
+}
+
+interface SeedRefreshPin {
+	readonly ref: string | undefined;
+	readonly baseCommit: string | undefined;
+}
+
+/**
+ * warren-a25a: refresh the host clone for the seed-lookup retry. Same gate
+ * as `refreshDispatchProject` in `src/plan-runs/create.ts`: only a
+ * git-native tracker reads the clone, and only with a spawn seam wired. A
+ * `baseCommit` dispatch never moves the clone's HEAD (warren-232d), so it
+ * gets no retry. Returns whether a refresh ran.
+ */
+async function refreshForSeedRetry(
+	deps: ServerDeps,
+	projectId: string,
+	pin: SeedRefreshPin,
+): Promise<boolean> {
+	if (deps.issueTracker?.capabilities.isGitNative !== true) return false;
+	if (deps.spawn === undefined || pin.baseCommit !== undefined) return false;
+	await (deps.refreshProjectFn ?? refreshProject)({
+		repo: deps.repos.projects,
+		config: deps.projectsConfig,
+		id: projectId,
+		...(await mintSpawnGitCredential(deps, projectId)),
+		spawn: deps.spawn,
+		...(pin.ref !== undefined ? { ref: pin.ref } : {}),
+		...(deps.now !== undefined ? { now: deps.now } : {}),
+		...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
+	});
+	return true;
 }
 
 /**
@@ -321,7 +371,7 @@ async function buildHttpSpawnOptions(
 	// existing-branch domain path.
 	const effectiveExistingBranch = rescueRef ?? existingBranch;
 
-	if (seedId !== undefined) await validateSeedId(deps, projectId, seedId);
+	if (seedId !== undefined) await validateSeedId(deps, projectId, seedId, { ref, baseCommit });
 
 	// warren-9ce3: trigger=cli → origin "cli"; every other POST /runs is "api".
 	const dispatchOrigin = trigger === "cli" ? "cli" : "api";
