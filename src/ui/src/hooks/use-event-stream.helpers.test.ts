@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { RunEvent } from "../api/types.ts";
 import {
 	appendRunEvent,
+	type EventStreamState,
 	runEventStreamLoop,
 	type StreamStatus,
+	streamStateForRun,
 } from "./use-event-stream.helpers.ts";
 
 /**
@@ -236,5 +238,36 @@ describe("appendRunEvent", () => {
 	test("returns the same array when nothing is added", () => {
 		const events = [evt(1), evt(2)];
 		expect(appendRunEvent(events, evt(2))).toBe(events);
+	});
+});
+
+describe("streamStateForRun", () => {
+	const evt = (runId: string, seq: number) => ({ runId, seq }) as RunEvent;
+
+	test("keeps state when only the subscription mode changes for the same run", () => {
+		const state: EventStreamState = {
+			runId: "run_a",
+			events: [evt("run_a", 1), evt("run_a", 2)],
+			status: "live",
+			error: null,
+		};
+
+		expect(streamStateForRun(state, "run_a")).toBe(state);
+	});
+
+	test("starts empty when the hook moves to a different run id", () => {
+		const state: EventStreamState = {
+			runId: "run_a",
+			events: [evt("run_a", 7)],
+			status: "error",
+			error: "socket reset",
+		};
+
+		expect(streamStateForRun(state, "run_b")).toEqual({
+			runId: "run_b",
+			events: [],
+			status: "connecting",
+			error: null,
+		});
 	});
 });

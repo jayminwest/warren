@@ -2,6 +2,23 @@ import type { RunEvent } from "../api/types.ts";
 
 export type StreamStatus = "idle" | "connecting" | "live" | "ended" | "error";
 
+export interface EventStreamState {
+	runId: string;
+	events: RunEvent[];
+	status: StreamStatus;
+	error: string | null;
+}
+
+/**
+ * Keep accumulated stream state while the hook stays on the same run.
+ * A route change can reuse the hook instance, so a different run must
+ * start with no events, status, or error from the previous run.
+ */
+export function streamStateForRun(state: EventStreamState, runId: string): EventStreamState {
+	if (state.runId === runId) return state;
+	return { runId, events: [], status: "connecting", error: null };
+}
+
 /**
  * Everything the stream loop needs from its React host, injected so the
  * loop itself is a pure async function the tests can drive with the same

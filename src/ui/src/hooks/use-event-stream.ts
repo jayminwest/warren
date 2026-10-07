@@ -4,8 +4,10 @@ import { isTerminalRunState, type RunEvent } from "@/api/types.ts";
 import {
 	appendRunEvent,
 	type EventStreamLoopDeps,
+	type EventStreamState,
 	runEventStreamLoop,
 	type StreamStatus,
+	streamStateForRun,
 } from "@/hooks/use-event-stream.helpers.ts";
 
 interface State {
@@ -33,13 +35,16 @@ interface State {
  * file is only the React binding.
  */
 export function useEventStream(runId: string, follow: boolean): State {
-	const [state, setState] = useState<State>({
+	const [state, setState] = useState<EventStreamState>({
+		runId,
 		events: [],
 		status: "connecting",
 		error: null,
 	});
 
 	useEffect(() => {
+		setState((current) => streamStateForRun(current, runId));
+
 		let cancelled = false;
 		const ctrl = new AbortController();
 
@@ -65,11 +70,13 @@ export function useEventStream(runId: string, follow: boolean): State {
 			},
 			isAuthError: (err) => err instanceof UnauthorizedError,
 			onEvent: (evt) =>
-				setState((s) => {
-					const events = appendRunEvent(s.events, evt);
-					return events === s.events ? s : { ...s, events };
+				setState((current) => {
+					if (current.runId !== runId) return current;
+					const events = appendRunEvent(current.events, evt);
+					return events === current.events ? current : { ...current, events };
 				}),
-			onStatus: (status, error) => setState((s) => ({ ...s, status, error })),
+			onStatus: (status, error) =>
+				setState((current) => (current.runId === runId ? { ...current, status, error } : current)),
 		};
 		void runEventStreamLoop(deps);
 
