@@ -46,7 +46,9 @@ describe("useCapabilities (warren-f53e)", () => {
 	const hook = read("hooks", "use-capabilities.ts");
 
 	test("reads GET /whoami once per session under a stable key", () => {
-		expect(hook).toMatch(/WHOAMI_QUERY_KEY = \["meta", "whoami"\]/);
+		// The key lives in the helpers module so app.tsx's 401 handler shares it.
+		expect(helpers).toMatch(/WHOAMI_QUERY_KEY = \["meta", "whoami"\]/);
+		expect(hook).toMatch(/queryKey: WHOAMI_QUERY_KEY/);
 		expect(hook).toMatch(/metaApi\.whoami\(signal\)/);
 		expect(hook).toMatch(/staleTime: Number\.POSITIVE_INFINITY/);
 	});
