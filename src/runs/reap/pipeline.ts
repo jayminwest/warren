@@ -429,19 +429,22 @@ export async function runReapPipeline(
 	const baselinePlanIds = await snapshotBaselinePlanIds(ctx);
 
 	let finalizeResult: FinalizeResult;
+	let finalizeThrew = false;
 	try {
 		finalizeResult = await runProviderFinalize(ctx);
 	} catch (err) {
-		// The seam call should not throw on the tested paths (reapRun only runs
-		// the pipeline once the workspace resolved), but degrade to a no-op rather
-		// than crash reap if the workspace access fails inside finalize.
-		await ctx.fail("workspace_lookup", err);
+		// warren-d31b: a thrown finalize means delivery is UNKNOWN — degrade to
+		// a no-op result rather than crash reap, but fail closed below so the run
+		// cannot read as succeeded and the workspace is salvaged or preserved.
+		await ctx.fail("finalize", err);
 		finalizeResult = emptyFinalizeResult();
+		finalizeThrew = true;
 	}
 
 	await replayFinalizeEvents(ctx, finalizeResult);
 	recordFinalizeErrors(ctx, finalizeResult);
 	applyFinalizeToState(state, finalizeResult);
+	if (finalizeThrew) state.finalizeFailed = true;
 	await emitEmptyPushIfNeeded(ctx, state, finalizeResult);
 
 	// warren-e9e1 (leg 2): K8s merged in-pod, so apply finalize's mirror deltas to

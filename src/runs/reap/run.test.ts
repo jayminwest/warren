@@ -316,7 +316,10 @@ describe("reapRun", () => {
 		expect(result.errors.map((x) => x.step)).toContain("workspace_lookup");
 		expect(result.branchPushed).toBe(false);
 		expect(e.calls).toHaveLength(0);
-		expect(result.state).toBe("succeeded");
+		// warren-d31b: delivery unknown ⇒ fail closed and keep the workspace.
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("finalize_failed");
+		expect(result.workspaceDestroyed).toBe(false);
 	});
 
 	test("is idempotent against runs already in a terminal state", async () => {

@@ -248,7 +248,8 @@ export interface TeardownResult {
  *   `HEAD` (reap's historical fallback).
  *
  * A THROW means resolution failed (a live burrow that 404'd, an API error): the
- * domain records `workspace_lookup` and skips the success pipeline. A
+ * domain records `workspace_lookup`, skips the success pipeline, and fails the
+ * run closed (`finalize_failed`, workspace preserved — warren-d31b). A
  * `workspacePath: null` is NOT a failure — K8s reporting a legitimately
  * host-unreachable (but finalizable) workspace. */
 export interface WorkspaceInfo {

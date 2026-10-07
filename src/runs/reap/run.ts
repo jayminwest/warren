@@ -111,7 +111,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// host-unreachable, so there is no host path, but a succeeded K8s run must
 	// still reach the pipeline + `finalize` (which runs in-pod). `resolved`
 	// staying null means resolution FAILED (a live burrow 404 / API error); the
-	// pipeline is skipped and `workspace_lookup` is recorded, exactly as before.
+	// pipeline is skipped and `workspace_lookup` is recorded.
 	let resolved: WorkspaceInfo | null = null;
 	if (run.sandboxId === null) {
 		await fail("workspace_lookup", new Error("run has no sandbox_id; nothing to reap from"));
@@ -126,6 +126,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			branch = resolved.branch;
 		} catch (err) {
 			await fail("workspace_lookup", err);
+			// warren-d31b: delivery is unknown and the workspace may hold the only
+			// copy of the work — fail closed (finalize_failed) and preserve it.
+			if (stateOnEntry !== "queued") state.finalizeFailed = true;
 		}
 	}
 	// Base branch for the empty-push count comes from the run's frozen clone
