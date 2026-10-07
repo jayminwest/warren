@@ -117,7 +117,8 @@ export interface PullRequestState {
  * seam carries resolved intent, like `PullRequestDraft` carries finished
  * text.
  */
-export type AutoMergeMethod = "squash" | "merge" | "rebase";
+export const AUTO_MERGE_METHODS = ["squash", "merge", "rebase"] as const;
+export type AutoMergeMethod = (typeof AUTO_MERGE_METHODS)[number];
 
 /** Options for {@link Forge.armAutoMerge}. */
 export interface ArmAutoMergeOptions {
