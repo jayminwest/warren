@@ -56,6 +56,20 @@ jobs:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
 
+      # Commit as the GitHub App that minted the push token, not a hardcoded
+      # identity, so healed commits credit the bot that actually pushed them.
+      - name: Resolve the app bot identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          name="${APP_SLUG}[bot]"
+          id=$(gh api "/users/${name}" --jq .id)
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${name}@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
       # Only heal a branch with an open same-repo PR. A push-event CI failure
       # on a branch with no open PR is not this workflow's problem, and this
       # keeps the fork semantics intact (an open fork PR fails the head-repo
@@ -113,8 +127,8 @@ jobs:
           fi
           echo "Budgets re-baselined within cap — verifying the guard now passes."
           bun run check:bundle-size
-          git config user.name "factory-droid[bot]"
-          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git config user.name "${{ steps.bot.outputs.name }}"
+          git config user.email "${{ steps.bot.outputs.email }}"
           git add scripts/bundle-size-budgets.json
           git commit -m "ci: auto-heal bundle-size budgets (measured re-baseline)"
           for attempt in 1 2 3 4 5; do

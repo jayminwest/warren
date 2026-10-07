@@ -119,6 +119,21 @@ jobs:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
 
+      # Commit as the GitHub App that minted the push token, not a hardcoded
+      # identity, so healed commits credit the bot that actually pushed them.
+      - name: Resolve the app bot identity
+        id: bot
+        if: steps.gate.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          name="${APP_SLUG}[bot]"
+          id=$(gh api "/users/${name}" --jq .id)
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${name}@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7.0.1
         if: steps.gate.outputs.needed == 'true'
         with:
@@ -145,8 +160,8 @@ jobs:
         if: steps.gate.outputs.needed == 'true'
         run: |
           set -euo pipefail
-          git config user.name "factory-droid[bot]"
-          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git config user.name "${{ steps.bot.outputs.name }}"
+          git config user.email "${{ steps.bot.outputs.email }}"
           git fetch origin main
           if ! git merge origin/main --no-edit -m "merge origin/main via seeds-jsonl driver [seeds-autoheal]"; then
             echo "::error::Driver-aware merge conflicted — this is a genuine textual conflict, not warren-b34b. Leaving the PR for a repair run."
@@ -293,6 +308,21 @@ jobs:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
 
+      # Commit as the GitHub App that minted the push token, not a hardcoded
+      # identity, so healed commits credit the bot that actually pushed them.
+      - name: Resolve the app bot identity
+        id: bot
+        if: steps.gate.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          name="${APP_SLUG}[bot]"
+          id=$(gh api "/users/${name}" --jq .id)
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${name}@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7.0.1
         if: steps.gate.outputs.needed == 'true'
         with:
@@ -316,8 +346,8 @@ jobs:
         if: steps.gate.outputs.needed == 'true'
         run: |
           set -euo pipefail
-          git config user.name "factory-droid[bot]"
-          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git config user.name "${{ steps.bot.outputs.name }}"
+          git config user.email "${{ steps.bot.outputs.email }}"
           git fetch origin main
           if ! git merge origin/main --no-edit -m "merge origin/main via seeds-jsonl driver [seeds-autoheal]"; then
             echo "::error::Driver-aware merge conflicted — this is a genuine textual conflict, not warren-b34b. Leaving the PR for a repair run."
