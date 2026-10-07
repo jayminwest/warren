@@ -16,7 +16,7 @@ import {
 	withMaxCostUsdOverride,
 	withProviderOverrides,
 } from "../../registry/schema.ts";
-import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
+import type { RunHandle, RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
@@ -34,6 +34,7 @@ import { gateAgentPrompts, withMulchArm } from "./prompt-capabilities.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
 import {
 	bindRunLogger,
+	compensateCreatedRuntime,
 	logDispatched,
 	logPlacement,
 	logProvisioned,
@@ -314,6 +315,9 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		seedFiles: seedResult.files,
 		env: runEnv,
 	};
+	// warren-c2c8: the handle `create` returned, kept so a failure AFTER a
+	// successful create can tear down the live workload it names.
+	let created: RunHandle | undefined;
 	try {
 		// warren-5255: freeze the composed workspace branch onto the row so
 		// HTTP consumers (the campaign-controller's cross-fork head ref) read
@@ -363,14 +367,14 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		}
 		const dispatchStart = Date.now();
 		const handle = await provider.create(spec);
+		created = handle;
 		logProvisioned(log, handle.sandboxId, WORKER_PLACEMENT_LABEL, dispatchStart);
 		// warren-3743: the provider owns partial-failure cleanup, so the burrow
 		// correlation ids are written back onto the run only after `create` fully
-		// succeeds — a dispatch that fails mid-flight leaves no sandbox_id on the
-		// run (the provider already destroyed the burrow). These ids are
-		// load-bearing for LocalProvider resume across a host restart.
-		await input.repos.runs.attachBurrow(run.id, { sandboxId: handle.sandboxId });
+		// succeeds. These ids are load-bearing for LocalProvider resume across a
+		// host restart. warren-c2c8: one write, so the row never holds half a pair.
 		const updated = await input.repos.runs.attachBurrow(run.id, {
+			sandboxId: handle.sandboxId,
 			sandboxRunId: handle.providerRunId,
 		});
 		logDispatched(log, handle.sandboxId, handle.providerRunId, dispatchStart);
@@ -418,11 +422,12 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			agent,
 		};
 	} catch (err) {
-		logSpawnFailed(log, null, err);
-		// The provider already destroyed any provisioned sandbox on a partial
-		// failure (its create() owns the sandbox-half rollback), so the domain
-		// rollback only unwinds the warren row (`persistSpawnFailure`).
-		await rollback(input, run.id, log, err);
+		logSpawnFailed(log, created?.sandboxId ?? null, err);
+		// A failed create() already destroyed its partial provision. A failure
+		// after a successful create (warren-c2c8) leaves a live workload only
+		// the domain knows about, so compensate it before the row unwind.
+		if (created !== undefined) await compensateCreatedRuntime(provider, created, log);
+		await rollback(input, run.id, log, err, created?.sandboxId);
 		throw err;
 	}
 }
