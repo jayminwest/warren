@@ -379,6 +379,8 @@ export async function reconcileLostSandboxRun(input: ReconcileLostSandboxRunInpu
 		sandbox_run_id: input.sandboxRunId,
 	});
 	let finalized = false;
+	// warren-676c: warren deleted a cancelled run's sandbox — finalize `cancelled`, never retry.
+	let cancelRequested = false;
 	let sandboxToDestroy: { id: string; mode: RunMode } | null = null;
 	try {
 		const run = await input.repos.runs.get(input.runId);
@@ -388,6 +390,8 @@ export async function reconcileLostSandboxRun(input: ReconcileLostSandboxRunInpu
 		if (run.sandboxId !== null) {
 			sandboxToDestroy = { id: run.sandboxId, mode: run.mode };
 		}
+		cancelRequested = await input.repos.events.hasKind(input.runId, "cancel.requested");
+		const outcome = cancelRequested ? "cancelled" : "failed";
 		if (TERMINAL_RUN_STATES.has(run.state)) {
 			log.info(
 				{ event: "bridge.reconcile_skipped", state: run.state },
@@ -397,7 +401,7 @@ export async function reconcileLostSandboxRun(input: ReconcileLostSandboxRunInpu
 			if (run.state === "queued") {
 				await input.repos.runs.markRunning(input.runId, now);
 			}
-			await input.repos.runs.finalize(input.runId, "failed", now, failureReason);
+			await input.repos.runs.finalize(input.runId, outcome, now, failureReason);
 			finalized = true;
 		}
 	} catch (err) {
@@ -421,6 +425,7 @@ export async function reconcileLostSandboxRun(input: ReconcileLostSandboxRunInpu
 				sandboxRunId: input.sandboxRunId,
 				reason: failureReason,
 				finalized,
+				...(cancelRequested ? { cancelRequested: true } : {}),
 			},
 		});
 		input.broker.publish(input.runId, row);
@@ -461,9 +466,10 @@ export async function reconcileLostSandboxRun(input: ReconcileLostSandboxRunInpu
 	);
 	// warren-4af7: a freshly-finalized infra-lost run earns ONE automatic retry
 	// (src/runs/retry/infra-lost-retry.ts); a stall-ceiling `sandbox_unreachable` does not qualify.
-	if (finalized && isInfraLostRunFailure(failureReason) && input.onInfraLostRun !== undefined) {
+	const onInfraLostRun = cancelRequested ? undefined : input.onInfraLostRun;
+	if (finalized && isInfraLostRunFailure(failureReason) && onInfraLostRun !== undefined) {
 		try {
-			await input.onInfraLostRun(input.runId);
+			await onInfraLostRun(input.runId);
 		} catch (err) {
 			log.error(
 				{ event: "run.retry_failed", err: err instanceof Error ? err.message : String(err) },

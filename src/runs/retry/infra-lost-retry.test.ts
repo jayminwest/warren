@@ -248,6 +248,27 @@ describe("infra-lost run auto-retry (warren-4af7)", () => {
 		expect(isInfraLostRunFailure("sandbox_run_lost")).toBe(true);
 	});
 
+	// warren-676c: an operator cancel is terminal — never a retry candidate,
+	// even when a reconcile path mislabelled it infra-lost.
+	test("cancel-requested sandbox_run_lost run → no retry", async () => {
+		const cancelled = await h.run({});
+		await h.repos.events.append({
+			runId: cancelled.id,
+			sandboxEventSeq: 1,
+			ts: NOW.toISOString(),
+			kind: "cancel.requested",
+			stream: "system",
+			payload: { mode: "forwarded" },
+		});
+
+		await hookFor(h)(cancelled.id);
+
+		expect(h.spawnCalls).toHaveLength(0);
+		const decision = await decideInfraLostRetry(h.repos, cancelled);
+		expect(decision.retry).toBe(false);
+		expect(decision.skip).toBe("cancel_requested");
+	});
+
 	// warren-ea4b: Spot preemption joins the retryable infra-lost bucket.
 	test("preempted run → one retry; a second preemption stays terminal", async () => {
 		expect(isInfraLostRunFailure("preempted")).toBe(true);
