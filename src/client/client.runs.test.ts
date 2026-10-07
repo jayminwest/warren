@@ -216,6 +216,51 @@ describe("WarrenClient.getRun + waitForRun", () => {
 		}
 	});
 
+	test("waitForRun retries a transient 500 and a network error (gh #1305)", async () => {
+		const steps: Array<() => Response> = [
+			() => jsonResponse(500, { error: { code: "internal", message: "db down" } }),
+			() => {
+				throw new TypeError("fetch failed: ECONNRESET");
+			},
+			() => jsonResponse(200, { run: { id: "r1", state: "running" } }),
+			() => jsonResponse(200, { run: { id: "r1", state: "succeeded" } }),
+		];
+		let idx = 0;
+		const stubFetch = stub(async () => (steps[idx++] ?? (steps[3] as () => Response))());
+		const c = new WarrenClient({ config: { baseUrl: "https://w.local" }, fetch: stubFetch });
+		const row = await c.waitForRun("r1", { intervalMs: 1, timeoutMs: 5_000 });
+		expect(row.state).toBe("succeeded");
+		expect(idx).toBe(4);
+	});
+
+	test("waitForRun fails fast on a 404 (gh #1305)", async () => {
+		let calls = 0;
+		const stubFetch = stub(async () => {
+			calls++;
+			return jsonResponse(404, { error: { code: "not_found", message: "no run" } });
+		});
+		const c = new WarrenClient({ config: { baseUrl: "https://w.local" }, fetch: stubFetch });
+		const promise = c.waitForRun("r1", { intervalMs: 1, timeoutMs: 5_000 });
+		await expect(promise).rejects.toMatchObject({ status: 404 });
+		expect(calls).toBe(1);
+	});
+
+	test("waitForRun throws wait_timeout naming the last error when only transient errors occur", async () => {
+		const stubFetch = stub(async () => {
+			throw new TypeError("fetch failed: ECONNREFUSED");
+		});
+		const c = new WarrenClient({ config: { baseUrl: "https://w.local" }, fetch: stubFetch });
+		try {
+			await c.waitForRun("r1", { intervalMs: 5, timeoutMs: 20 });
+			throw new Error("expected timeout");
+		} catch (err) {
+			expect(err).toBeInstanceOf(WarrenClientError);
+			expect((err as WarrenClientError).code).toBe("wait_timeout");
+			expect((err as WarrenClientError).message).toContain("last error:");
+			expect((err as WarrenClientError).message).toContain("ECONNREFUSED");
+		}
+	});
+
 	test("waitForRun aborts when signal fires", async () => {
 		const stubFetch = stub(async () => jsonResponse(200, { run: { id: "r1", state: "running" } }));
 		const c = new WarrenClient({

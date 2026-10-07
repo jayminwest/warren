@@ -346,14 +346,6 @@ describe("runRun", () => {
 		expect(err.join("")).toContain("unknown agent");
 	});
 
-	test("a mid-stream transport error exits 1", async () => {
-		const { context, err } = captureContext();
-		const client = mockClient({ streamError: new Error("socket hangup") });
-		const result = await runRun(context, { client }, ARGS);
-		expect(result.exitCode).toBe(1);
-		expect(err.join("")).toContain("socket hangup");
-	});
-
 	test("SIGINT detaches the tail without cancelling the remote run (exit 130)", async () => {
 		const { context, err } = captureContext();
 		let sigintHandler: (() => void) | undefined;

@@ -19,6 +19,11 @@
  *      CI pipelines. A bounded post-stream timeout surfaces as a
  *      distinct `run.stream_ended` line rather than a bogus terminal.
  *
+ * A tail that fails after `run.spawned` (a 503 `event_stream_capacity`
+ * rejection, an ECONNRESET mid-stream) is not a run failure (gh #1305): the
+ * CLI names the run id and the tail error on stderr, then falls back to
+ * polling with the longer {@link TAIL_FAILED_TERMINAL_TIMEOUT_MS} budget.
+ *
  * SIGINT during a live tail aborts the local stream but does **not**
  * cancel the remote run — cancellation is `POST /runs/:id/cancel` (the
  * SDK's `cancelRun`). The first SIGINT prints a hint and detaches
@@ -52,6 +57,17 @@ import { type RemoteTailDeps, tailOutcomeExit, tailWithDetach } from "./remote-t
  */
 export const POST_STREAM_TERMINAL_TIMEOUT_MS = 5 * 60 * 1_000;
 
+/**
+ * Bound on the polling fallback after the event tail fails mid-run
+ * (gh #1305). The run may still be in progress, so this covers a whole run,
+ * not just the finalize window. A timeout emits `run.stream_ended` with
+ * `reason: "tail_failed"`.
+ */
+export const TAIL_FAILED_TERMINAL_TIMEOUT_MS = 6 * 60 * 60 * 1_000;
+
+/** Why `warren run` stopped short of a terminal state (`run.stream_ended.reason`). */
+type StreamEndedReason = "await_terminal_timeout" | "tail_failed";
+
 export interface RunArgs {
 	readonly agent: string;
 	readonly project: string;
@@ -82,7 +98,8 @@ export interface RunDeps extends RemoteTailDeps {
 	/**
 	 * Options forwarded to `client.waitForRun` after the event stream closes
 	 * (warren-22cf). Tests pass a short `timeoutMs` / `intervalMs`; production
-	 * leaves this unset and uses {@link POST_STREAM_TERMINAL_TIMEOUT_MS}.
+	 * leaves this unset and uses {@link POST_STREAM_TERMINAL_TIMEOUT_MS} (or
+	 * {@link TAIL_FAILED_TERMINAL_TIMEOUT_MS} after a failed tail, gh #1305).
 	 */
 	readonly waitForRunOptions?: WaitForRunOptions;
 }
@@ -192,11 +209,20 @@ async function tailUntilTerminal(
 		exit: deps.exit,
 	});
 
-	if (outcome.kind !== "completed") {
+	if (outcome.kind === "detached") {
 		return { exitCode: tailOutcomeExit(context, outcome), runId };
 	}
+	if (outcome.kind === "error") {
+		// gh #1305: the run is live server-side; a dropped tail is not a run
+		// failure. Say so once, then poll for the real terminal state.
+		context.stdio.stderr.write(
+			`warren: event tail for run ${runId} failed (${formatError(outcome.err)}); ` +
+				"polling for the terminal state instead\n",
+		);
+		return resolveTerminal(context, deps, runId, "tail_failed");
+	}
 
-	return resolveTerminal(context, deps, runId);
+	return resolveTerminal(context, deps, runId, "await_terminal_timeout");
 }
 
 /**
@@ -210,9 +236,11 @@ async function resolveTerminal(
 	context: CliContext,
 	deps: RunDeps,
 	runId: string,
+	reason: StreamEndedReason,
 ): Promise<RunResult> {
 	const waitOpts: WaitForRunOptions = {
-		timeoutMs: POST_STREAM_TERMINAL_TIMEOUT_MS,
+		timeoutMs:
+			reason === "tail_failed" ? TAIL_FAILED_TERMINAL_TIMEOUT_MS : POST_STREAM_TERMINAL_TIMEOUT_MS,
 		...deps.waitForRunOptions,
 	};
 	try {
@@ -220,7 +248,7 @@ async function resolveTerminal(
 		return emitTerminal(context, runId, run);
 	} catch (err) {
 		if (isWaitTimeout(err)) {
-			return emitStreamEnded(context, deps, runId, err);
+			return emitStreamEnded(context, deps, runId, err, reason);
 		}
 		context.stdio.stderr.write(`warren: failed to read run state: ${formatError(err)}\n`);
 		return { exitCode: exitCodeForError(err), runId };
@@ -263,6 +291,7 @@ async function emitStreamEnded(
 	deps: RunDeps,
 	runId: string,
 	err: WarrenClientError,
+	reason: StreamEndedReason,
 ): Promise<RunResult> {
 	let lastState: string | null = null;
 	let failureReason: string | null = null;
@@ -278,7 +307,7 @@ async function emitStreamEnded(
 		runId,
 		state: lastState,
 		failureReason,
-		reason: "await_terminal_timeout",
+		reason,
 		message: err.message,
 	};
 	const mode = outputMode(context);
