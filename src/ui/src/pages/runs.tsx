@@ -189,22 +189,22 @@ export function RunsPage() {
 			{/* Page header: title + description + operator action (export layout). */}
 			<div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-[5px]">
-					<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.025em] text-(--color-text) md:text-[20px] md:leading-6">
+					<h1 className="font-semibold text-(--color-text) text-[17px] leading-[22px] tracking-[-0.025em] md:text-[20px] md:leading-6">
 						Runs
 					</h1>
-					<p className="text-[11px] leading-[14px] text-(--color-text-2) md:text-[12px] md:leading-4">
+					<p className="text-(--color-text-2) text-[11px] leading-[14px] md:text-[12px] md:leading-4">
 						Runs across every project.
 					</p>
 				</div>
 				{/* Below md the trailing slot is the mono run count; dispatch
 				    lives in the bottom nav (warren-ffaf, mock :66-68). */}
-				<div className="shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+				<div className="shrink-0 font-mono text-(--color-text-3) text-[10px] leading-3 md:hidden">
 					{totalRuns} TOTAL
 				</div>
 				<OperatorOnly>
 					<Link
 						to="/dispatch"
-						className="hidden md:inline-flex h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-primary-ink) hover:opacity-90"
+						className="hidden h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] font-medium text-(--color-primary-ink) text-[11px] leading-[14px] hover:opacity-90 md:inline-flex"
 					>
 						＋ Dispatch run
 					</Link>
@@ -223,7 +223,7 @@ export function RunsPage() {
 			    fully-rounded bordered surface with 14px side margins, capped
 			    by the --color-thead column strip (mock :92-103). */}
 			<div className="mx-[14px] flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:hidden">
-				<div className="flex shrink-0 items-center gap-2 bg-(--color-thead) px-3 py-2 font-mono text-[9px] leading-[11px] tracking-[0.06em] text-(--color-text-3)">
+				<div className="flex shrink-0 items-center gap-2 bg-(--color-thead) px-3 py-2 font-mono text-(--color-text-3) text-[9px] leading-[11px] tracking-[0.06em]">
 					<span className="w-[70px] shrink-0">STATE</span>
 					<span className="grow">RUN</span>
 					<span className="shrink-0">ELAPSED · COST</span>
@@ -233,7 +233,7 @@ export function RunsPage() {
 			{/* Mobile pagination footer (mock :297-305): outside the card,
 			    count on the left, Load-more on the right. */}
 			<div className="flex shrink-0 items-center px-[14px] pt-3 pb-4 md:hidden">
-				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px]">
 					{mobileRows.length} OF {totalRuns}
 					{isFiltered ? " · FILTERED" : null}
 				</span>
@@ -242,22 +242,22 @@ export function RunsPage() {
 					<button
 						type="button"
 						onClick={() => setMobileCount((c) => c + MOBILE_PAGE_STEP)}
-						className="text-[11px] leading-[14px] font-medium text-(--color-primary)"
+						className="font-medium text-(--color-primary) text-[11px] leading-[14px]"
 					>
 						Load more →
 					</button>
 				) : null}
 			</div>
 			{/* Inventory table — desktop only below this point, unchanged. */}
-			<div className="hidden min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface) md:flex">
+			<div className="hidden min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-(--color-border) border-t-0 bg-(--color-surface) md:flex">
 				{listState ?? (
 					<div className="hidden md:block">
 						<RunsTable rows={rows} projectIndex={projectIndex} now={now} isOperator={isOperator} />
 					</div>
 				)}
 				{totalRuns > 0 ? (
-					<div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">
-						<div className="flex items-center gap-2 text-xs text-(--color-text-3)">
+					<div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-(--color-border) border-t px-4 py-2">
+						<div className="flex items-center gap-2 text-(--color-text-3) text-xs">
 							<label htmlFor="runs-page-size" className="text-xs">
 								Rows per page
 							</label>
@@ -274,10 +274,10 @@ export function RunsPage() {
 								))}
 							</select>
 						</div>
-						<div className="flex items-center gap-3 text-xs text-(--color-text-3)">
+						<div className="flex items-center gap-3 text-(--color-text-3) text-xs">
 							{costTotals.total !== undefined && costTotals.priced > 0 ? (
 								<span
-									className="font-mono text-[10px] leading-3 text-(--color-text-3)"
+									className="font-mono text-(--color-text-3) text-[10px] leading-3"
 									title={`${costTotals.priced} of ${totalRuns} runs have a recorded cost (all-time)`}
 								>
 									total: {formatCostUsd(costTotals.total)}

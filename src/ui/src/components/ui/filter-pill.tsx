@@ -32,7 +32,7 @@ export const FilterPill = React.forwardRef<HTMLButtonElement, FilterPillProps>(
 			aria-pressed={active}
 			className={cn(
 				"rounded-full border px-3 py-1 text-xs transition-colors",
-				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)",
+				"focus-visible:outline-none focus-visible:ring-(--color-ring) focus-visible:ring-2",
 				active
 					? "bg-(--color-primary) text-(--color-primary-foreground)"
 					: "bg-(--color-card) hover:bg-(--color-accent)",

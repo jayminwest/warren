@@ -144,7 +144,9 @@ describe("POST /runs — rescueFromRunId (#1241)", () => {
 		expect(persisted.parentRunId).toBe(parent.id);
 		expect(persisted.cloneKind).toBe("rescue");
 		const up = calls.find((c) => c.method === "POST" && c.path === "/sandboxes");
-		expect((up?.body as { branch?: string }).branch).toBe(`warren/rescue/${parent.id}`);
+		expect((up?.body as { branch?: string } | undefined)?.branch).toBe(
+			`warren/rescue/${parent.id}`,
+		);
 	});
 
 	test("rescueFromRunId refuses a run with no salvage rescue branch (#1241)", async () => {

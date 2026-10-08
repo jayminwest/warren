@@ -126,7 +126,9 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		const events = await repos.events.listByRun(runId);
 		const reconciled = events.find((e) => e.kind === WATCHDOG_TERMINAL_RECONCILED_KIND);
 		expect(reconciled).toBeDefined();
-		expect((reconciled?.payloadJson as { providerPhase?: string }).providerPhase).toBe("succeeded");
+		expect((reconciled?.payloadJson as { providerPhase?: string } | undefined)?.providerPhase).toBe(
+			"succeeded",
+		);
 	});
 
 	test("warren-fe9b: a vanished pod WITH a cancel.requested event reconciles to cancelled through reap (the costUsd-finalization path)", async () => {
@@ -163,7 +165,9 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		const events = await repos.events.listByRun(runId);
 		const reconciled = events.find((e) => e.kind === WATCHDOG_TERMINAL_RECONCILED_KIND);
 		expect(reconciled).toBeDefined();
-		expect((reconciled?.payloadJson as { cancelRequested?: boolean }).cancelRequested).toBe(true);
+		expect(
+			(reconciled?.payloadJson as { cancelRequested?: boolean } | undefined)?.cancelRequested,
+		).toBe(true);
 	});
 
 	test("warren-fe9b: the cancel fast path probes a cancel-intent run BEFORE the full reconcile grace elapses", async () => {
@@ -270,7 +274,9 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		const events = await repos.events.listByRun(runId);
 		const reconciled = events.find((e) => e.kind === WATCHDOG_TERMINAL_RECONCILED_KIND);
 		expect(reconciled).toBeDefined();
-		expect((reconciled?.payloadJson as { providerDetail?: string }).providerDetail).toBe(detail);
+		expect(
+			(reconciled?.payloadJson as { providerDetail?: string } | undefined)?.providerDetail,
+		).toBe(detail);
 	});
 
 	test("warren-7f0b: a LIVE pod with the stdin_hold_timeout kill witness reaps as failed(agent_died)", async () => {
@@ -311,7 +317,9 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		const events = await repos.events.listByRun(runId);
 		const reconciled = events.find((e) => e.kind === WATCHDOG_TERMINAL_RECONCILED_KIND);
 		expect(reconciled).toBeDefined();
-		expect((reconciled?.payloadJson as { providerPhase?: string }).providerPhase).toBe("running");
+		expect((reconciled?.payloadJson as { providerPhase?: string } | undefined)?.providerPhase).toBe(
+			"running",
+		);
 	});
 
 	test("warren-7f0b: a live pod with the witness only on a NON-system stream is left alone (provenance)", async () => {

@@ -34,24 +34,24 @@ function CapacityCell({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 flex-col gap-[5px] p-3 sm:gap-2 sm:flex-1 sm:px-3.5 sm:pt-3 sm:pb-2.5",
+				"flex min-w-0 flex-col gap-[5px] p-3 sm:flex-1 sm:gap-2 sm:px-3.5 sm:pt-3 sm:pb-2.5",
 				className,
 			)}
 		>
-			<span className="font-mono text-[9px] leading-[11px] tracking-[0.08em] text-(--color-text-3) sm:leading-3 sm:tracking-[0.07em]">
+			<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px] tracking-[0.08em] sm:leading-3 sm:tracking-[0.07em]">
 				{label}
 			</span>
 			<span className="flex items-baseline gap-1 sm:gap-[7px]">
-				<span className="font-mono text-[18px] leading-[22px] font-semibold tracking-[-0.03em] text-(--color-text) sm:text-xl sm:leading-6 sm:font-medium">
+				<span className="font-mono font-semibold text-(--color-text) text-[18px] leading-[22px] tracking-[-0.03em] sm:font-medium sm:text-xl sm:leading-6">
 					{value}
 				</span>
 				{unit ? (
-					<span className="w-max shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
+					<span className="w-max shrink-0 font-mono text-(--color-text-3) text-[10px] leading-3">
 						{unit}
 					</span>
 				) : null}
 			</span>
-			<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3) sm:leading-3">
+			<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px] sm:leading-3">
 				{detail}
 			</span>
 		</div>
@@ -72,7 +72,7 @@ export function CapacityStrip({
 }) {
 	if (overview === undefined) {
 		return (
-			<div className="rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3.5 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<div className="rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3.5 py-3 font-mono text-(--color-text-3) text-[10px] leading-3">
 				loading snapshot…
 			</div>
 		);
@@ -139,8 +139,8 @@ export function CapacityStrip({
 					key={cell.label}
 					{...cell}
 					className={cn(
-						i % 2 === 0 && i + 1 < cells.length && "border-r border-(--color-border)",
-						i < 2 * (rowCount - 1) && "border-b border-(--color-border) sm:border-b-0",
+						i % 2 === 0 && i + 1 < cells.length && "border-(--color-border) border-r",
+						i < 2 * (rowCount - 1) && "border-(--color-border) border-b sm:border-b-0",
 						"sm:border-r sm:border-r-(--color-border)",
 					)}
 				/>

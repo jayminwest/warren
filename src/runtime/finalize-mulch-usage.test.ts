@@ -78,7 +78,9 @@ describe("K8s in-pod finalize — mulch usage", () => {
 		};
 		const r = await collectFinalizeResult(intent, "/ws", { fs, git });
 		expect(usageEvents(r.events)).toHaveLength(1);
-		expect((usageEvents(r.events)[0]?.payload as { injections: number }).injections).toBe(2);
+		expect(
+			(usageEvents(r.events)[0]?.payload as { injections: number } | undefined)?.injections,
+		).toBe(2);
 	});
 
 	test("a missing log (readFile throws) adds no event", async () => {

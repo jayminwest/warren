@@ -245,13 +245,13 @@ function RunHeader({
 			 * ~347px row); md+ keeps the desktop breadcrumb header verbatim.
 			 */}
 			<header className="flex shrink-0 flex-col gap-1.5 md:hidden">
-				<nav className="shrink-0 font-mono text-[11px] leading-[14px] font-medium text-(--color-text-3)">
+				<nav className="shrink-0 font-medium font-mono text-(--color-text-3) text-[11px] leading-[14px]">
 					<Link to="/runs" className="hover:text-(--color-text)">
 						← Runs
 					</Link>
 				</nav>
 				<div className="flex items-center gap-2">
-					<h1 className="font-mono text-[14px] leading-[18px] font-semibold tracking-[-0.02em] text-(--color-text)">
+					<h1 className="font-mono font-semibold text-(--color-text) text-[14px] leading-[18px] tracking-[-0.02em]">
 						{run.id}
 					</h1>
 					<span className="flex shrink-0 items-center gap-[5px] rounded-(--radius-sm) border border-(--color-border-strong) px-[7px] py-[3px]">
@@ -275,7 +275,7 @@ function RunHeader({
 						) : null}
 					</OperatorOnly>
 				</div>
-				<p className="line-clamp-1 font-mono text-[10px] leading-[12px] text-(--color-text-3)">
+				<p className="line-clamp-1 font-mono text-(--color-text-3) text-[10px] leading-[12px]">
 					{[
 						run.agentName,
 						projectName,
@@ -294,7 +294,7 @@ function RunHeader({
 				<OperatorOnly>{isTerminal ? <DispatchFromRunButtons run={run} /> : null}</OperatorOnly>
 			</header>
 			<header className="hidden shrink-0 flex-wrap items-center gap-2.5 md:flex">
-				<h1 className="font-mono text-[16px] leading-5 font-medium tracking-[-0.02em] text-(--color-text)">
+				<h1 className="font-medium font-mono text-(--color-text) text-[16px] leading-5 tracking-[-0.02em]">
 					{run.id}
 				</h1>
 				<span className="flex items-center gap-[7px]">
@@ -307,7 +307,7 @@ function RunHeader({
 					<RunFailureBadge reason={run.failureReason} />
 				) : null}
 				<HeaderBadges run={run} reap={reap} />
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-(--color-text-3) text-[10px] leading-3">
 					{run.agentName} · {projectName}
 					{run.provider !== null ? ` · ${run.provider}` : ""}
 				</span>
@@ -374,7 +374,7 @@ export function RunDetailPage() {
 
 	return (
 		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6 xl:h-full">
-			<nav className="hidden shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:block">
+			<nav className="hidden shrink-0 font-mono text-(--color-text-3) text-[10px] leading-3 md:block">
 				RUNS / {r.id.toUpperCase()}
 			</nav>
 
@@ -416,7 +416,7 @@ export function RunDetailPage() {
 			 * stacked layout below xl keeps growing.
 			 */}
 			<div className="flex min-h-0 flex-1 flex-col gap-3 xl:h-full xl:min-h-0 xl:flex-row xl:overflow-hidden">
-				<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 order-3 md:order-none">
+				<div className="order-3 flex min-h-0 min-w-0 flex-1 flex-col gap-3 md:order-none">
 					<EventTail
 						runId={r.id}
 						events={stream.events}
@@ -442,10 +442,10 @@ export function RunDetailPage() {
 							<SteerForm runId={r.id} disabled={isTerminal} />
 						</div>
 					</OperatorOnly>
-					<details className="order-5 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+					<details className="group order-5 md:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 font-semibold text-(--color-text) text-[11px] leading-[14px] [&::-webkit-details-marker]:hidden">
 							Prompt
-							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+							<span className="ml-auto font-mono text-(--color-text-3) text-[9px] leading-3 transition group-open:rotate-90">
 								&#9656;
 							</span>
 						</summary>
@@ -453,10 +453,10 @@ export function RunDetailPage() {
 							<PromptPanel run={r} />
 						</div>
 					</details>
-					<details className="order-6 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+					<details className="group order-6 md:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 font-semibold text-(--color-text) text-[11px] leading-[14px] [&::-webkit-details-marker]:hidden">
 							Run definition
-							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+							<span className="ml-auto font-mono text-(--color-text-3) text-[9px] leading-3 transition group-open:rotate-90">
 								&#9656;
 							</span>
 						</summary>
@@ -464,10 +464,10 @@ export function RunDetailPage() {
 							<RunDefinitionPanel run={r} projectName={projectName} />
 						</div>
 					</details>
-					<details className="order-7 group md:hidden">
-						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+					<details className="group order-7 md:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 font-semibold text-(--color-text) text-[11px] leading-[14px] [&::-webkit-details-marker]:hidden">
 							Preview
-							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+							<span className="ml-auto font-mono text-(--color-text-3) text-[9px] leading-3 transition group-open:rotate-90">
 								&#9656;
 							</span>
 						</summary>

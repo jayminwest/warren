@@ -277,9 +277,13 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const evict = events.find((e) => e.kind === "preview_evicted");
 			expect(evict).toBeDefined();
 			expect(evict?.stream).toBe("system");
-			expect((evict?.payloadJson as { reason?: EvictionReason }).reason).toBe("max_lifetime");
-			expect((evict?.payloadJson as { port?: number | null }).port).toBe(40000);
-			expect((evict?.payloadJson as { previousState?: string }).previousState).toBe("live");
+			expect((evict?.payloadJson as { reason?: EvictionReason } | undefined)?.reason).toBe(
+				"max_lifetime",
+			);
+			expect((evict?.payloadJson as { port?: number | null } | undefined)?.port).toBe(40000);
+			expect((evict?.payloadJson as { previousState?: string } | undefined)?.previousState).toBe(
+				"live",
+			);
 		});
 
 		test("re-entrant with manual teardown: torn-down rows are skipped", async () => {
