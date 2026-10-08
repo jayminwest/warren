@@ -47,6 +47,7 @@ function FactField({
 	mono = true,
 	variant = "resolved",
 	className,
+	mask,
 }: {
 	label: string;
 	value: string;
@@ -54,11 +55,14 @@ function FactField({
 	mono?: boolean;
 	variant?: "editable" | "resolved";
 	className?: string;
+	/** Blank the value in ui-visual screenshots (release- or time-dependent). */
+	mask?: boolean;
 }) {
 	return (
 		<div className={cn("flex min-w-0 flex-1 flex-col gap-[5px]", className)}>
 			<span className="font-medium text-(--color-text-2) text-[10px] leading-3">{label}</span>
 			<span
+				data-visual-mask={mask ? "" : undefined}
 				className={cn(
 					"flex min-w-0 items-center truncate rounded-(--radius-sm) border px-2.5 py-2 font-mono text-[11px] leading-[14px]",
 					variant === "editable"
@@ -149,8 +153,9 @@ function AuthModePills({ mode }: { mode: InstanceFactsResponse["authMode"] }) {
  * strength; at md+ it reverts to the justify-between row.
  */
 /**
- * `mask` marks a wall-clock value (uptime) with `data-visual-mask` so the
- * ui-visual screenshots (scripts/ui-visual) blank it out.
+ * `mask` marks a release- or wall-clock value (version, uptime) with
+ * `data-visual-mask` so the ui-visual screenshots (scripts/ui-visual)
+ * blank it out.
  */
 function FactRow({ label, value, mask }: { label: string; value: string; mask?: boolean }) {
 	return (
@@ -187,7 +192,7 @@ function InstanceSection({ facts }: { facts: InstanceFactsResponse | undefined }
 					value={runtime}
 					hint="WARREN_RUNTIME · RESOLVED AT BOOT · READ-ONLY"
 				/>
-				<FactField label="Version" value={version} hint="READ-ONLY" />
+				<FactField label="Version" value={version} hint="READ-ONLY" mask />
 			</div>
 			<div className="grid w-full grid-cols-2 gap-2.5 sm:flex sm:flex-row sm:gap-3">
 				<FactField label="Database backend" value={dbBackend} hint="WARREN_DB_URL · READ-ONLY" />
@@ -284,7 +289,7 @@ function FactsRail({ facts }: { facts: InstanceFactsResponse | undefined }) {
 				</span>
 			</header>
 			<div className="flex flex-col py-1.5 md:gap-2.5 md:px-4 md:py-3.5">
-				<FactRow label="version" value={version} />
+				<FactRow label="version" value={version} mask />
 				<FactRow label="runtime" value={runtime} />
 				<FactRow label="database" value={dbBackend} />
 				<FactRow label="uptime" value={uptime} mask />

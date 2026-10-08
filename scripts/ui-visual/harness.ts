@@ -165,33 +165,45 @@ export function screenshotMasks(page: Page, c: PageCase): Locator[] {
 const MAX_EXTRA_HEIGHT = 8_000;
 
 /**
- * Full-page, animation-free screenshot into `screenshotDir`. The console
- * shell pins itself to the viewport and scrolls inside `<main>`, so
- * `fullPage` alone would stop at the fold: grow the viewport by what
- * `<main>` hides, shoot, then restore the case's size.
+ * Run `shoot` with the viewport tall enough for a full-page capture. The
+ * console shell pins itself to the viewport and scrolls inside `<main>`,
+ * so `fullPage` alone would stop at the fold: grow the viewport by what
+ * `<main>` hides, shoot, then restore the case's size. The golden spec
+ * (warren-a132) wraps `toHaveScreenshot` in it the same way.
  */
-export async function screenshotCase(page: Page, c: PageCase, info: TestInfo): Promise<void> {
-	const path = join(screenshotDir(info), `${c.name}.png`);
+export async function atContentHeight<T>(
+	page: Page,
+	c: PageCase,
+	shoot: () => Promise<T>,
+): Promise<T> {
 	const hidden = await page.evaluate(() => {
 		const main = document.querySelector("main");
 		return main === null ? 0 : main.scrollHeight - main.clientHeight;
 	});
 	const extra = Math.min(Math.max(0, hidden), MAX_EXTRA_HEIGHT);
-	if (extra > 0) {
-		await page.setViewportSize({ width: c.size.width, height: c.size.height + extra });
-		await nextFrames(page);
-	}
-	await page.screenshot({
-		path,
-		fullPage: true,
-		animations: "disabled",
-		caret: "hide",
-		mask: screenshotMasks(page, c),
-	});
-	if (extra > 0) {
+	if (extra === 0) return shoot();
+	await page.setViewportSize({ width: c.size.width, height: c.size.height + extra });
+	await nextFrames(page);
+	try {
+		return await shoot();
+	} finally {
 		await page.setViewportSize(c.size);
 		await nextFrames(page);
 	}
+}
+
+/** Full-page, animation-free screenshot into `screenshotDir`. */
+export async function screenshotCase(page: Page, c: PageCase, info: TestInfo): Promise<void> {
+	const path = join(screenshotDir(info), `${c.name}.png`);
+	await atContentHeight(page, c, () =>
+		page.screenshot({
+			path,
+			fullPage: true,
+			animations: "disabled",
+			caret: "hide",
+			mask: screenshotMasks(page, c),
+		}),
+	);
 	await info.attach(c.name, { path, contentType: "image/png" });
 }
 

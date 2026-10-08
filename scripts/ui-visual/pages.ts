@@ -58,6 +58,11 @@ export interface PageCase {
 
 const at = (path: string) => (): string => path;
 
+/** `<page id>.<viewport>.<theme>`: a case's test title, screenshot stem, and golden stem. */
+export function caseName(pageId: string, viewport: ViewportName, theme: ThemeName): string {
+	return `${pageId}.${viewport}.${theme}`;
+}
+
 /** Every screen route in `src/ui/src/app.tsx`, in nav order. */
 export const PAGES: readonly PageSpec[] = [
 	{ id: "operations", route: "/operations", path: at("/operations") },
@@ -121,7 +126,7 @@ export function expandManifest(
 		.flatMap((page) =>
 			VIEWPORT_NAMES.filter((v) => keep(filter.viewports, v)).flatMap((viewport) =>
 				THEMES.filter((t) => keep(filter.themes, t)).map((theme) => ({
-					name: `${page.id}.${viewport}.${theme}`,
+					name: caseName(page.id, viewport, theme),
 					page,
 					viewport,
 					size: VIEWPORTS[viewport],

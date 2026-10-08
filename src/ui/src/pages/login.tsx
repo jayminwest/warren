@@ -132,10 +132,10 @@ export function LoginPage() {
 
 	const instanceLine =
 		facts.data === undefined ? null : `${facts.data.runtime} · ${facts.data.authMode} auth`;
-	const footerLine =
+	const authLine =
 		facts.data === undefined
-			? "WARREN"
-			: `WARREN v${facts.data.version} · ${facts.data.authMode === "public" ? "PUBLIC" : "TOKEN"} AUTH`;
+			? null
+			: `${facts.data.authMode === "public" ? "PUBLIC" : "TOKEN"} AUTH`;
 
 	return (
 		<div className="flex min-h-dvh flex-col items-center justify-center overflow-clip bg-(--color-bg) p-6">
@@ -228,7 +228,15 @@ export function LoginPage() {
 			{/* Version / auth strip under the card (mono 9px, artboard copy). */}
 			<div className="pt-[18px]">
 				<span className="font-mono text-(--color-text-3) text-[9px] leading-3 tracking-[0.05em]">
-					{footerLine} · A STALE TOKEN RETURNS 401, NEVER THE PUBLIC VIEW
+					WARREN{" "}
+					{facts.data !== undefined && authLine !== null ? (
+						<>
+							{/* data-visual-mask: the version changes every release, so the
+							    ui-visual goldens blank it (scripts/ui-visual). */}
+							<span data-visual-mask="">v{facts.data.version}</span> · {authLine}{" "}
+						</>
+					) : null}
+					· A STALE TOKEN RETURNS 401, NEVER THE PUBLIC VIEW
 				</span>
 			</div>
 		</div>

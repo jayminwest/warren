@@ -15,12 +15,16 @@ const WORKFLOW = ".github/workflows/ui-visual.yml";
 type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
 type Job = {
 	name?: string;
+	env?: Record<string, string>;
 	"timeout-minutes"?: number;
 	container?: { image?: string };
 	steps?: Step[];
 };
 type Workflow = {
-	on?: Record<string, { paths?: string[] } | null>;
+	on?: Record<
+		string,
+		{ paths?: string[]; inputs?: Record<string, { type?: string; default?: unknown }> } | null
+	>;
 	concurrency?: { group?: string };
 	jobs?: Record<string, Job>;
 };
@@ -80,5 +84,31 @@ describe("ui-visual workflow", () => {
 		expect(upload?.if).toBe("always()");
 		expect(upload?.with?.path).toBe("scripts/ui-visual/out/");
 		expect(String(upload?.with?.name)).toStartWith("ui-screenshots-");
+	});
+
+	test("arms the golden spec and guards the baselines before comparing (warren-a132)", () => {
+		expect(job().env?.WARREN_UI_VISUAL_GOLDEN).toBe("1");
+		const steps = job().steps ?? [];
+		const guard = steps.findIndex((s) => s.run === "bun run check:ui-goldens");
+		const compare = steps.findIndex((s) => s.run === "bun run check:ui-visual");
+		expect(guard).toBeGreaterThan(-1);
+		expect(guard).toBeLessThan(compare);
+		expect(steps[guard]?.if).toContain("!inputs.update_goldens");
+		expect(steps[compare]?.if).toContain("!inputs.update_goldens");
+	});
+
+	test("regenerates goldens only on dispatch and uploads them with the manifest", () => {
+		const input = loadWorkflow().on?.workflow_dispatch?.inputs?.update_goldens;
+		expect(input?.type).toBe("boolean");
+		expect(input?.default).toBe(false);
+		const steps = job().steps ?? [];
+		const regen = steps.find((s) => s.run?.includes("--update-snapshots=all"));
+		expect(regen?.if).toContain("inputs.update_goldens");
+		expect(regen?.if).not.toContain("!inputs");
+		const write = steps.find((s) => s.run === "bun run scripts/ui-visual/goldens.ts write");
+		expect(write?.if).toContain("inputs.update_goldens");
+		const upload = steps.find((s) => String(s.with?.name).startsWith("ui-goldens-"));
+		expect(upload?.if).toContain("inputs.update_goldens");
+		expect(upload?.with?.path).toBe("scripts/ui-visual/__golden__/");
 	});
 });
