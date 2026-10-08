@@ -84,7 +84,7 @@ Filtering, allowlist matching, and the report format live in
 ## Golden screenshots
 
 `golden.pw.ts` compares each page against a committed baseline in
-`__golden__/<page>.<viewport>.<theme>.png` with `toHaveScreenshot` (full page,
+`__golden__/<page>-<viewport>-<theme>.png` with `toHaveScreenshot` (full page,
 animations off, masks applied, up to 1% of pixels may differ). Phone x dark has
 no golden: desktop x dark pins the dark palette, phone x light pins the phone
 layout, and the smaller set stays well under the 8 MB budget. Smoke and a11y

@@ -2,7 +2,7 @@
  * Golden screenshots across the page manifest (warren-a132, plan pl-10db
  * step 10). Each golden case loads exactly as the smoke spec does
  * (`openCase`), then `toHaveScreenshot` compares the full page against
- * `scripts/ui-visual/__golden__/<page>.<viewport>.<theme>.png`.
+ * `scripts/ui-visual/__golden__/<page>-<viewport>-<theme>.png`.
  *
  * Runs only inside the ui-visual workflow's pinned Playwright container
  * (`goldenGate`). Anywhere else this file registers one skipped test with
@@ -19,7 +19,13 @@ import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, type TestInfo, test } from "@playwright/test";
 
-import { diffKind, GOLDEN_DIFF_DIR, goldenGate, isGoldenPair } from "./golden-cases.ts";
+import {
+	diffKind,
+	GOLDEN_DIFF_DIR,
+	goldenFileName,
+	goldenGate,
+	isGoldenPair,
+} from "./golden-cases.ts";
 import { atContentHeight, harnessCases, openCase, screenshotMasks } from "./harness.ts";
 import type { PageCase } from "./pages.ts";
 
@@ -41,7 +47,7 @@ if (gate.enabled) {
 			test("golden", async ({ page }) => {
 				await openCase(page, c, fixture);
 				await atContentHeight(page, c, () =>
-					expect(page).toHaveScreenshot(`${c.name}.png`, {
+					expect(page).toHaveScreenshot(goldenFileName(c.name), {
 						fullPage: true,
 						animations: "disabled",
 						caret: "hide",
@@ -78,7 +84,7 @@ async function exportDiff(c: PageCase, info: TestInfo): Promise<void> {
 		viewport: c.viewport,
 		theme: c.theme,
 		url: c.url,
-		golden: `scripts/ui-visual/__golden__/${c.name}.png`,
+		golden: `scripts/ui-visual/__golden__/${goldenFileName(c.name)}`,
 		images: images.map((i) => `${i.kind}.png`).sort(),
 		error: (info.error?.message ?? "").replace(ANSI, ""),
 	};

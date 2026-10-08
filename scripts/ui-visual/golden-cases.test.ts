@@ -4,6 +4,7 @@ import {
 	diffKind,
 	expectedGoldenFiles,
 	GOLDEN_ENV,
+	goldenFileName,
 	goldenGate,
 	isGoldenPair,
 	MAX_GOLDEN_BYTES,
@@ -28,12 +29,12 @@ describe("expectedGoldenFiles", () => {
 			{ id: "agents", route: "/agents", path: at("/agents") },
 		];
 		expect(expectedGoldenFiles(pages)).toEqual([
-			"agents.desktop.dark.png",
-			"agents.desktop.light.png",
-			"agents.phone.light.png",
-			"runs.desktop.dark.png",
-			"runs.desktop.light.png",
-			"runs.phone.light.png",
+			"agents-desktop-dark.png",
+			"agents-desktop-light.png",
+			"agents-phone-light.png",
+			"runs-desktop-dark.png",
+			"runs-desktop-light.png",
+			"runs-phone-light.png",
 		]);
 	});
 
@@ -43,6 +44,12 @@ describe("expectedGoldenFiles", () => {
 
 	test("holds an 8 MB budget", () => {
 		expect(MAX_GOLDEN_BYTES).toBe(8 * 1024 * 1024);
+	});
+});
+
+describe("goldenFileName", () => {
+	test("spells the case with dashes, as Playwright writes it", () => {
+		expect(goldenFileName("run-detail.phone.light")).toBe("run-detail-phone-light.png");
 	});
 });
 

@@ -19,14 +19,14 @@ import {
 /** Set to `1` by `.github/workflows/ui-visual.yml`, and nowhere else. */
 export const GOLDEN_ENV = "WARREN_UI_VISUAL_GOLDEN";
 
-/** Baselines live in `scripts/ui-visual/__golden__/<case>.png`. */
+/** Baselines live in `scripts/ui-visual/__golden__/` (`goldenFileName`). */
 export const GOLDEN_DIR_NAME = "__golden__";
 /** The generator sidecar beside the baselines (see `golden-manifest.ts`). */
 export const GOLDEN_MANIFEST_FILE = "manifest.json";
 
 /**
  * On a golden mismatch the spec copies Playwright's images to
- * `out/golden-diff/<case>/{expected,actual,diff}.png` plus a
+ * `out/golden-diff/<case name>/{expected,actual,diff}.png` plus a
  * `result.json`, so a follow-up (warren-70d9's PR comment) can find them
  * without parsing Playwright's hashed test-results directory names.
  */
@@ -57,13 +57,24 @@ export function isGoldenPair(viewport: ViewportName, theme: ThemeName): boolean 
 	return !GOLDEN_SKIPPED_PAIRS.some((p) => p.viewport === viewport && p.theme === theme);
 }
 
+/**
+ * A case's golden file name: the case name with dashes for dots
+ * (`runs.desktop.light` -> `runs-desktop-light.png`). Playwright rewrites
+ * dots in a snapshot name to dashes anyway, so name it that way up front
+ * and every consumer agrees on one spelling. The viewport and theme are
+ * always the last two segments.
+ */
+export function goldenFileName(name: string): string {
+	return `${name.replaceAll(".", "-")}.png`;
+}
+
 /** Every golden file name the manifest implies, sorted. */
 export function expectedGoldenFiles(pages: readonly PageSpec[] = PAGES): string[] {
 	return pages
 		.flatMap((page) =>
 			VIEWPORT_NAMES.flatMap((viewport) =>
-				THEMES.filter((theme) => isGoldenPair(viewport, theme)).map(
-					(theme) => `${caseName(page.id, viewport, theme)}.png`,
+				THEMES.filter((theme) => isGoldenPair(viewport, theme)).map((theme) =>
+					goldenFileName(caseName(page.id, viewport, theme)),
 				),
 			),
 		)

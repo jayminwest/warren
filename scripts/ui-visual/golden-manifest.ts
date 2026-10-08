@@ -14,8 +14,6 @@
  * Pure: the CLI does the file and YAML IO, and `bun test` covers the rest.
  */
 
-import { GOLDEN_UPDATE_HINT } from "./golden-cases.ts";
-
 export const GOLDEN_MANIFEST_SCHEMA = 1;
 /** The only writer the guard accepts. */
 export const GOLDEN_GENERATOR = ".github/workflows/ui-visual.yml";
@@ -177,19 +175,18 @@ function toolchainErrors(m: GoldenManifest, input: GoldenCheckInput): string[] {
 	}
 	if (stale.length === 0) return [];
 	const why = stale.join("; ");
-	return [`baselines were rendered by another toolchain (${why}); ${GOLDEN_UPDATE_HINT}`];
+	return [`baselines were rendered by another toolchain (${why})`];
 }
 
 /** Every PNG must be the exact bytes the manifest recorded, and vice versa. */
 function provenanceErrors(m: GoldenManifest, input: GoldenCheckInput): string[] {
-	const notCi = `so not CI-generated; ${GOLDEN_UPDATE_HINT}`;
 	const errors = Object.entries(input.onDisk)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.flatMap(([name, disk]) => {
 			const listed = m.files[name];
-			if (listed === undefined) return [`${name}: not in manifest.json, ${notCi}`];
+			if (listed === undefined) return [`${name}: not in manifest.json, so not CI-generated`];
 			const same = listed.sha256 === disk.sha256 && listed.bytes === disk.bytes;
-			return same ? [] : [`${name}: sha256 differs from manifest.json, ${notCi}`];
+			return same ? [] : [`${name}: sha256 differs from manifest.json, so not CI-generated`];
 		});
 	const gone = Object.keys(m.files).filter((name) => input.onDisk[name] === undefined);
 	return [...errors, ...gone.sort().map((n) => `${n}: listed in manifest.json but missing`)];
@@ -202,10 +199,10 @@ function coverageErrors(input: GoldenCheckInput): string[] {
 	const errors: string[] = [];
 	const missing = input.expected.filter((n) => input.onDisk[n] === undefined);
 	if (missing.length > 0) {
-		errors.push(`no baseline for ${missing.join(", ")}; ${GOLDEN_UPDATE_HINT}`);
+		errors.push(`no baseline for ${missing.join(", ")}`);
 	}
 	for (const name of pngs.filter((n) => !expected.has(n))) {
-		errors.push(`${name}: no page manifest case renders it; delete it or ${GOLDEN_UPDATE_HINT}`);
+		errors.push(`${name}: no page manifest case renders it`);
 	}
 	const total = pngs.reduce((sum, n) => sum + (input.onDisk[n]?.bytes ?? 0), 0);
 	if (total > input.maxBytes) {
@@ -215,15 +212,17 @@ function coverageErrors(input: GoldenCheckInput): string[] {
 	return errors;
 }
 
-/** Every reason the committed baselines are not a CI-generated set; empty when sound. */
+/**
+ * Every reason the committed baselines are not a CI-generated set; empty
+ * when sound. The caller adds `GOLDEN_UPDATE_HINT` once.
+ */
 export function checkGoldens(input: GoldenCheckInput): string[] {
 	if (input.manifestRaw === null && Object.keys(input.onDisk).length === 0) {
-		return [`no golden baselines are committed; ${GOLDEN_UPDATE_HINT}`];
+		return ["no golden baselines are committed"];
 	}
 	const strays = input.strays.map((s) => `${s}: unexpected file in __golden__/`);
 	if (input.manifestRaw === null) {
-		const why = `manifest.json is missing, so no PNG is CI-generated; ${GOLDEN_UPDATE_HINT}`;
-		return [...strays, why];
+		return [...strays, "manifest.json is missing, so no PNG is CI-generated"];
 	}
 	const parsed = parseGoldenManifest(input.manifestRaw);
 	if (parsed.manifest === null) return [...strays, ...parsed.errors];

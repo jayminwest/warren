@@ -21,6 +21,7 @@ import {
 	expectedGoldenFiles,
 	GOLDEN_DIR_NAME,
 	GOLDEN_MANIFEST_FILE,
+	GOLDEN_UPDATE_HINT,
 	goldenGate,
 	MAX_GOLDEN_BYTES,
 } from "./golden-cases.ts";
@@ -88,6 +89,7 @@ function check(): number {
 	if (errors.length > 0) {
 		console.error(`ui-goldens: ${errors.length} problem(s) in scripts/ui-visual/__golden__/`);
 		for (const e of errors) console.error(`  - ${e}`);
+		console.error(`ui-goldens: to fix, ${GOLDEN_UPDATE_HINT}`);
 		return 1;
 	}
 	const total = Object.values(onDisk).reduce((sum, f) => sum + f.bytes, 0);

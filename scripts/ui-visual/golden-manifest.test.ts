@@ -24,9 +24,9 @@ const fact = (seed: string, bytes = 100): GoldenFileFact => ({
 });
 
 const FILES: Record<string, GoldenFileFact> = {
-	"runs.desktop.light.png": fact("1"),
-	"runs.desktop.dark.png": fact("2"),
-	"runs.phone.light.png": fact("3"),
+	"runs-desktop-light.png": fact("1"),
+	"runs-desktop-dark.png": fact("2"),
+	"runs-phone-light.png": fact("3"),
 };
 const EXPECTED = Object.keys(FILES).sort();
 
@@ -121,10 +121,10 @@ describe("checkGoldens", () => {
 		expect(checkGoldens(input())).toEqual([]);
 	});
 
-	test("reports an empty directory with the regenerate hint", () => {
-		const errors = checkGoldens(input({ manifestRaw: null, onDisk: {} }));
-		expect(errors).toHaveLength(1);
-		expect(errors[0]).toContain("update_goldens=true");
+	test("reports an empty directory once", () => {
+		expect(checkGoldens(input({ manifestRaw: null, onDisk: {} }))).toEqual([
+			"no golden baselines are committed",
+		]);
 	});
 
 	test("rejects PNGs without a manifest", () => {
@@ -134,17 +134,17 @@ describe("checkGoldens", () => {
 	});
 
 	test("rejects a laptop-rendered PNG whose hash the manifest does not list", () => {
-		const onDisk = { ...FILES, "runs.desktop.light.png": fact("f") };
+		const onDisk = { ...FILES, "runs-desktop-light.png": fact("f") };
 		expect(checkGoldens(input({ onDisk }))).toEqual([
-			expect.stringContaining("runs.desktop.light.png: sha256 differs"),
+			expect.stringContaining("runs-desktop-light.png: sha256 differs"),
 		]);
 	});
 
 	test("rejects a PNG the manifest never listed", () => {
-		const onDisk = { ...FILES, "agents.desktop.light.png": fact("4") };
+		const onDisk = { ...FILES, "agents-desktop-light.png": fact("4") };
 		const errors = checkGoldens(input({ onDisk })).join("\n");
-		expect(errors).toContain("agents.desktop.light.png: not in manifest.json");
-		expect(errors).toContain("agents.desktop.light.png: no page manifest case renders it");
+		expect(errors).toContain("agents-desktop-light.png: not in manifest.json");
+		expect(errors).toContain("agents-desktop-light.png: no page manifest case renders it");
 	});
 
 	test("rejects a set rendered by another Playwright or image", () => {
@@ -156,10 +156,10 @@ describe("checkGoldens", () => {
 	});
 
 	test("reports cases with no baseline and manifest entries with no file", () => {
-		const { "runs.phone.light.png": _gone, ...rest } = FILES;
+		const { "runs-phone-light.png": _gone, ...rest } = FILES;
 		const errors = checkGoldens(input({ onDisk: rest })).join("\n");
-		expect(errors).toContain("runs.phone.light.png: listed in manifest.json but missing");
-		expect(errors).toContain("no baseline for runs.phone.light.png");
+		expect(errors).toContain("runs-phone-light.png: listed in manifest.json but missing");
+		expect(errors).toContain("no baseline for runs-phone-light.png");
 	});
 
 	test("rejects stray files and a set over budget", () => {
