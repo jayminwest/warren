@@ -237,7 +237,7 @@ describe("runAgent · synthesized terminal envelope", () => {
 		expect(ends[0]?.payload.synthesized).toBeUndefined();
 	});
 
-	test("the synthesized envelope lands after the oom witness on a 137 kill", async () => {
+	test("the synthesized envelope lands after the SIGKILL witness on a 137 kill", async () => {
 		const { out, lines } = collector();
 		const result = await runAgent(parseAgentEntrypointEnv(baseEnv()), {
 			registry: stubRegistry(textOnlyRuntime),
@@ -249,10 +249,10 @@ describe("runAgent · synthesized terminal envelope", () => {
 		});
 		expect(result.exitCode).toBe(137);
 		const kinds = parseLines(lines).map((l) => l.kind);
-		expect(kinds).toContain("oom_killed");
+		expect(kinds).toContain("agent_killed");
 		// Every witness precedes the terminal envelope so the bridge sees it all
 		// before terminalizing.
-		expect(kinds.indexOf("oom_killed")).toBeLessThan(kinds.lastIndexOf("state_change"));
+		expect(kinds.indexOf("agent_killed")).toBeLessThan(kinds.lastIndexOf("state_change"));
 		const ends = agentEndEnvelopes(lines);
 		expect(ends).toHaveLength(1);
 		expect(ends[0]?.payload.stopReason).toBe("error");

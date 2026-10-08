@@ -162,3 +162,47 @@ describe("K8sProvider.status — cache consult", () => {
 		expect(fake.lists).toHaveLength(1);
 	});
 });
+
+// warren-a757: the watcher's node-loss witness (NodeNotReady / a vanished pod
+// that carried DisruptionTarget) reaches present pods too, not just absent ones.
+describe("K8sProvider.status — node-loss witness", () => {
+	const nodeLostProvider = (api: CoreV1Api, cached?: V1Pod): K8sProvider =>
+		new K8sProvider({
+			coreApi: () => api,
+			serverEnv: {},
+			preemptedPods: { wasPreempted: (runId) => runId === "run_status" },
+			...(cached !== undefined ? { podCache: { getByRunId: () => cached } } : {}),
+		});
+
+	test("Error exit 137 on a lost node → preempted (cached and cache-cold)", async () => {
+		const killed = podWith({ phase: "Failed", exitCode: 137, reason: "Error" });
+		const fromCache = await nodeLostProvider(fakeApi().api, killed).status(handle);
+		expect(fromCache).toMatchObject({
+			phase: "failed",
+			terminalReason: "preempted",
+			exitCode: 137,
+		});
+		const cold = await nodeLostProvider(fakeApi({ items: [killed] }).api).status(handle);
+		expect(cold.terminalReason).toBe("preempted");
+	});
+
+	test("an OOMKilled container on a lost node stays oom_killed", async () => {
+		const oom = podWith({ phase: "Failed", exitCode: 137, reason: "OOMKilled" });
+		const status = await nodeLostProvider(fakeApi({ items: [oom] }).api).status(handle);
+		expect(status.terminalReason).toBe("oom_killed");
+	});
+
+	test("a Running pod on a lost node stays running with the nodeLost witness", async () => {
+		const running = podWith({ phase: "Running" });
+		const status = await nodeLostProvider(fakeApi({ items: [running] }).api).status(handle);
+		expect(status.phase).toBe("running");
+		expect(status.nodeLost).toBe(true);
+	});
+
+	test("Error exit 137 without a witness stays a plain error", async () => {
+		const killed = podWith({ phase: "Failed", exitCode: 137, reason: "Error" });
+		const status = await makeProvider(fakeApi({ items: [killed] }).api).status(handle);
+		expect(status.terminalReason).toBe("error");
+		expect(status.nodeLost).toBeUndefined();
+	});
+});

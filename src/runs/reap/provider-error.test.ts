@@ -275,3 +275,31 @@ describe("classifyTerminalProviderError — enriched signal (warren-4001)", () =
 		expect(signal?.upstreamBody?.length).toBeLessThanOrEqual(2000 + "…[truncated]".length);
 	});
 });
+
+describe("classifyTerminalProviderError — synthesized exit marker (warren-a757)", () => {
+	test("a runtime-synthesized agent_end carries its exit code on the signal", () => {
+		const signal = classifyTerminalProviderError(
+			[
+				envEvent({
+					type: "agent_end",
+					synthesized: true,
+					reason: "agent_exit_without_terminal_envelope",
+					exitCode: 137,
+					stopReason: "error",
+					errorMessage: "agent exited 137 without emitting a terminal envelope",
+				}),
+			],
+			{ envPattern: null },
+		);
+		expect(signal?.synthesizedExitCode).toBe(137);
+	});
+
+	test("a model-authored error envelope carries no synthesized marker", () => {
+		const signal = classifyTerminalProviderError(
+			[envEvent({ type: "agent_end", stopReason: "error", errorMessage: "529 overloaded_error" })],
+			{ envPattern: null },
+		);
+		expect(signal).not.toBeNull();
+		expect(signal?.synthesizedExitCode).toBeUndefined();
+	});
+});

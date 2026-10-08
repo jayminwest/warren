@@ -193,8 +193,8 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     budget). K8s-only; distinct from `oom_killed` (a container cgroup kill)
  *     and `crashed` (an agent fault) because an eviction is an infra-capacity
  *     signal, surfaced via the run-state probe's `terminalReason`.
- *   - `preempted` (warren-ea4b): the pod's GKE Spot node was reclaimed
- *     (K8s-only, retryable — the substrate lost the run, not the agent).
+ *   - `preempted` (warren-ea4b/a757): the pod's node was reclaimed or lost — GKE Spot,
+ *     NotReady, deleted (K8s-only, retryable — the substrate lost the run, not the agent).
  *
  * Null on succeeded/cancelled rows.
  */

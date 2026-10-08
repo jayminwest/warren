@@ -663,6 +663,8 @@ Setting `WARREN_K8S_SPOT=true` opts every **run pod** into GKE Autopilot Spot ca
 
 - Spot pods cost 60–91% less but the cluster can preempt them. Autopilot sends a **25 s** preemption signal before it reclaims the node.
 - A preemption counts as an infra-lost retry, not a failure of the work. The preemption classification treats it as retryable and the run re-dispatches from scratch. The model spend of the aborted attempt is the real cost of the trade. The run's `maxCostUsd` cap bounds it.
+- The dying node SIGKILLs the agent, so its container ends `Error` exit 137. Only `terminated.reason == OOMKilled` means `oom_killed`. Reap records `reap.infra_loss` for a preempted run, not `reap.provider_error` (warren-a757).
+- A node-loss witness moves the run to `preempted`. The pod-watcher accepts a `DisruptionTarget` condition such as `DeletionByPodGC`. It also accepts a `NodeNotReady` pod warning, or the pod vanishing with its node. Every witness is pod-scoped, so warren needs no `nodes` RBAC.
 - `terminationGracePeriodSeconds` stays at the K8s 30 s default. We do not raise it for Spot. Preemption ends the pod as lost whatever the grace says, and the run re-dispatches, so a longer grace buys nothing. Explicit `cancel()` controls its grace separately through `WARREN_K8S_CANCEL_GRACE_SECONDS` (a delete-request `gracePeriodSeconds`, independent of the 25 s notice).
 - The control plane stays on On-Demand. The Deployment manifests under `deploy/k8s/` do not read this knob, so warren itself never lands on preemptible capacity.
 
