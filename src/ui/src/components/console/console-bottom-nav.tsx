@@ -7,11 +7,11 @@ import { cn } from "@/lib/utils.ts";
  * ends every phone artboard (docs/ui-revamp/screens/mobile/operations.jsx).
  * Five equal flex-1 tabs, each a centered two-line column with a 2px TOP
  * border — primary when active, transparent otherwise. The fifth tab
- * ("·· More") is not a route: it opens the existing mobile drawer.
+ * ("05 More") is not a route: it opens the existing mobile drawer.
  *
- * Numbering: the artboards label the bottom nav's Dispatch "03" even
- * though the sidebar gives 03 to Plan runs — the mobile bar follows the
- * artboards and the sidebar indices stay canvas-fixed (see console-nav.ts).
+ * Numbering: the bar numbers its own tabs 01-05 contiguously
+ * (warren-c023); the sidebar indices stay canvas-fixed (see
+ * console-nav.ts).
  * Phone only; mounted below md in the console shell.
  */
 
@@ -57,7 +57,7 @@ export function ConsoleBottomNav({ onOpenMore }: ConsoleBottomNavProps) {
 				</NavLink>
 			))}
 			<button type="button" onClick={onOpenMore} className={tabClass(false)}>
-				<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px]">··</span>
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px]">05</span>
 				<span className="text-(--color-text-3) text-[10px] leading-3">More</span>
 			</button>
 		</nav>

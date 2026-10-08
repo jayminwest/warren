@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils.ts";
  * docs/ui-revamp/screens/mobile/operations.jsx): a 48px brand bar (mark +
  * wordmark + environment/identity chip) and a standalone 34px status strip.
  * Navigation lives in the mock's 54px bottom tab bar (warren-4d4a); its
- * "·· More" tab opens the slide-over drawer the hamburger used to.
+ * "05 More" tab opens the slide-over drawer the hamburger used to.
  */
 
 /**

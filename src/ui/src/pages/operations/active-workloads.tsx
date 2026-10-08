@@ -29,7 +29,7 @@ import { StatePill } from "./state-tone.tsx";
  * Mobile (warren-10d3, mobile/operations.jsx:213-337): the header lives
  * on an in-card --color-thead bar, rows render as dot-only
  * InventoryRowCards with "awaiting admission" folded into the subline and
- * a warning tint on near-cap costs, and the LIVE · REFRESHED footer is
+ * a warning tint on near-cap costs, and the UPDATED footer is
  * visible below md too. The md+ table is unchanged.
  */
 
@@ -112,8 +112,7 @@ export function ActiveWorkloads({
 				)}
 				<div className="flex items-center border-(--color-border) border-t px-3 py-2.25 md:hidden">
 					<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px]">
-						LIVE · REFRESHED{" "}
-						{refreshedAgeLabel(refreshedAt === undefined ? undefined : now - refreshedAt)}
+						UPDATED {refreshedAgeLabel(refreshedAt === undefined ? undefined : now - refreshedAt)}
 					</span>
 					<span className="flex-1" />
 					<Link
@@ -180,7 +179,7 @@ export function ActiveWorkloads({
 					))}
 					<div className="flex h-[38px] shrink-0 items-center gap-3 border-(--color-border) border-t px-2.5">
 						<span className="font-mono text-(--color-text-3) text-[9px] leading-3">
-							NEWEST-RUNS WINDOW · FALLBACK POLL
+							FROM THE NEWEST RUNS
 						</span>
 						<span className="flex-1" />
 						<Link

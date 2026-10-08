@@ -252,7 +252,7 @@ export function DispatchForm(props: DispatchFormProps) {
 										? "PROJECT DEFAULT"
 										: props.providerDefaultKind === "agent"
 											? "AGENT DEFAULT"
-											: "OVERRIDE · FREE TEXT"
+											: "OPTIONAL"
 								}
 							>
 								<input
@@ -273,7 +273,7 @@ export function DispatchForm(props: DispatchFormProps) {
 										? "PROJECT DEFAULT"
 										: props.modelDefaultKind === "agent"
 											? "AGENT DEFAULT"
-											: "OVERRIDE · FREE TEXT"
+											: "OPTIONAL"
 								}
 							>
 								<input
@@ -297,21 +297,17 @@ export function DispatchForm(props: DispatchFormProps) {
 							onChange={(e) => props.onPrompt(e.target.value)}
 							placeholder="What should the agent do?"
 						/>
-						<p className={hintClass}>
-							{props.prompt.length} CHARACTERS · PROJECT CONTEXT APPENDED AT DISPATCH
-						</p>
+						<p className={hintClass}>{props.prompt.length} CHARACTERS</p>
 					</div>
 				</Section>
 			</MobileCard>
 
 			<MobileCard title="Guardrails">
 				<Section title="Guardrails" description="Optional limits for this run." divider="none">
-					<div className="flex gap-[12px]">
+					<div className="grid gap-[12px] sm:grid-cols-2">
 						<Field
 							label="Cost cap (USD)"
-							hint={
-								props.costCapError ?? "ENFORCED FROM LIVE USAGE EVENTS · WEAKEST: PROJECT DEFAULT"
-							}
+							hint={props.costCapError ?? "THE RUN STOPS AT THIS SPEND"}
 						>
 							<input
 								className={`${controlClass} ${props.costCapError ? "border-(--color-danger)" : ""} font-mono`}
@@ -322,16 +318,6 @@ export function DispatchForm(props: DispatchFormProps) {
 								autoComplete="off"
 								spellCheck={false}
 							/>
-						</Field>
-						<Field label="Timeout" htmlFor="dispatch-timeout" hint="NO PER-RUN TIMEOUT API YET">
-							<select
-								id="dispatch-timeout"
-								className={`${controlClass} opacity-60`}
-								disabled
-								value=""
-							>
-								<option value="">—</option>
-							</select>
 						</Field>
 					</div>
 				</Section>
