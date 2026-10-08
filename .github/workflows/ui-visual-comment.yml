@@ -34,10 +34,6 @@ on:
   workflow_run:
     workflows: [UI visual]
     types: [completed]
-  # TEMPORARY (warren-70d9 validation): registers the workflow so it can be
-  # dispatched from this branch. The job is skipped on push. Reverted below.
-  push:
-    branches: [ui-visual/diff-comment-70d9]
   workflow_dispatch:
     inputs:
       run_id:

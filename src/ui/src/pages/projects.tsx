@@ -79,7 +79,7 @@ export function ProjectsPage() {
 			    (canvas layout: 20px semibold title, quiet description). */}
 			<div className="flex flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-1.5">
-					<h1 className="font-semibold text-(--color-danger) text-xl leading-6 tracking-[-0.025em]">
+					<h1 className="font-semibold text-(--color-text) text-xl leading-6 tracking-[-0.025em]">
 						Projects
 					</h1>
 					<p className="text-(--color-text-2) text-[12px] leading-4">
@@ -96,7 +96,7 @@ export function ProjectsPage() {
 				</OperatorOnly>
 			</div>
 
-			<div className="flex flex-col rounded-[4px] border border-(--color-border) bg-(--color-danger)">
+			<div className="flex flex-col rounded-[4px] border border-(--color-border) bg-(--color-surface)">
 				{projects.isLoading ? (
 					<div className="p-6">
 						<Spinner label="Loading projects" />
@@ -126,7 +126,7 @@ export function ProjectsPage() {
 						<div className="hidden md:block">
 							<table className="w-full table-fixed border-collapse">
 								<thead>
-									<tr className="h-[31px] rounded-t-[4px] bg-(--color-danger) text-left">
+									<tr className="h-[31px] rounded-t-[4px] bg-(--color-thead) text-left">
 										<Th className="w-[min(250px,35%)]">Project</Th>
 										<Th className="w-[110px]">Default branch</Th>
 										<Th className="w-[110px]">Last head</Th>
