@@ -12,10 +12,12 @@
  *
  *   - Every host-side git gets `-c core.hooksPath=/dev/null
  *     -c core.fsmonitor=false` (command-line config outranks every file).
- *   - A run workspace registered here gets `--git-dir=<admin dir>
+ *   - A run workspace registered here gets `--git-dir=<git dir>
  *     --work-tree=<workspace>` plus `GIT_COMMON_DIR=<common dir>` in the
- *     environment, so neither the `.git` file nor the admin dir's own
- *     `commondir` decides which repository (and config) host git uses.
+ *     environment, so neither the `.git` file nor a `commondir` file decides
+ *     which repository (and config) host git uses. For a local run both are
+ *     the run's private git dir (warren-3c1e). Until the dir is sealed the
+ *     pin's `verify` hook refuses every call; after the seal there is none.
  *   - `requirePin` (reap/finalize) refuses an unregistered linked worktree
  *     — including a subdirectory of one — instead of falling back to
  *     `<cwd>/.git`.
@@ -37,17 +39,26 @@ export class UnpinnedWorkspaceGitError extends WarrenError {
 }
 
 export interface WorkspaceGitPin {
-	/** Validated `<common>/worktrees/<id>` admin dir. */
+	/** Validated git dir (a run's private git dir, warren-3c1e). */
 	readonly gitDir: string;
-	/** Validated common dir the admin dir belongs to. */
+	/** Validated common dir (the git dir itself for a private git dir). */
 	readonly commonDir: string;
+	/**
+	 * Runs before EVERY pinned host git invocation; throws to refuse it
+	 * (warren-3c1e: refuses all calls until the run's git dir is sealed).
+	 */
+	readonly verify?: () => void;
 }
 
 const pins = new Map<string, WorkspaceGitPin>();
 
-/** Pin `workspacePath`'s host-side git to the validated admin + common dir. */
+/** Pin `workspacePath`'s host-side git to the validated git dir. */
 export function registerWorkspaceGitPin(workspacePath: string, pin: WorkspaceGitPin): void {
-	pins.set(resolve(workspacePath), { gitDir: pin.gitDir, commonDir: pin.commonDir });
+	pins.set(resolve(workspacePath), {
+		gitDir: pin.gitDir,
+		commonDir: pin.commonDir,
+		...(pin.verify !== undefined ? { verify: pin.verify } : {}),
+	});
 }
 
 export function unregisterWorkspaceGitPin(workspacePath: string): void {
@@ -112,6 +123,7 @@ export function hardenHostGit(
 	const out = [...HOST_GIT_CONFIG_ARGS];
 	const pin = cwd === undefined ? undefined : workspaceGitPinFor(cwd);
 	if (pin !== undefined) {
+		pin.verify?.();
 		out.push(`--git-dir=${pin.gitDir}`, `--work-tree=${pin.workTree}`, ...args);
 		return { args: out, env: { GIT_COMMON_DIR: pin.commonDir } };
 	}

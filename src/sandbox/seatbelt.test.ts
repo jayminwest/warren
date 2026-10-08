@@ -189,29 +189,36 @@ describe("buildSeatbeltProfile", () => {
 		expect(out).toContain('(allow file-write* (literal "/dev/null"))');
 	});
 
-	test("workspaceGitdir is read-only with ordered write carve-outs (burrow-7a80, warren-8926)", () => {
-		// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points
-		// at `<hostClonePath>/.git/worktrees/<id>`, outside the workspace subpath.
-		// The common dir is readable but write-denied; only the carve-outs and the
-		// packed-refs literals are writable, the carve-out roots cannot be
-		// renamed away, and the admin binding files are denied again. SBPL applies the last matching rule, so order matters.
-		const admin = "/Users/u/clone/.git/worktrees/ws";
+	test("private git dir is writable, host git dir and gitdir roots denied, in order (burrow-7a80, warren-3c1e)", () => {
+		// The workspace `.git` file points at the run's private git dir, outside
+		// the workspace subpath. The host clone's git dir and the gitdirs root
+		// (sibling runs) and the sealed root are denied; the host objects/ is readable; the run's
+		// own dir is read-write, its root cannot be renamed away, and its
+		// config/alternates are denied again. SBPL applies the last matching
+		// rule, so order matters.
+		const gd = "/Users/u/data/local/gitdirs/ws";
 		const out = buildSeatbeltProfile(
 			baseProfile({
-				workspaceGitdir: "/Users/u/clone/.git",
-				workspaceGitWritable: [admin],
-				workspaceGitProtected: [`${admin}/commondir`],
+				workspaceGit: {
+					gitDir: gd,
+					protectedPaths: [`${gd}/config`, `${gd}/objects/info/alternates`],
+					hostGitDir: "/Users/u/clone/.git",
+					sharedObjects: "/Users/u/clone/.git/objects",
+					deniedRoots: ["/Users/u/data/local/gitdirs", "/Users/u/data/local/gitdirs-sealed"],
+				},
 			}),
 		);
 		const rw = "file-read-data file-read-metadata file-write*";
 		const rules = [
-			'(allow file-read-data file-read-metadata (subpath "/Users/u/clone/.git"))',
-			'(deny file-write* (subpath "/Users/u/clone/.git"))',
-			`(allow ${rw} (literal "/Users/u/clone/.git/packed-refs.lock"))`,
-			`(allow ${rw} (subpath "${admin}"))`,
-			// The carve-out root itself cannot be renamed or removed.
-			`(deny file-write-unlink (literal "${admin}"))`,
-			`(deny file-write* (subpath "${admin}/commondir"))`,
+			'(deny file-read-data file-write* (subpath "/Users/u/clone/.git"))',
+			'(deny file-read-data file-write* (subpath "/Users/u/data/local/gitdirs"))',
+			'(deny file-read-data file-write* (subpath "/Users/u/data/local/gitdirs-sealed"))',
+			'(allow file-read-data file-read-metadata (subpath "/Users/u/clone/.git/objects"))',
+			`(allow ${rw} (subpath "${gd}"))`,
+			// The private dir root itself cannot be renamed or removed.
+			`(deny file-write-unlink (literal "${gd}"))`,
+			`(deny file-write* (subpath "${gd}/config"))`,
+			`(deny file-write* (subpath "${gd}/objects/info/alternates"))`,
 		];
 		let last = -1;
 		for (const rule of rules) {
@@ -221,7 +228,7 @@ describe("buildSeatbeltProfile", () => {
 		}
 		expect(out).not.toContain(`(allow ${rw} (subpath "/Users/u/clone/.git"))`);
 		// Emitted after the broad /private/tmp grant so a clone there stays protected.
-		expect(out.indexOf('(subpath "/private/tmp")')).toBeLessThan(out.indexOf(rules[1] ?? ""));
+		expect(out.indexOf('(subpath "/private/tmp")')).toBeLessThan(out.indexOf(rules[0] ?? ""));
 	});
 
 	test("workspaceGitdir rule is omitted when unset (clone-backed workspaces)", () => {

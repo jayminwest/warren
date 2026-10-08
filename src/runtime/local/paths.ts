@@ -7,6 +7,14 @@
  * `runs` table):
  *
  *   <dataDir>/local/workspaces/<sandboxId>   — the run's git worktree/clone
+ *   <dataDir>/local/gitdirs/<sandboxId>      — the run's private git dir
+ *                                               (warren-3c1e: refs/objects of
+ *                                               its own over the host clone's
+ *                                               object store)
+ *   <dataDir>/local/gitdirs-sealed/<sandboxId> — the same dir after the
+ *                                               agent exits: no sandbox
+ *                                               grant reaches it, and host
+ *                                               git runs only against it
  *   <dataDir>/local/homes/<sandboxId>        — the run's private writable HOME
  *                                               (warren-c865: harness state
  *                                               never lands in the worktree)
@@ -18,7 +26,7 @@
  * though the in-memory run store does not.
  */
 
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /** Minimal env surface the resolver reads. */
 export type LocalPathsEnv = Readonly<Record<string, string | undefined>>;
@@ -26,10 +34,14 @@ export type LocalPathsEnv = Readonly<Record<string, string | undefined>>;
 /** Mirrors `DEFAULT_DATA_DIR` in `src/server/config.ts` (kept dependency-free). */
 export const DEFAULT_LOCAL_DATA_DIR = "/data";
 
+const SEALED_GITDIRS = "gitdirs-sealed";
+
 export interface LocalStateRoots {
 	readonly dataDir: string;
 	readonly workspaces: string;
 	readonly homes: string;
+	readonly gitdirs: string;
+	readonly gitdirsSealed: string;
 	readonly manifests: string;
 }
 
@@ -40,6 +52,8 @@ export function resolveLocalStateRoots(env: LocalPathsEnv): LocalStateRoots {
 		dataDir,
 		workspaces: join(base, "workspaces"),
 		homes: join(base, "homes"),
+		gitdirs: join(base, "gitdirs"),
+		gitdirsSealed: join(base, SEALED_GITDIRS),
 		manifests: join(base, "manifests"),
 	};
 }
@@ -55,6 +69,31 @@ export function localWorkspacePath(roots: LocalStateRoots, sandboxId: string): s
 
 export function localHomePath(roots: LocalStateRoots, sandboxId: string): string {
 	return join(roots.homes, sandboxId);
+}
+
+/** The run's private git dir (warren-3c1e). */
+export function localGitDirPath(roots: LocalStateRoots, sandboxId: string): string {
+	return join(roots.gitdirs, sandboxId);
+}
+
+/** Where the run's private git dir moves once the agent has exited (warren-3c1e). */
+export function localSealedGitDirPath(roots: LocalStateRoots, sandboxId: string): string {
+	return join(roots.gitdirsSealed, sandboxId);
+}
+
+/**
+ * Roots holding every run's private git dir, live and sealed, derived from
+ * one run's live `<base>/gitdirs/<id>`. Seatbelt denies both before it
+ * grants the run its own dir, so a run reaches no sibling's metadata.
+ */
+export function privateGitDenyRoots(gitDir: string): string[] {
+	const live = dirname(gitDir);
+	return [live, join(dirname(live), SEALED_GITDIRS)];
+}
+
+/** The sealed location for a live private git dir path. */
+export function sealedGitDirFor(gitDir: string): string {
+	return join(dirname(dirname(gitDir)), SEALED_GITDIRS, basename(gitDir));
 }
 
 export function localManifestPath(roots: LocalStateRoots, sandboxId: string): string {

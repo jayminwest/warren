@@ -61,13 +61,16 @@ export interface BuildBwrapOptions {
 	bwrapBin?: string;
 }
 
-/** Read-only common dir, writable carve-outs, then re-protected files. */
+/**
+ * Read-only shared object store, the writable private git dir, then its
+ * re-protected files (warren-3c1e). The rest of the host clone's git dir is
+ * never mounted.
+ */
 function workspaceGitBinds(profile: SandboxProfile): string[] {
-	const common = profile.workspaceGitdir;
-	if (!common) return [];
-	const out = ["--ro-bind", common, common];
-	for (const path of profile.workspaceGitWritable ?? []) out.push("--bind", path, path);
-	for (const path of profile.workspaceGitProtected ?? []) out.push("--ro-bind", path, path);
+	const git = profile.workspaceGit;
+	if (git === undefined) return [];
+	const out = ["--ro-bind", git.sharedObjects, git.sharedObjects, "--bind", git.gitDir, git.gitDir];
+	for (const path of git.protectedPaths) out.push("--ro-bind", path, path);
 	return out;
 }
 
@@ -110,21 +113,13 @@ export function buildBwrapArgv(
 		argv.push("--ro-bind", path, path);
 	}
 
-	// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points at
-	// `<gitCommonDir>/worktrees/<id>` — outside the /workspace bind. Mount the
-	// host's git common dir at the same path inside the sandbox so the pointer
-	// dereferences and the agent can run `git status`/`commit` from inside its
-	// own workspace (burrow-7a80). The common dir is read-only — config, hooks,
-	// and sibling worktrees stay out of reach (warren-8926) — and only the
-	// validated writable carve-outs (own admin dir, objects/refs/logs) are
-	// re-bound read-write on top, then the admin dir's binding/config files are
-	// re-bound read-only again. Order matters: nested binds follow the parent.
-	//
-	// Linux gap vs macOS: bind mounts cannot let git create the single file
-	// `<common>/packed-refs.lock` inside the read-only root, so ref updates
-	// print a harmless "Unable to create packed-refs.lock" error and ref
-	// deletion fails. Closing it needs private per-run git metadata (see
-	// `src/sandbox/git-scope.ts`), not a writable common-dir root.
+	// The workspace's `.git` file points at the run's private git dir, outside
+	// the /workspace bind, so mount it at the same path (burrow-7a80). It is
+	// the run's own (warren-3c1e): refs, packed-refs + its lock, logs, index,
+	// and new objects are all writable, so ref updates and deletions work as
+	// on macOS. Its `config` and `objects/info/alternates` are re-bound
+	// read-only, and the host clone's `objects/` (the alternate) is read-only.
+	// Order matters: nested binds follow the parent.
 	argv.push(...workspaceGitBinds(profile));
 
 	// Real writable HOME, separate from the workspace (warren-c865). Bound

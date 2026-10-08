@@ -7,9 +7,10 @@
  *
  * Mapping from profile to container:
  *
- *   - `workspace`, `home`, `readOnlyMounts`, `workspaceGitdir` bind-mount at
- *     the IDENTICAL absolute path inside the container (path parity — see
- *     `./config.ts`), workspace + home read-write, the rest read-only.
+ *   - `workspace`, `home`, `readOnlyMounts`, and the `workspaceGit` dirs
+ *     bind-mount at the IDENTICAL absolute path inside the container (path
+ *     parity — see `./config.ts`): workspace, home, and the run's private
+ *     git dir read-write, the rest read-only.
  *   - `network` maps coarsely: `none` ⇒ `--network none`; `restricted` ⇒
  *     the configured restricted network (default bridge — the honest v1
  *     degradation, no domain allowlist); `open` ⇒ docker's default.
@@ -136,16 +137,19 @@ export function dockerMountArgs(profile: SandboxProfile): string[] {
 	for (const mount of profile.readOnlyMounts) {
 		args.push("--mount", `type=bind,source=${mount},target=${mount},readonly`);
 	}
-	// warren-8926: the git common dir is read-only; only the validated
-	// carve-outs are writable, with the admin dir's binding/config files
-	// re-protected. Docker orders nested mounts parent-first by target.
-	if (profile.workspaceGitdir !== undefined) {
-		const gitdir = profile.workspaceGitdir;
-		args.push("--mount", `type=bind,source=${gitdir},target=${gitdir},readonly`);
-		for (const path of profile.workspaceGitWritable ?? []) {
-			args.push("--mount", `type=bind,source=${path},target=${path}`);
-		}
-		for (const path of profile.workspaceGitProtected ?? []) {
+	// warren-3c1e: the run's private git dir is writable with its config and
+	// alternates file re-protected; the host clone's object store is
+	// read-only and nothing else of the host git dir is mounted. Docker
+	// orders nested mounts parent-first by target.
+	const git = profile.workspaceGit;
+	if (git !== undefined) {
+		args.push(
+			"--mount",
+			`type=bind,source=${git.sharedObjects},target=${git.sharedObjects},readonly`,
+			"--mount",
+			`type=bind,source=${git.gitDir},target=${git.gitDir}`,
+		);
+		for (const path of git.protectedPaths) {
 			args.push("--mount", `type=bind,source=${path},target=${path},readonly`);
 		}
 	}

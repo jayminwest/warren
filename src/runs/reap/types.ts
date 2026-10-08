@@ -201,6 +201,9 @@ export interface ReapStepError {
 	readonly step: ReapStep;
 	readonly message: string;
 	readonly path?: string;
+	/** Stable `WarrenError` code when the step failed with one (warren-3c1e). */
+	readonly code?: string;
+	readonly recoveryHint?: string;
 }
 
 export type ReapStep =

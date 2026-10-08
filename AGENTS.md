@@ -68,8 +68,8 @@ from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
 backends exist.
 
 - `LocalProvider` (`src/runtime/local/`, the default) runs the
-  in-process engine. It materializes a worktree, composes a bwrap
-  profile from the warren-owned sandbox (`src/sandbox/`), and drives
+  in-process engine. It materializes a checkout over a per-run private
+  git dir (warren-3c1e), composes a bwrap profile from the warren-owned sandbox (`src/sandbox/`), and drives
   the agent through a host-side loop. The runtime adapters
   (`src/runtime/adapters/`) own the per-harness command, parser, and
   steering shapes.

@@ -1,12 +1,15 @@
 /**
- * Real git worktree fixtures for the warren-8926 git-scope tests: a host
- * clone with two linked worktrees (the run under test and a sibling).
+ * Real git fixtures for the git-scope tests (warren-8926, warren-3c1e): a
+ * host clone plus two run workspaces (the run under test and a sibling),
+ * each backed by its own private git dir over the clone's object store.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { materializePrivateGitDir } from "../workspace/git/private-gitdir.ts";
 import { scrubbedGitEnv } from "../workspace/git/test-fixture.ts";
+import type { MaterializedWorkspaceSource } from "../workspace/materialize.ts";
 
 export const FIXTURE_GIT_ENV: Record<string, string> = {
 	GIT_AUTHOR_NAME: "t",
@@ -30,15 +33,55 @@ export function fixtureGitCmd(cwd: string, ...args: string[]): string {
 	return res.stdout.toString().trim();
 }
 
-export interface WorktreeFixture {
+export interface PrivateGitFixture {
 	readonly root: string;
 	readonly clone: string;
-	readonly common: string;
+	/** The host clone's `.git`. */
+	readonly hostGitDir: string;
 	readonly ws: string;
+	readonly gitDir: string;
+	readonly source: MaterializedWorkspaceSource;
 	readonly sibling: string;
+	readonly siblingGitDir: string;
 }
 
-export function makeWorktreeFixture(): WorktreeFixture {
+/** Materialize with every inherited `GIT_*` var dropped, then restore them. */
+async function materialize(
+	clone: string,
+	hostGitDir: string,
+	ws: string,
+	gitDir: string,
+	branch: string,
+): Promise<MaterializedWorkspaceSource> {
+	const saved: Record<string, string> = {};
+	for (const [key, value] of Object.entries(process.env)) {
+		if (key.startsWith("GIT_") && value !== undefined) {
+			saved[key] = value;
+			delete process.env[key];
+		}
+	}
+	try {
+		const result = await materializePrivateGitDir({
+			hostClone: { topLevel: clone, gitCommonDir: hostGitDir },
+			workspacePath: ws,
+			gitDir,
+			branch,
+			startPoint: "main",
+		});
+		return {
+			kind: "private",
+			branch,
+			hostClonePath: clone,
+			gitCommonDir: result.hostGitDir,
+			gitDir: result.gitDir,
+			gitConfigSha256: result.configSha256,
+		};
+	} finally {
+		Object.assign(process.env, saved);
+	}
+}
+
+export async function makePrivateGitFixture(): Promise<PrivateGitFixture> {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "warren-git-scope-")));
 	const clone = join(root, "clone");
 	mkdirSync(clone);
@@ -46,17 +89,13 @@ export function makeWorktreeFixture(): WorktreeFixture {
 	writeFileSync(join(clone, "README"), "hi\n");
 	fixtureGitCmd(clone, "add", "README");
 	fixtureGitCmd(clone, "commit", "-q", "-m", "init");
+	fixtureGitCmd(clone, "remote", "add", "origin", "https://example.invalid/o/r.git");
+	const hostGitDir = join(clone, ".git");
 	const ws = join(root, "ws-run");
+	const gitDir = join(root, "gitdirs", "run");
 	const sibling = join(root, "ws-sibling");
-	fixtureGitCmd(clone, "worktree", "add", "-q", "-b", "warren/run", ws);
-	fixtureGitCmd(clone, "worktree", "add", "-q", "-b", "warren/sibling", sibling);
-	return { root, clone, common: join(clone, ".git"), ws, sibling };
-}
-
-/** The realpath'd admin dir a workspace's `.git` file points at. */
-export function adminDirOf(ws: string): string {
-	const raw = readFileSync(join(ws, ".git"), "utf8")
-		.replace(/^gitdir:\s*/, "")
-		.trim();
-	return realpathSync(raw);
+	const siblingGitDir = join(root, "gitdirs", "sibling");
+	const source = await materialize(clone, hostGitDir, ws, gitDir, "warren/run");
+	await materialize(clone, hostGitDir, sibling, siblingGitDir, "warren/sibling");
+	return { root, clone, hostGitDir, ws, gitDir, source, sibling, siblingGitDir };
 }
