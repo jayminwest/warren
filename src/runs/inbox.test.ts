@@ -84,7 +84,9 @@ describe("pollRunInbox", () => {
 		const events = await repos.events.listByRun(runId);
 		const delivered = events.find((e) => e.kind === "steer.delivered");
 		expect(delivered?.sandboxEventSeq).toBe(8);
-		expect((delivered?.payloadJson as { messageId: string }).messageId).toBe(msg?.id ?? "<null>");
+		expect((delivered?.payloadJson as { messageId: string } | undefined)?.messageId).toBe(
+			msg?.id ?? "<null>",
+		);
 	});
 
 	test("an empty claim emits no steer.delivered", async () => {

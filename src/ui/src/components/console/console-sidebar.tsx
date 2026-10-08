@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils.ts";
 /** Mono right-aligned count, "—" while unknown (never a fabricated number). */
 function NavCount({ value }: { value: number | null }) {
 	return (
-		<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+		<span className="font-mono text-(--color-text-3) text-[10px] leading-3">
 			{value === null ? "—" : value}
 		</span>
 	);
@@ -80,8 +80,8 @@ function NavRow({
 
 function SectionHeading({ label }: { label: string }) {
 	return (
-		<div className="px-[9px] pb-1.5 pt-4">
-			<span className="text-[10px] font-semibold leading-3 tracking-[0.08em] text-(--color-text-3)">
+		<div className="px-[9px] pt-4 pb-1.5">
+			<span className="font-semibold text-(--color-text-3) text-[10px] leading-3 tracking-[0.08em]">
 				{label}
 			</span>
 		</div>
@@ -115,10 +115,10 @@ function InstanceCard({ stats }: { stats: ConsoleStats }) {
 				<HealthDot health={stats.health} />
 			</span>
 			<div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-				<span className="text-[12px] leading-4 font-medium text-(--color-text)">
+				<span className="font-medium text-(--color-text) text-[12px] leading-4">
 					{isOperator ? "operator" : "read-only"}
 				</span>
-				<span className="truncate font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="truncate font-mono text-(--color-text-3) text-[10px] leading-3">
 					{isOperator ? "read-write session" : "spectator projection"}
 				</span>
 			</div>
@@ -135,7 +135,7 @@ function BrandRow({ onNavigate }: { onNavigate?: () => void }) {
 		retry: false,
 	});
 	return (
-		<div className="flex h-[58px] shrink-0 items-center gap-2.5 border-b border-(--color-border) px-4">
+		<div className="flex h-[58px] shrink-0 items-center gap-2.5 border-(--color-border) border-b px-4">
 			<Link
 				to="/"
 				aria-label="Warren home"
@@ -143,13 +143,13 @@ function BrandRow({ onNavigate }: { onNavigate?: () => void }) {
 				className="flex items-center gap-2.5 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
 			>
 				<WarrenLogo className="h-[22px] w-[22px] shrink-0" />
-				<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
+				<span className="font-semibold text-(--color-text) text-[13px] leading-4 tracking-[-0.02em]">
 					warren
 				</span>
 			</Link>
 			<span className="flex-1" />
 			{version.data ? (
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-(--color-text-3) text-[10px] leading-3">
 					v{version.data.version}
 				</span>
 			) : null}
@@ -175,23 +175,23 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
 	};
 
 	return (
-		<div className="flex shrink-0 flex-col gap-0.5 border-t border-(--color-border) p-[9px]">
+		<div className="flex shrink-0 flex-col gap-0.5 border-(--color-border) border-t p-[9px]">
 			<NavRow item={INSTANCE_NAV_ITEM} onNavigate={onNavigate} />
 			<a
 				href={DOCUMENTATION_URL}
 				target="_blank"
 				rel="noreferrer"
 				onClick={onNavigate}
-				className="flex h-8 items-center gap-2.5 rounded-(--radius-sm) px-[9px] text-[11px] leading-[14px] text-(--color-text-3) hover:text-(--color-text-2)"
+				className="flex h-8 items-center gap-2.5 rounded-(--radius-sm) px-[9px] text-(--color-text-3) text-[11px] leading-[14px] hover:text-(--color-text-2)"
 			>
 				<span className="w-max shrink-0 text-center font-mono text-[11px] leading-[14px]">↗</span>
 				Documentation
 			</a>
 			<div className="flex h-8 items-center gap-2.5 px-[9px]">
-				<span className="w-max shrink-0 text-center font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="w-max shrink-0 text-center font-mono text-(--color-text-3) text-[10px] leading-3">
 					··
 				</span>
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-(--color-text-3) text-[10px] leading-3">
 					{identity === "operator" ? "operator@warren" : "spectator"}
 				</span>
 			</div>
@@ -202,7 +202,7 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
 					<button
 						type="button"
 						onClick={handleLogout}
-						className="flex h-8 items-center gap-2 px-1 text-[11px] text-(--color-text-3) hover:text-(--color-text-2)"
+						className="flex h-8 items-center gap-2 px-1 text-(--color-text-3) text-[11px] hover:text-(--color-text-2)"
 					>
 						<LogOut className="h-3.5 w-3.5" />
 						Log out
@@ -211,7 +211,7 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
 					<NavLink
 						to="/login"
 						onClick={onNavigate}
-						className="flex h-8 items-center gap-2 px-1 text-[11px] text-(--color-text-3) hover:text-(--color-text-2)"
+						className="flex h-8 items-center gap-2 px-1 text-(--color-text-3) text-[11px] hover:text-(--color-text-2)"
 					>
 						<LogIn className="h-3.5 w-3.5" />
 						Log in
@@ -280,7 +280,7 @@ export function ConsoleSidebarBody({
 /** Desktop rail: fixed 224px column, hidden below md (drawer takes over). */
 export function ConsoleSidebar({ stats }: { stats: ConsoleStats }) {
 	return (
-		<aside className="hidden w-56 shrink-0 flex-col border-r border-(--color-border) bg-(--color-sidebar) md:flex">
+		<aside className="hidden w-56 shrink-0 flex-col border-(--color-border) border-r bg-(--color-sidebar) md:flex">
 			<ConsoleSidebarBody stats={stats} />
 		</aside>
 	);

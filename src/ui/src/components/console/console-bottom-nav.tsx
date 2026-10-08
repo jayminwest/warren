@@ -30,7 +30,7 @@ export function ConsoleBottomNav({ onOpenMore }: ConsoleBottomNavProps) {
 	return (
 		<nav
 			aria-label="Primary"
-			className="flex h-[54px] shrink-0 border-t border-(--color-border) bg-(--color-sidebar) pb-[env(safe-area-inset-bottom)] md:hidden"
+			className="flex h-[54px] shrink-0 border-(--color-border) border-t bg-(--color-sidebar) pb-[env(safe-area-inset-bottom)] md:hidden"
 		>
 			{MOBILE_BOTTOM_NAV_ITEMS.map((item) => (
 				<NavLink key={item.to} to={item.to} className={({ isActive }) => tabClass(isActive)}>
@@ -57,8 +57,8 @@ export function ConsoleBottomNav({ onOpenMore }: ConsoleBottomNavProps) {
 				</NavLink>
 			))}
 			<button type="button" onClick={onOpenMore} className={tabClass(false)}>
-				<span className="font-mono text-[9px] leading-[11px] text-(--color-text-3)">··</span>
-				<span className="text-[10px] leading-3 text-(--color-text-3)">More</span>
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px]">··</span>
+				<span className="text-(--color-text-3) text-[10px] leading-3">More</span>
 			</button>
 		</nav>
 	);

@@ -28,8 +28,8 @@ function PanelShell({
 }) {
 	return (
 		<section className="flex shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-			<header className="flex h-[39px] shrink-0 items-center border-b border-(--color-border) px-3">
-				<h2 className="text-[11px] leading-[14px] font-semibold text-(--color-text)">{title}</h2>
+			<header className="flex h-[39px] shrink-0 items-center border-(--color-border) border-b px-3">
+				<h2 className="font-semibold text-(--color-text) text-[11px] leading-[14px]">{title}</h2>
 				{trailing !== undefined ? <span className="flex-1" /> : null}
 				{trailing}
 			</header>
@@ -43,10 +43,10 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 	// desktop 104px label leaves ~207px for values like anthropic/claude-sonnet-4-6.
 	return (
 		<div className="flex gap-2.5">
-			<span className="w-[82px] shrink-0 text-[10px] leading-3 text-(--color-text-3) md:w-[104px]">
+			<span className="w-[82px] shrink-0 text-(--color-text-3) text-[10px] leading-3 md:w-[104px]">
 				{label}
 			</span>
-			<span className="min-w-0 flex-1 font-mono text-[10px] leading-3 break-words text-(--color-text-2) md:text-[9px]">
+			<span className="min-w-0 flex-1 break-words font-mono text-(--color-text-2) text-[10px] leading-3 md:text-[9px]">
 				{children}
 			</span>
 		</div>
@@ -78,16 +78,16 @@ function RescueRows({ run }: { run: RunRow }) {
 	const rescue = readRescueFacts(run);
 	if (rescue === null) return null;
 	return (
-		<div className="flex flex-col gap-2 border-t border-(--color-border) pt-2">
+		<div className="flex flex-col gap-2 border-(--color-border) border-t pt-2">
 			<MetaRow label="rescue">{rescue.ref}</MetaRow>
 			{rescue.bundlePath !== null ? (
 				<MetaRow label="rescue bundle">{rescue.bundlePath}</MetaRow>
 			) : null}
-			<p className="font-mono text-[9px] leading-3 text-(--color-text-3)">{rescue.hint}</p>
+			<p className="font-mono text-(--color-text-3) text-[9px] leading-3">{rescue.hint}</p>
 			<OperatorOnly>
 				<button
 					type="button"
-					className="self-start rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] py-1 text-[10px] leading-3 font-medium text-(--color-text) hover:bg-(--color-surface-hover)"
+					className="self-start rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] py-1 font-medium text-(--color-text) text-[10px] leading-3 hover:bg-(--color-surface-hover)"
 					onClick={() =>
 						navigate("/dispatch", {
 							state: {
@@ -114,7 +114,7 @@ export function RuntimePanel({ run }: { run: RunRow }) {
 		<PanelShell
 			title="Runtime"
 			trailing={
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-3">
 					{relativeTime(run.endedAt ?? run.startedAt)}
 				</span>
 			}
@@ -157,7 +157,7 @@ export function SpendPanel({ run }: { run: RunRow }) {
 	return (
 		<PanelShell title="Spend">
 			<div className="flex items-baseline justify-between gap-2">
-				<span className="font-mono text-[16px] leading-5 font-semibold tracking-[-0.04em] text-(--color-text) md:text-[22px] md:leading-7 md:font-medium">
+				<span className="font-mono font-semibold text-(--color-text) text-[16px] leading-5 tracking-[-0.04em] md:font-medium md:text-[22px] md:leading-7">
 					{run.costUsd !== null
 						? run.costBasis === "subscription_estimate"
 							? `~${formatCostUsd(run.costUsd)} est.`
@@ -165,7 +165,7 @@ export function SpendPanel({ run }: { run: RunRow }) {
 						: DASH}
 				</span>
 				{cap !== null ? (
-					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+					<span className="font-mono text-(--color-text-3) text-[9px] leading-3">
 						of {formatCostUsd(cap)} cap
 					</span>
 				) : null}
@@ -180,7 +180,7 @@ export function SpendPanel({ run }: { run: RunRow }) {
 			 * the mock, which drops them).
 			 */}
 			{cap !== null && totalTokens(run) !== null ? (
-				<p className="font-mono text-[10px] leading-3 text-(--color-text-3) md:hidden">
+				<p className="font-mono text-(--color-text-3) text-[10px] leading-3 md:hidden">
 					{Math.round(((run.costUsd ?? 0) / cap) * 100)}% OF CAP ·{" "}
 					{formatTokens(totalTokens(run) ?? 0)} TOKENS
 				</p>
@@ -245,13 +245,13 @@ export function PromptPanel({ run }: { run: RunRow }) {
 				<button
 					type="button"
 					onClick={copy}
-					className="text-[10px] leading-3 font-medium text-(--color-text-2) hover:text-(--color-text)"
+					className="font-medium text-(--color-text-2) text-[10px] leading-3 hover:text-(--color-text)"
 				>
 					{copied ? "Copied" : "Copy"}
 				</button>
 			}
 		>
-			<p className="max-h-[240px] overflow-auto font-mono text-[10px] leading-4 break-words text-(--color-text-2)">
+			<p className="max-h-[240px] overflow-auto break-words font-mono text-(--color-text-2) text-[10px] leading-4">
 				{run.prompt}
 			</p>
 		</PanelShell>

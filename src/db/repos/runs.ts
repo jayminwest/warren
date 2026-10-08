@@ -472,7 +472,7 @@ export class RunsRepo {
 			const txDb = tx.drizzle as SqliteDrizzleDb;
 			const runs = tx.schema.runs;
 			const row = await tx.pickOne(txDb.select().from(runs).where(eq(runs.id, id)));
-			if (!row || row.state !== "queued") return null;
+			if (row?.state !== "queued") return null;
 			const startedAt = now.toISOString();
 			await tx.runWrite(
 				txDb

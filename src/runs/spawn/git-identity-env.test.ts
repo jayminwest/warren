@@ -49,7 +49,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 			},
 		});
 		const up = calls.find((c) => c.path === "/sandboxes");
-		const env = (up?.body as { env?: Record<string, string> }).env;
+		const env = (up?.body as { env?: Record<string, string> } | undefined)?.env;
 		expect(env?.GIT_AUTHOR_NAME).toBe("warren");
 		expect(env?.GIT_AUTHOR_EMAIL).toBe("op+warren@users.noreply.github.com");
 		expect(env?.GIT_COMMITTER_NAME).toBe("warren");
@@ -67,7 +67,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 			serverEnv: { WARREN_GIT_AUTHOR_NAME: "warren", WARREN_GIT_AUTHOR_EMAIL: "  " },
 		});
 		const up = calls.find((c) => c.path === "/sandboxes");
-		const env = (up?.body as { env?: Record<string, string> }).env;
+		const env = (up?.body as { env?: Record<string, string> } | undefined)?.env;
 		expect(env?.GIT_AUTHOR_NAME).toBeUndefined();
 		expect(env?.GIT_AUTHOR_EMAIL).toBeUndefined();
 		expect(env?.GIT_COMMITTER_NAME).toBeUndefined();

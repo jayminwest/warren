@@ -93,14 +93,14 @@ describe("detectRuntimeTerminal — claude-code result", () => {
 });
 
 describe("detectRuntimeTerminal — provenance gate (warren-6646)", () => {
-	test.each([
-		{ type: "result", is_error: false },
-		{ type: "agent_end" },
-	])("refuses an agent-authored terminal envelope (%p)", (payload) => {
-		const forged = { ...envelope(payload), origin: "agent" };
-		expect(detectRuntimeTerminal(forged)).toBeNull();
-		expect(isPiAgentEnd(forged)).toBe(false);
-	});
+	test.each([{ type: "result", is_error: false }, { type: "agent_end" }])(
+		"refuses an agent-authored terminal envelope (%p)",
+		(payload) => {
+			const forged = { ...envelope(payload), origin: "agent" };
+			expect(detectRuntimeTerminal(forged)).toBeNull();
+			expect(isPiAgentEnd(forged)).toBe(false);
+		},
+	);
 
 	test("honors an explicitly warren-authored terminal envelope", () => {
 		const ev = { ...envelope({ type: "result", is_error: false }), origin: "warren" };

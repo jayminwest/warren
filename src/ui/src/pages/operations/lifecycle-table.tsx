@@ -22,19 +22,19 @@ export function LifecycleTable({
 }) {
 	return (
 		<div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-			<div className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
-				<span className="text-[11px] leading-3.5 font-semibold text-(--color-text)">
+			<div className="flex h-[39px] shrink-0 items-center gap-2 border-(--color-border) border-b px-3">
+				<span className="font-semibold text-(--color-text) text-[11px] leading-3.5">
 					Lifecycle snapshot
 				</span>
 			</div>
-			<div className="flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2">
-				<span className="flex-1 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
+			<div className="flex items-center gap-2 border-(--color-border) border-b px-2.5 py-2">
+				<span className="flex-1 font-mono font-semibold text-(--color-text-3) text-[9px] tracking-[0.05em]">
 					PHASE
 				</span>
-				<span className="w-[60px] shrink-0 text-right font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
+				<span className="w-[60px] shrink-0 text-right font-mono font-semibold text-(--color-text-3) text-[9px] tracking-[0.05em]">
 					COUNT
 				</span>
-				<span className="w-[80px] shrink-0 text-right font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
+				<span className="w-[80px] shrink-0 text-right font-mono font-semibold text-(--color-text-3) text-[9px] tracking-[0.05em]">
 					OLDEST
 				</span>
 			</div>
@@ -47,17 +47,17 @@ export function LifecycleTable({
 						key={state}
 						className={
 							i < LIFECYCLE_ORDER.length - 1
-								? "flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2.5"
+								? "flex items-center gap-2 border-(--color-border) border-b px-2.5 py-2.5"
 								: "flex items-center gap-2 px-2.5 py-2.5"
 						}
 					>
 						<span className="flex-1">
 							<StatePill state={state} />
 						</span>
-						<span className="w-[60px] shrink-0 text-right font-mono text-[11px] leading-3.5 text-(--color-text-2)">
+						<span className="w-[60px] shrink-0 text-right font-mono text-(--color-text-2) text-[11px] leading-3.5">
 							{count === undefined ? "—" : count}
 						</span>
-						<span className="w-[80px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-3)">
+						<span className="w-[80px] shrink-0 text-right font-mono text-(--color-text-3) text-[10px] leading-3">
 							{oldest === null ? "—" : formatDurationMs(now - oldest)}
 						</span>
 					</div>

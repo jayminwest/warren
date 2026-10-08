@@ -29,7 +29,11 @@ import { injectWarrenCallbackEnv } from "./callback-env.ts";
 import { resolveContinuationRef, resolveExistingBranch } from "./continuation.ts";
 import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
-import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
+import {
+	appendMigrationCollisionNote,
+	detectMigrationJournalCollisions,
+	runDispatchMigrationPreflight,
+} from "./migration-preflight.ts";
 import { gateAgentPrompts, withMulchArm } from "./prompt-capabilities.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
 import {
@@ -324,47 +328,38 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// it instead of re-deriving the prefix composition. Inside the try so
 		// a failure unwinds through the same rollback as the dispatch itself.
 		await input.repos.runs.setBranch(run.id, branch);
-		// warren-1f03: dispatch-time drizzle migration preflight. A ref-dispatch
-		// onto an existing branch whose generated migrations collide with a
-		// journal slot main landed after the branch was cut is healed prompt-free
-		// (colliding artifacts deleted, `bun run db:generate`, heal commit on the
-		// host clone branch) BEFORE the provider forks the workspace. A fresh
-		// dispatch from the default branch cannot collide, so it is skipped.
-		// warren-232d: a baseCommit dispatch skips the preflight too — its host
-		// clone was NOT checked out onto the base ref (fetch-only refresh), so
-		// the heal path would commit onto whatever branch the clone happens to
-		// sit on (or a detached HEAD), not the pinned base.
-		if (
+		// warren-1f03 / warren-4371: drizzle migration journal preflight for a
+		// ref-dispatch onto an existing branch (a fresh dispatch from the default
+		// branch cannot collide). DETECTION ONLY on the host: a collision becomes
+		// an agent prompt note plus a system event, and the run regenerates the
+		// migrations inside its own sandbox. No repository-defined script runs in
+		// the control plane. warren-232d: a baseCommit dispatch skips it — its
+		// host clone was never checked out onto the pinned base.
+		const collisionNote =
 			refreshed !== null &&
 			input.baseCommit === undefined &&
 			baseRef !== undefined &&
 			baseRef !== projectAfterRefresh.defaultBranch &&
 			input.projectSpawn !== undefined
-		) {
-			const heal = await (input.migrationHealFn ?? healMigrationJournalCollisions)({
-				spawn: input.projectSpawn,
-				projectPath: projectAfterRefresh.localPath,
-				defaultBranch: projectAfterRefresh.defaultBranch,
-				baseRef,
-				...(input.projectsConfig?.gitBinary !== undefined
-					? { gitBinary: input.projectsConfig.gitBinary }
-					: {}),
-				...(input.serverEnv !== undefined ? { env: input.serverEnv } : {}),
-			});
-			if (heal.collisions.length > 0) {
-				log.info(
-					{ collisions: heal.collisions, commit_sha: heal.commitSha, base_ref: baseRef },
-					"spawn.migration_journal_heal",
-				);
-				await recordMigrationHealEvent(
-					input.repos,
-					run.id,
-					heal,
-					baseRef,
-					input.now?.() ?? new Date(),
-				);
-			}
-		}
+				? await runDispatchMigrationPreflight({
+						detect: input.migrationPreflightFn ?? detectMigrationJournalCollisions,
+						input: {
+							spawn: input.projectSpawn,
+							projectPath: projectAfterRefresh.localPath,
+							defaultBranch: projectAfterRefresh.defaultBranch,
+							baseRef,
+							...(input.projectsConfig?.gitBinary !== undefined
+								? { gitBinary: input.projectsConfig.gitBinary }
+								: {}),
+						},
+						regenerateCommand: projectDefaults?.migrations?.regenerateCommand,
+						repos: input.repos,
+						runId: run.id,
+						now: input.now?.() ?? new Date(),
+						logInfo: (obj, msg) => log.info(obj, msg),
+					})
+				: null;
+		spec.prompt = appendMigrationCollisionNote(spec.prompt, collisionNote);
 		const dispatchStart = Date.now();
 		const handle = await provider.create(spec);
 		created = handle;

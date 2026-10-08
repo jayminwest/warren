@@ -143,10 +143,10 @@ function DefaultsColumn({ entries }: { entries: Array<[string, string]> }) {
 		<dl className="flex min-w-0 flex-1 flex-col gap-2.5">
 			{entries.map(([key, value]) => (
 				<div key={key} className="flex items-center gap-2.5">
-					<dt className="max-md:w-[110px] md:w-[120px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
+					<dt className="shrink-0 text-(--color-text-3) text-[11px] leading-[14px] max-md:w-[110px] md:w-[120px]">
 						{key}
 					</dt>
-					<dd className="min-w-0 truncate font-mono text-[10px] leading-3 max-md:flex-1 max-md:text-right text-(--color-text-2)">
+					<dd className="min-w-0 truncate font-mono text-(--color-text-2) text-[10px] leading-3 max-md:flex-1 max-md:text-right">
 						{value}
 					</dd>
 				</div>
@@ -305,24 +305,24 @@ function TriggerRow({
 			}`}
 		>
 			<div className="flex w-[180px] shrink-0 flex-col gap-0.5">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text)">{trigger.id}</span>
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+				<span className="font-mono text-(--color-text) text-[10px] leading-3">{trigger.id}</span>
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-3">
 					{trigger.cron} {trigger.timezone ?? "UTC"}
 				</span>
 			</div>
-			<span className="w-[110px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<span className="w-[110px] shrink-0 font-mono text-(--color-text-2) text-[10px] leading-3">
 				{trigger.role}
 			</span>
 			{trigger.seed !== undefined ? (
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">{trigger.seed}</span>
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-3">{trigger.seed}</span>
 			) : null}
-			<span className="min-w-0 flex-1 truncate text-[10px] leading-[14px] text-(--color-text-3)">
+			<span className="min-w-0 flex-1 truncate text-(--color-text-3) text-[10px] leading-[14px]">
 				{trigger.parseError !== null
 					? `cron parse error: ${trigger.parseError}`
 					: (trigger.prompt ?? "—")}
 			</span>
 			<span
-				className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)"
+				className="shrink-0 font-mono text-(--color-text-3) text-[9px] leading-3"
 				title={trigger.lastFiredAt ?? "never fired"}
 			>
 				{trigger.lastRunId !== null ? (
@@ -351,7 +351,7 @@ function TriggerRow({
 				</Button>
 			</OperatorOnly>
 			{runError !== null ? (
-				<span className="w-full font-mono text-[9px] leading-3 text-(--color-danger)">
+				<span className="w-full font-mono text-(--color-danger) text-[9px] leading-3">
 					{runError}
 				</span>
 			) : null}
@@ -429,13 +429,13 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 									i === plans.length - 1 ? "" : "border-b border-b-(--color-border)"
 								}`}
 							>
-								<span className="w-[70px] shrink-0 font-mono text-[10px] leading-3 text-(--color-primary)">
+								<span className="w-[70px] shrink-0 font-mono text-(--color-primary) text-[10px] leading-3">
 									{plan.id}
 								</span>
-								<span className="min-w-0 flex-1 truncate text-[11px] leading-[14px] text-(--color-text-2)">
+								<span className="min-w-0 flex-1 truncate text-(--color-text-2) text-[11px] leading-[14px]">
 									{plan.name ?? plan.status}
 								</span>
-								<span className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
+								<span className="shrink-0 font-mono text-(--color-text-3) text-[9px] leading-3">
 									{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
 								</span>
 								<OperatorOnly>
@@ -453,5 +453,5 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 }
 
 export function EmptyRow({ text }: { text: string }) {
-	return <p className="px-3.5 py-3 text-[11px] leading-4 text-(--color-text-3)">{text}</p>;
+	return <p className="px-3.5 py-3 text-(--color-text-3) text-[11px] leading-4">{text}</p>;
 }

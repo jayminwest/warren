@@ -2,9 +2,11 @@
  * Correlation and observation rows: Warren run links, prospective cross-fork
  * PR identity, deduplicated GitHub source events, and attention items.
  *
- * GitHub events are keyed by their stable node id: re-ingesting the same
- * observed fact is a no-op, which is what makes at-least-once polling safe
- * (design record §10.1). PR identities stay controller-local because Warren's
+ * GitHub events are keyed by the reconciler's durable event key (repo, kind,
+ * GitHub node id, content digest), stored in the `node_id` column.
+ * Re-ingesting the same observed fact is a no-op, which is what makes
+ * at-least-once polling safe (design record §10.1). An in-place edit
+ * changes the digest, so it lands as a new row (warren-b990). PR identities stay controller-local because Warren's
  * Forge cannot express a cross-fork PR (§14.8).
  */
 import { StateError } from "../errors.ts";
@@ -255,7 +257,8 @@ export class EventStore {
 	}
 
 	/**
-	 * Ingest an upstream source event keyed by its stable GitHub node id.
+	 * Ingest an upstream source event keyed by its durable event key (the
+	 * `nodeId` input carries the full key, not the bare GitHub node id).
 	 * Returns true when the event is new, false when it was already stored —
 	 * duplicated polling delivers exactly once.
 	 */

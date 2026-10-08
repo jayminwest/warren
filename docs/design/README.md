@@ -36,6 +36,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [Resumable agent environments](./resumable-agent-environments.md) | `proposal` | `proposed` | `unscheduled` | 2026-08-20 |
 | [Agent analytics](./agent-analytics.md) | `direction` | `approved` | `mixed` | 2026-08-11 |
 | [TypeSafe judge backend and routing exploration](./typesafe-judge.md) | `proposal` | `proposed` | `unscheduled` | 2026-09-17 |
+| [Judge on-demand evaluation](./judge-on-demand-evaluation.md) | `proposal` | `proposed` | `unscheduled` | 2026-10-08 |
 | [Extensions](./extensions.md) | `direction` | `proposed` | `mixed` | 2026-08-04 |
 | [Agent composition and Pi runtime](./agent-composition.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
 | [Automatic run admission](./automatic-run-admission.md) | `contract` | `proposed` | `unscheduled` | 2026-10-02 |
@@ -57,7 +58,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 
 ## Pre-roadmap discovery
 
-The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), the proposed [resumable agent environments](./resumable-agent-environments.md), and the proposed [TypeSafe judge backend](./typesafe-judge.md), and the proposed [team identity direction](./team-identity.md). They remain ideas until the roadmap promotes them.
+The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), the proposed [resumable agent environments](./resumable-agent-environments.md), the proposed [TypeSafe judge backend](./typesafe-judge.md), the proposed [judge on-demand evaluation](./judge-on-demand-evaluation.md) plan, and the proposed [team identity direction](./team-identity.md). They remain ideas until the roadmap promotes them.
 
 ## Build order
 
@@ -87,6 +88,7 @@ A shipped record preserves rationale and contract history. Its `Current truth` f
 | 2026-08-26 | MCP server |
 | 2026-09-17 | Warren-armed auto-merge |
 | 2026-09-24 | Team identity, grants, and brokered credentials |
+| 2026-10-08 | Judge on-demand evaluation |
 
 ## Adding or changing a record
 
