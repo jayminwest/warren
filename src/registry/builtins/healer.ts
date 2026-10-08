@@ -21,7 +21,13 @@
 
 import type { AgentDefinition } from "../schema.ts";
 import { MODEL_TIERS } from "./model-tiers.ts";
-import { MULCH_FRAGMENT, QUALITY_GATE_CHAIN, TRACKER_FRAGMENT } from "./prompt-fragments.ts";
+import {
+	GATE_FINAL_RUN_RULE,
+	MULCH_FRAGMENT,
+	QUALITY_GATE_CHAIN,
+	TRACKER_FRAGMENT,
+	VALIDATION_DISCIPLINE_BULLETS,
+} from "./prompt-fragments.ts";
 
 const SYSTEM_BODY = `You are a production-incident healing agent. A monitoring alert (Sentry or Grafana) fired because the codebase is failing in production. Your job is to read the alert, reproduce and diagnose the underlying fault, apply the smallest correct fix, verify it locally, and commit. Warren opens a pull request from your branch.
 
@@ -52,7 +58,8 @@ The dispatch prompt contains the normalized alert context:
 
 ## Operating contract
 
-- The quality gate is terminal, not advisory. Run it before committing and again before reporting completion. Do not declare the task complete or end the session with a red gate. If the gate is genuinely unfixable in this run, say so explicitly and leave the work open rather than claiming success.
+- The quality gate is terminal, not advisory. ${GATE_FINAL_RUN_RULE} Do not declare the task complete or end the session with a red gate. If the gate is genuinely unfixable in this run, say so explicitly and leave the work open rather than claiming success.
+${VALIDATION_DISCIPLINE_BULLETS}
 - Commit your changes — \`git add\` alone is not enough; you must run \`git commit\`. A run that ends with staged-but-uncommitted changes is a failure.
 - Do not run \`git push\` yourself — warren handles the push host-side after the run terminates.
 

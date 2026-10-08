@@ -14,6 +14,7 @@ import {
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
 	CLAUDE_CODE_BUILTIN,
+	HEALER_BUILTIN,
 	PI_BUILTIN,
 	PLANNER_BUILTIN,
 	PR_FIXER_BUILTIN,
@@ -21,6 +22,7 @@ import {
 	seedBuiltinAgents,
 	stampAgentSource,
 } from "./index.ts";
+import { GATE_FINAL_RUN_RULE, VALIDATION_DISCIPLINE_BULLETS } from "./prompt-fragments.ts";
 
 describe("BUILTIN_AGENTS", () => {
 	test("includes claude-code, pi, planner, pr-fixer, and healer", () => {
@@ -100,6 +102,33 @@ describe("BUILTIN_AGENTS", () => {
 			expect(system).toContain("Do not declare the task complete");
 			expect(system).toContain("red gate");
 		}
+	});
+
+	// warren-7e82: the old "run it before committing and again before
+	// reporting completion" wording made agents re-run the complete gate on
+	// unchanged inputs. Every source-editing builtin keeps the mandatory
+	// final green run but carries the no-unchanged-rerun discipline instead.
+	test("source-editing builtins keep one final green gate without unchanged reruns (warren-7e82)", () => {
+		for (const builtin of [CLAUDE_CODE_BUILTIN, PI_BUILTIN, PR_FIXER_BUILTIN, HEALER_BUILTIN]) {
+			const system = builtin.sections.system ?? "";
+			expect(system).not.toContain("again before reporting completion");
+			expect(system).toContain(GATE_FINAL_RUN_RULE);
+			expect(system).toContain(VALIDATION_DISCIPLINE_BULLETS);
+			expect(system).toContain("NOT done until");
+			expect(system).toContain("red gate");
+		}
+	});
+
+	test("validation discipline names the measured waste patterns (warren-7e82)", () => {
+		expect(GATE_FINAL_RUN_RULE).toContain("Rerun it only when relevant inputs changed");
+		expect(GATE_FINAL_RUN_RULE).toMatch(/committing or reporting completion does not by itself/);
+		expect(VALIDATION_DISCIPLINE_BULLETS).toContain("Prepare dependencies once");
+		expect(VALIDATION_DISCIPLINE_BULLETS).toContain("configured test entry points");
+		expect(VALIDATION_DISCIPLINE_BULLETS).toContain("focused tests");
+		expect(VALIDATION_DISCIPLINE_BULLETS).toContain("--bail");
+		expect(VALIDATION_DISCIPLINE_BULLETS).toContain("pipefail");
+		expect(VALIDATION_DISCIPLINE_BULLETS).toMatch(/Never re-run an unchanged command/);
+		expect(VALIDATION_DISCIPLINE_BULLETS).toContain("--no-verify");
 	});
 });
 
