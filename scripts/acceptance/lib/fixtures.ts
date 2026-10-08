@@ -281,7 +281,12 @@ async function buildCanopyRepo(repoPath: string): Promise<void> {
 	}
 }
 
-async function buildSampleProject(repoPath: string): Promise<void> {
+/**
+ * Build the sample project repo (`.seeds/`, `.mulch/`, `burrow.toml`,
+ * stub agent scripts, one commit) at `repoPath`. Needs no canopy CLI, so
+ * the ui-visual fixture boot (warren-010b) reuses it for its project clones.
+ */
+export async function buildSampleProject(repoPath: string): Promise<void> {
 	const env = withGitIdentity({ HOME: process.env.HOME ?? "/tmp" });
 
 	await runIn(repoPath, ["git", "init", "--initial-branch=main"], env);

@@ -69,7 +69,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		// One-shot per stall episode even though five reconnects errored.
 		expect(stalls.length).toBe(1);
 		expect(stalls[0]?.stream).toBe("system");
-		expect((stalls[0]?.payloadJson as { attempts: number }).attempts).toBe(3);
+		expect((stalls[0]?.payloadJson as { attempts: number } | undefined)?.attempts).toBe(3);
 	});
 
 	test("emits bridge_recovered when events resume after a stall", async () => {
@@ -133,8 +133,10 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect(events.filter((e) => e.kind === "bridge_stalled").length).toBe(1);
 		const lost = events.filter((e) => e.kind === "bridge_lost");
 		expect(lost.length).toBe(1);
-		expect((lost[0]?.payloadJson as { reason: string }).reason).toBe("sandbox_unreachable");
-		expect((lost[0]?.payloadJson as { finalized: boolean }).finalized).toBe(true);
+		expect((lost[0]?.payloadJson as { reason: string } | undefined)?.reason).toBe(
+			"sandbox_unreachable",
+		);
+		expect((lost[0]?.payloadJson as { finalized: boolean } | undefined)?.finalized).toBe(true);
 	});
 
 	test("tears down the workspace via provider.terminate on the stall-ceiling path (warren-4f01/warren-5a3f)", async () => {

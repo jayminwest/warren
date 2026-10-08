@@ -56,4 +56,11 @@ describe("resolveAnalyticsWindow", () => {
 		const w = resolveAnalyticsWindow(from, undefined);
 		expect(Date.parse(w.to) - Date.parse(w.from)).toBe(ANALYTICS_MAX_WINDOW_DAYS * DAY_MS);
 	});
+
+	test("anchors the default to bound on an injected now (warren-010b frozen clock)", () => {
+		const nowMs = Date.parse("2026-09-15T12:00:00.000Z");
+		const w = resolveAnalyticsWindow(undefined, undefined, nowMs);
+		expect(w.to).toBe("2026-09-15T12:00:00.000Z");
+		expect(nowMs - Date.parse(w.from)).toBe(ANALYTICS_DEFAULT_WINDOW_DAYS * DAY_MS);
+	});
 });

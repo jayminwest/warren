@@ -44,7 +44,7 @@ describe("renderError — WarrenError mapping", () => {
 		const r = renderError(new MigrationPreflightError("migration preflight failed"));
 		expect(r.status).toBe(409);
 		expect(r.envelope.error.code).toBe("migration_preflight_failed");
-		expect(r.envelope.error.hint).toContain("rebase");
+		expect(r.envelope.error.hint).toContain("refresh the project");
 	});
 
 	test("RuntimeAdmissionError → 429 with Retry-After header + reason hint (warren-b6f2)", () => {

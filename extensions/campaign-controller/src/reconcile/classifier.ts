@@ -28,6 +28,7 @@
 import {
 	compileBotGrammar,
 	MAX_CLASSIFIED_BODY_LENGTH,
+	MAX_SCANNED_BODY_LENGTH,
 	type ReviewBotGrammar,
 } from "./bot-grammar.ts";
 import type { GithubEventKind } from "./events.ts";
@@ -191,15 +192,17 @@ function classifyComment(
 	grammar: ReviewBotGrammar,
 ): ClassifiedFeedback | null {
 	const author = payload.authorLogin;
-	if (typeof author !== "string") return null;
-	const body = bounded(payload.body);
-	if (body === null) return null;
+	if (typeof author !== "string" || typeof payload.body !== "string") return null;
 
 	// Bot-authored output: recognize a durable finding list under the
-	// profile-declared marker and extract structured findings only.
+	// profile-declared marker and extract structured findings only. The
+	// marker may sit anywhere in the body (warren-b990), so the section is
+	// located first and bounded after.
 	if (grammar.knownBotLogins.includes(author)) {
-		return classifyBotFindings(nodeId, author, body, grammar);
+		return classifyBotFindings(nodeId, author, payload.body, grammar);
 	}
+	const body = bounded(payload.body);
+	if (body === null) return null;
 
 	// Human comment: an exact, profile-declared command requests re-review.
 	// The command value is copied from the grammar — the comment supplies
@@ -249,14 +252,47 @@ const FORBIDDEN_PATH_CHARACTERS = new Set([
 	"\\",
 ]);
 
+/** A markdown heading line: it closes the finding section. */
+const HEADING_LINE = /^#{1,6}\s/;
+
+/**
+ * The finding section of a bot comment, or null when the marker is absent.
+ *
+ * The marker must open a line, but that line can sit anywhere in the
+ * body. Real review bots lead with a verdict summary and put the finding
+ * list mid-body (warren-b990): ClawSweeper's `## Findings` follows about
+ * 8 KiB of scores and verification tables. The section runs from the
+ * marker to the next markdown heading, so finding-shaped lines under a
+ * later heading (a review-history log, for one) are never extracted. The
+ * marker scan is a fixed-string search. Only the section, cut to
+ * `MAX_CLASSIFIED_BODY_LENGTH`, reaches the profile pattern.
+ */
+export function findingSection(body: string, marker: string): string | null {
+	const scanned =
+		body.length > MAX_SCANNED_BODY_LENGTH ? body.slice(0, MAX_SCANNED_BODY_LENGTH) : body;
+	let start: number;
+	if (scanned.startsWith(marker)) {
+		start = 0;
+	} else {
+		const found = scanned.indexOf(`\n${marker}`);
+		if (found === -1) return null;
+		start = found + 1;
+	}
+	const section = bounded(scanned.slice(start + marker.length)) ?? "";
+	// Tolerate CRLF bodies: a stray `\r` would defeat a `$`-anchored pattern.
+	const lines = section.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
+	const end = lines.findIndex((line, index) => index > 0 && HEADING_LINE.test(line));
+	return (end === -1 ? lines : lines.slice(0, end)).join("\n");
+}
+
 function classifyBotFindings(
 	nodeId: string,
 	author: string,
 	body: string,
 	grammar: ReviewBotGrammar,
 ): ClassifiedFeedback | null {
-	if (!body.startsWith(grammar.findingMarker)) return null;
-	const listText = body.slice(grammar.findingMarker.length);
+	const listText = findingSection(body, grammar.findingMarker);
+	if (listText === null) return null;
 	const pattern = compileBotGrammar(grammar);
 	const findings = listText
 		.split("\n")

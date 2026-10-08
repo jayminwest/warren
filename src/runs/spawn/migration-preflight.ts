@@ -1,15 +1,10 @@
 /**
- * Dispatch-time drizzle migration preflight (warren-1f03).
+ * Dispatch-time drizzle migration journal preflight (warren-1f03, warren-4371).
  *
  * Serial schema plans collided on drizzle migration journal slots: a branch
  * cut before main landed another migration regenerates its change at the
  * same journal index, and the PR merge then carries two entries with the
- * same idx (pl-103e needed a repair run per schema child). The DECISION
- * (2026-08-16) fixed the direction: detect the slot collision at dispatch
- * time and heal it prompt-free BEFORE the agent starts — delete the
- * branch's colliding migration artifacts, re-sync the journal to main's,
- * and re-run `bun run db:generate` so the branch's schema change is
- * regenerated at a slot past main's tip.
+ * same idx (pl-103e needed a repair run per schema child).
  *
  * Detection: parse the branch's `meta/_journal.json` entries against
  * `origin/<defaultBranch>`'s. A branch entry whose idx also exists on main
@@ -18,47 +13,39 @@
  * branch (`baseRef` resolved, host clone refreshed onto it) — a fresh
  * dispatch from the default branch cannot collide.
  *
- * Heal commits the regenerated migrations onto the checked-out branch of the
- * host clone with the canonical warren bot identity (Article VII,
- * src/bot-identity.ts) so the workspace fork the provider cuts from the
- * clone already carries the healed slot. The run event
- * `migration_journal_heal` (system stream) records the heal for operators.
- *
- * Rejected alternatives (per the DECISION): a journal-aware merge driver
- * (fixes it too late, more machinery) and the policy-only "use plan-run
- * mode" answer (pl-103e was already serial and still collided).
+ * Trust boundary (warren-4371): the preflight runs in the control plane, so
+ * it is DETECTION ONLY. It reads the working-tree journal file and runs two
+ * read-only git plumbing commands (`git ls-files`, `git cat-file blob`). It
+ * never executes a repository-defined script, never writes to the host
+ * clone, and never commits. The warren-1f03 heal ran the repository's own
+ * generate script and committed on the host clone, which executed
+ * repository code outside the run's isolation boundary with the control
+ * plane's environment. Regeneration now happens inside the run's sandbox:
+ * a detected collision is surfaced to the agent as a prompt note (quoting
+ * the project's optional `migrations.regenerateCommand` from
+ * `.warren/config.yaml`) and recorded as a `migration_journal_collision`
+ * system event for operators. See SECURITY.md "Runtime isolation".
  */
 
-import { access, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-	type BotIdentityEnv,
-	warrenCommitIdentityArgs,
-	warrenCommitIdentityEnv,
-} from "../../bot-identity.ts";
 import { WarrenError } from "../../core/errors.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { DEFAULT_GIT_TIMEOUT_MS, type SpawnFn } from "../../projects/clone.ts";
 
-/** Default regeneration command — warren's package.json regenerates BOTH journals. */
-export const DEFAULT_GENERATE_COMMAND: readonly string[] = ["bun", "run", "db:generate"];
-
 /** Directory-name suffix that marks a drizzle journal path. */
 const JOURNAL_SUFFIX = "meta/_journal.json";
 
-/** Snapshot filename drizzle-kit writes: `meta/<idx>_snapshot.json`, idx zero-padded to 4. */
-function snapshotName(idx: number): string {
-	return `${String(idx).padStart(4, "0")}_snapshot.json`;
-}
+/** Run event kind recording a detected collision (system stream). */
+export const MIGRATION_COLLISION_EVENT_KIND = "migration_journal_collision";
 
-/** Typed preflight failure (warren-236d): maps to HTTP 409 — the branch's migration journal conflicts with main. */
+/** Typed preflight failure (warren-236d): maps to HTTP 409 — the host clone's journals could not be listed. */
 export class MigrationPreflightError extends WarrenError {
 	readonly code = "migration_preflight_failed";
 
 	constructor(message: string) {
 		super(message, {
 			recoveryHint:
-				"the branch's drizzle migration journal conflicts with the default branch; rebase the branch onto the default branch before dispatching",
+				"warren could not read the branch's drizzle migration journals from the project clone; refresh the project and re-dispatch",
 		});
 		this.name = "MigrationPreflightError";
 	}
@@ -77,14 +64,12 @@ export interface JournalCollision {
 	readonly mainTag: string;
 }
 
-export interface MigrationHealOutcome {
-	/** Empty when no collision was detected (no-op). */
+export interface MigrationPreflightOutcome {
+	/** Empty when no collision was detected. */
 	readonly collisions: readonly JournalCollision[];
-	/** Sha of the heal commit on the host clone branch; null when no heal ran. */
-	readonly commitSha: string | null;
 }
 
-export interface MigrationHealInput {
+export interface MigrationPreflightInput {
 	readonly spawn: SpawnFn;
 	/** Host clone path (checked out to `baseRef` by the pre-dispatch refresh). */
 	readonly projectPath: string;
@@ -93,17 +78,14 @@ export interface MigrationHealInput {
 	readonly baseRef: string;
 	/** Git binary; defaults to `git` (mirrors ProjectsConfig.gitBinary). */
 	readonly gitBinary?: string;
-	/** Regeneration command; defaults to `bun run db:generate`. */
-	readonly generateCommand?: readonly string[];
-	/** Env used to resolve the warren bot identity override; defaults to process.env. */
-	readonly env?: BotIdentityEnv;
 }
 
-export type MigrationHealFn = (input: MigrationHealInput) => Promise<MigrationHealOutcome>;
+export type MigrationPreflightFn = (
+	input: MigrationPreflightInput,
+) => Promise<MigrationPreflightOutcome>;
 
 interface Journal {
 	readonly entries: readonly JournalEntry[];
-	readonly [key: string]: unknown;
 }
 
 /** Parse a drizzle journal. Returns null when the shape isn't a journal. */
@@ -155,44 +137,9 @@ export function findCollisions(
 	return out;
 }
 
-async function pathExists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-async function mustSpawn(
-	spawn: SpawnFn,
-	cmd: readonly string[],
-	cwd: string,
-	env?: Record<string, string | undefined>,
-): Promise<string> {
-	const result = await spawn(cmd, {
-		cwd,
-		timeoutMs: DEFAULT_GIT_TIMEOUT_MS,
-		...(env !== undefined ? { env } : {}),
-	});
-	if (result.exitCode !== 0) {
-		throw new MigrationPreflightError(
-			`migration preflight: \`${cmd.join(" ")}\` failed: ${result.stderr.trim()}`,
-		);
-	}
-	return result.stdout;
-}
-
-/**
- * Heal one journal's collisions against main. Returns the collisions found
- * (empty ⇒ untouched). Heal = delete the branch's colliding artifacts,
- * re-sync the journal to main's entries (+ any non-colliding branch-only
- * entries at genuinely free slots past main's tip), and restore main-side
- * migration files the worktree lacks so the regenerate diffs against main's
- * tip snapshot instead of re-creating the colliding slot.
- */
-async function healOneJournal(
-	input: MigrationHealInput,
+/** Collisions in one journal; empty when either side has no parseable journal. */
+async function detectOneJournal(
+	input: MigrationPreflightInput,
 	git: string,
 	originRef: string,
 	journalPath: string,
@@ -202,141 +149,149 @@ async function healOneJournal(
 		.catch(() => null);
 	const branch = branchRaw === null ? null : parseJournal(branchRaw);
 	if (branch === null) return [];
-	const mainShow = await input.spawn([git, "show", `${originRef}:${journalPath}`], {
+	// Plumbing read of the blob: no textconv, no filters, no hooks.
+	const mainBlob = await input.spawn([git, "cat-file", "blob", `${originRef}:${journalPath}`], {
 		cwd: input.projectPath,
 		timeoutMs: DEFAULT_GIT_TIMEOUT_MS,
 	});
 	// No journal on main → nothing to collide with.
-	if (mainShow.exitCode !== 0) return [];
-	const main = parseJournal(mainShow.stdout);
+	if (mainBlob.exitCode !== 0) return [];
+	const main = parseJournal(mainBlob.stdout);
 	if (main === null) return [];
-
 	const dir = journalPath.slice(0, -JOURNAL_SUFFIX.length - 1);
-	const found = findCollisions(dir, branch.entries, main.entries);
-	if (found.length === 0) return [];
-
-	// Rebuild the branch journal as main's entries + any non-colliding
-	// branch-only entries (a genuinely free slot past main's tip), sorted by idx.
-	const collidingTags = new Set(found.map((c) => c.branchTag));
-	const keptExtras = branch.entries
-		.filter((e) => !collidingTags.has(e.tag))
-		.filter((e) => !main.entries.some((m) => m.idx === e.idx || m.tag === e.tag));
-	const merged = [...main.entries, ...keptExtras].sort((a, b) => a.idx - b.idx);
-
-	// Delete the colliding migration artifacts (sql + snapshot). drizzle-kit
-	// names snapshot files by the zero-padded journal index only, while the
-	// `.sql` file carries the tag (warren-236d).
-	for (const { idx, branchTag } of found) {
-		await rm(join(input.projectPath, dir, `${branchTag}.sql`), { force: true });
-		await rm(join(input.projectPath, dir, "meta", snapshotName(idx)), { force: true });
-	}
-	// Re-sync the journal to main + kept extras.
-	await writeFile(
-		join(input.projectPath, journalPath),
-		`${JSON.stringify({ ...main, entries: merged }, null, "\t")}\n`,
-	);
-	// Restore any main-side migration files the branch worktree lacks so
-	// the regenerate diffs against main's tip snapshot.
-	for (const entry of main.entries) {
-		for (const rel of [`${dir}/${entry.tag}.sql`, `${dir}/meta/${snapshotName(entry.idx)}`]) {
-			const abs = join(input.projectPath, rel);
-			if (await pathExists(abs)) continue;
-			const content = await mustSpawn(
-				input.spawn,
-				[git, "show", `${originRef}:${rel}`],
-				input.projectPath,
-			);
-			await writeFile(abs, content);
-		}
-	}
-	return found;
+	return findCollisions(dir, branch.entries, main.entries);
 }
 
 /**
  * Detect journal-slot collisions between the checked-out branch and
- * `origin/<defaultBranch>` across every drizzle journal in the clone, and
- * heal any found by deleting the branch's colliding migration artifacts,
- * re-syncing the journal to main's (so regeneration lands past main's tip
- * instead of re-creating the colliding slot), re-running the generate
- * command, and committing the result on the host clone branch.
- *
- * Returns the collisions + heal commit sha; `{collisions: [], commitSha: null}`
- * when nothing collided (pure detection, no mutation).
+ * `origin/<defaultBranch>` across every drizzle journal tracked in the clone.
+ * Read-only: the host clone is never mutated and no repository-defined
+ * command runs (warren-4371).
  */
-export const healMigrationJournalCollisions: MigrationHealFn = async (input) => {
+export const detectMigrationJournalCollisions: MigrationPreflightFn = async (input) => {
 	const git = input.gitBinary ?? "git";
 	const originRef = `origin/${input.defaultBranch}`;
-
-	// Discover every drizzle journal tracked in the clone.
-	const listing = await mustSpawn(
-		input.spawn,
-		[git, "ls-files", "--", `:(glob)**/${JOURNAL_SUFFIX}`],
-		input.projectPath,
-	);
-	const journalPaths = listing
+	const listing = await input.spawn([git, "ls-files", "--", `:(glob)**/${JOURNAL_SUFFIX}`], {
+		cwd: input.projectPath,
+		timeoutMs: DEFAULT_GIT_TIMEOUT_MS,
+	});
+	if (listing.exitCode !== 0) {
+		throw new MigrationPreflightError(
+			`migration preflight: \`git ls-files\` failed: ${listing.stderr.trim()}`,
+		);
+	}
+	const journalPaths = listing.stdout
 		.split("\n")
 		.map((line) => line.trim())
 		.filter(
 			(line) => line !== "" && line.endsWith(JOURNAL_SUFFIX) && !line.includes("node_modules"),
 		);
-
 	const collisions: JournalCollision[] = [];
-	const healedDirs: string[] = [];
 	for (const journalPath of journalPaths) {
-		const found = await healOneJournal(input, git, originRef, journalPath);
-		if (found.length === 0) continue;
-		collisions.push(...found);
-		healedDirs.push(journalPath.slice(0, -JOURNAL_SUFFIX.length - 1));
+		collisions.push(...(await detectOneJournal(input, git, originRef, journalPath)));
 	}
-	if (collisions.length === 0) return { collisions, commitSha: null };
-
-	// Prompt-free regeneration at the fresh slot (both journals).
-	const generateCommand = input.generateCommand ?? DEFAULT_GENERATE_COMMAND;
-	await mustSpawn(input.spawn, generateCommand, input.projectPath);
-
-	// Commit the heal on the checked-out branch as the warren bot (Article VII).
-	const env = input.env ?? process.env;
-	await mustSpawn(input.spawn, [git, "add", "-A", "--", ...healedDirs], input.projectPath);
-	await mustSpawn(
-		input.spawn,
-		[
-			git,
-			...warrenCommitIdentityArgs(env),
-			"commit",
-			"-m",
-			`chore(warren): heal drizzle migration journal collision with ${input.defaultBranch}`,
-		],
-		input.projectPath,
-		warrenCommitIdentityEnv(env),
-	);
-	const sha = (await mustSpawn(input.spawn, [git, "rev-parse", "HEAD"], input.projectPath)).trim();
-	return { collisions, commitSha: sha === "" ? null : sha };
+	return { collisions };
 };
 
 /**
- * Best-effort operator-visible record of a heal, appended to the run's event
- * stream (system kind, mirroring `seed-extensions.ts`'s recordEvent). Never
- * throws — a logging failure must not roll back an otherwise-healed dispatch.
+ * The agent-facing note for a detected collision. The run repairs the
+ * migrations inside its own sandbox. `regenerateCommand` is the project's
+ * `.warren/config.yaml` `migrations.regenerateCommand`, quoted as guidance
+ * only — warren never executes it.
  */
-export async function recordMigrationHealEvent(
+export function composeMigrationCollisionNote(
+	collisions: readonly JournalCollision[],
+	defaultBranch: string,
+	regenerateCommand: string | undefined,
+): string {
+	const main = `origin/${defaultBranch}`;
+	const lines = collisions.map(
+		(c) =>
+			`- \`${c.migrationsDir}\`: branch migration \`${c.branchTag}\` (idx ${c.idx}) collides with \`${c.mainTag}\` on \`${main}\``,
+	);
+	const regenerate =
+		regenerateCommand !== undefined
+			? `run \`${regenerateCommand}\``
+			: "run this project's migration generator";
+	return [
+		"## Migration journal collision (detected by warren at dispatch)",
+		"",
+		`This branch's generated migration journal collides with \`${main}\`, which landed migrations at the same journal slot after the branch was cut. Warren did not modify the branch. Repair it inside this workspace before finishing:`,
+		"",
+		...lines,
+		"",
+		`Bring in \`${main}\`'s migrations and journal, delete the branch's colliding migration artifacts (the \`.sql\` file and its \`meta/<idx>_snapshot.json\`), then ${regenerate} so the branch's schema change lands past the default branch's tip, and commit the result.`,
+	].join("\n");
+}
+
+/** Append the collision note to the composed dispatch prompt (same `---` delimiter as composeDispatchPrompt). */
+export function appendMigrationCollisionNote(prompt: string, note: string | null): string {
+	return note === null ? prompt : `${prompt}\n\n---\n\n${note}`;
+}
+
+export interface DispatchMigrationPreflightArgs {
+	readonly detect: MigrationPreflightFn;
+	readonly input: MigrationPreflightInput;
+	readonly regenerateCommand: string | undefined;
+	readonly repos: Repos;
+	readonly runId: string;
+	readonly now: Date;
+	readonly logInfo: (obj: Record<string, unknown>, msg: string) => void;
+}
+
+/**
+ * Dispatch-side wrapper: run detection and, when a collision is found, log
+ * it, record the operator-visible event, and return the agent prompt note
+ * (null ⇒ nothing to surface).
+ */
+export async function runDispatchMigrationPreflight(
+	args: DispatchMigrationPreflightArgs,
+): Promise<string | null> {
+	const { collisions } = await args.detect(args.input);
+	if (collisions.length === 0) return null;
+	args.logInfo({ collisions, base_ref: args.input.baseRef }, "spawn.migration_journal_collision");
+	await recordMigrationCollisionEvent(args.repos, args.runId, {
+		baseRef: args.input.baseRef,
+		collisions,
+		regenerateCommand: args.regenerateCommand ?? null,
+		now: args.now,
+	});
+	return composeMigrationCollisionNote(
+		collisions,
+		args.input.defaultBranch,
+		args.regenerateCommand,
+	);
+}
+
+/**
+ * Best-effort operator-visible record of a detected collision, appended to
+ * the run's event stream (system kind, mirroring `seed-extensions.ts`'s
+ * recordEvent). Never throws — a logging failure must not roll back an
+ * otherwise-valid dispatch.
+ */
+export async function recordMigrationCollisionEvent(
 	repos: Repos,
 	runId: string,
-	outcome: MigrationHealOutcome,
-	baseRef: string,
-	now: Date,
+	record: {
+		readonly baseRef: string;
+		readonly collisions: readonly JournalCollision[];
+		readonly regenerateCommand: string | null;
+		readonly now: Date;
+	},
 ): Promise<void> {
 	try {
 		const seq = ((await repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 		await repos.events.append({
 			runId,
 			sandboxEventSeq: seq,
-			ts: now.toISOString(),
-			kind: "migration_journal_heal",
+			ts: record.now.toISOString(),
+			kind: MIGRATION_COLLISION_EVENT_KIND,
 			stream: "system",
 			payload: {
-				baseRef,
-				commitSha: outcome.commitSha,
-				collisions: outcome.collisions,
+				baseRef: record.baseRef,
+				collisions: record.collisions,
+				regenerateCommand: record.regenerateCommand,
+				resolution: "agent_in_sandbox",
 			},
 		});
 	} catch {
