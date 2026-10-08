@@ -1,7 +1,7 @@
 /**
- * In-memory GitHub REST fake for the ui-visual comment tests (warren-70d9).
- * Covers only the endpoints `sticky-comment.ts`, `artifact-branch.ts`, and
- * `pr-comment.ts` call. Test support, not shipped.
+ * In-memory GitHub REST fake for the ui-visual comment tests (warren-70d9)
+ * and the design-review workflow tests (warren-a694). Covers only the
+ * endpoints those scripts call. Test support, not shipped.
  */
 
 import { type GhApi, GhApiError, type HttpMethod } from "./gh-api.ts";
@@ -18,6 +18,16 @@ interface FakeCommit {
 	parents: string[];
 }
 
+export interface FakeCheckRun {
+	id: number;
+	name: string;
+	head_sha: string;
+	status: string;
+	conclusion?: string;
+	output?: { title: string; summary: string };
+	details_url?: string;
+}
+
 type Handler = (method: HttpMethod, match: RegExpExecArray, body: unknown) => unknown;
 
 export class FakeGhApi implements GhApi {
@@ -29,11 +39,21 @@ export class FakeGhApi implements GhApi {
 	readonly commits = new Map<string, FakeCommit>();
 	readonly trees = new Map<string, { path: string; sha: string }[]>();
 	readonly blobs = new Map<string, string>();
+	/** PR number -> its `pulls/:n/files` entries. */
+	readonly pullFiles = new Map<number, unknown[]>();
+	readonly checkRuns: FakeCheckRun[] = [];
 	/** Called before a ref update; lets a test move the branch underneath. */
 	beforeRefUpdate: (() => void) | null = null;
 	private next = 1;
 
 	private readonly routes: [RegExp, Handler][] = [
+		[
+			/^repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/files/,
+			(_m, x) => this.pullFiles.get(Number(x[1])) ?? [],
+		],
+		[/^repos\/[^/]+\/[^/]+\/commits\/(\w+)\/check-runs/, (_m, x) => this.listChecks(x[1] ?? "")],
+		[/^repos\/[^/]+\/[^/]+\/check-runs$/, (_m, _x, b) => this.createCheck(b)],
+		[/^repos\/[^/]+\/[^/]+\/check-runs\/(\d+)$/, (_m, x, b) => this.editCheck(Number(x[1]), b)],
 		[
 			/^repos\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/,
 			(_m, x) => this.found(this.runs.get(x[1] ?? "")),
@@ -80,6 +100,24 @@ export class FakeGhApi implements GhApi {
 		const commit = this.commits.get(this.refs.get(branch) ?? "");
 		const entries = this.trees.get(commit?.tree ?? "") ?? [];
 		return new Map(entries.map((e) => [e.path, this.blobs.get(e.sha) ?? ""]));
+	}
+
+	/** The check runs on a commit, newest first, as `filter=latest` lists them. */
+	private listChecks(sha: string): unknown {
+		const runs = this.checkRuns.filter((r) => r.head_sha === sha).reverse();
+		return { total_count: runs.length, check_runs: runs };
+	}
+
+	private createCheck(body: unknown): unknown {
+		const run = { id: this.next++, ...(body as Omit<FakeCheckRun, "id">) };
+		this.checkRuns.push(run);
+		return run;
+	}
+
+	private editCheck(id: number, body: unknown): unknown {
+		const run = this.found(this.checkRuns.find((r) => r.id === id)) as FakeCheckRun;
+		Object.assign(run, body);
+		return run;
 	}
 
 	private found(value: unknown): unknown {

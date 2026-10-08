@@ -63,11 +63,11 @@ export interface JobDeps {
 	readonly log: (line: string) => void;
 }
 
-interface RunInfo extends RunRef {
+export interface RunInfo extends RunRef {
 	readonly conclusion: string;
 }
 
-async function readRun(deps: JobDeps): Promise<RunInfo | null> {
+export async function readRun(deps: JobDeps): Promise<RunInfo | null> {
 	const run = (await deps.api.request("GET", `repos/${deps.repo}/actions/runs/${deps.runId}`)) as {
 		path?: string;
 		status?: string;
@@ -97,8 +97,17 @@ function readJson(path: string): unknown {
 	}
 }
 
-/** The PR the artifact names, only if that open PR's head is the run's head. */
-async function verifiedPr(deps: JobDeps, dir: string, headSha: string): Promise<number | null> {
+/**
+ * The PR the artifact names, only if that open PR's head is the run's head.
+ * `allowClosed` also accepts a closed or merged PR whose last head is the
+ * run's head: the design review's manual calibration re-run (warren-a694).
+ */
+export async function verifiedPr(
+	deps: JobDeps,
+	dir: string,
+	headSha: string,
+	allowClosed = false,
+): Promise<number | null> {
 	const meta = readJson(join(dir, "ci-meta.json")) as { pr?: unknown } | null;
 	const pr = meta?.pr;
 	if (typeof pr !== "number" || !Number.isInteger(pr) || pr <= 0) {
@@ -109,7 +118,7 @@ async function verifiedPr(deps: JobDeps, dir: string, headSha: string): Promise<
 		state?: string;
 		head?: { sha?: string };
 	};
-	if (pull.state !== "open" || pull.head?.sha !== headSha) {
+	if ((pull.state !== "open" && !allowClosed) || pull.head?.sha !== headSha) {
 		deps.log(`PR #${pr} is ${pull.state} at ${pull.head?.sha ?? "?"}, not this run's ${headSha}`);
 		return null;
 	}
@@ -232,7 +241,7 @@ export async function runCommentJob(deps: JobDeps): Promise<string> {
 	return `${action}:${result.action}`;
 }
 
-function ghDownload(repo: string, runId: string, name: string): Promise<string | null> {
+export function ghDownload(repo: string, runId: string, name: string): Promise<string | null> {
 	const dir = mkdtempSync(join(tmpdir(), "ui-visual-comment-"));
 	const result = spawnSync(
 		"gh",
