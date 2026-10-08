@@ -1,0 +1,35 @@
+# PodDisruptionBudget for the in-cluster Postgres (warren-a5d2).
+#
+# Postgres runs one replica on a ReadWriteOnce disk, so any voluntary eviction
+# is a full API outage: the replacement pod cannot start until the disk
+# detaches from the old node (Multi-Attach), and every DB-backed route returns
+# 500 meanwhile. GKE Autopilot's cluster autoscaler did exactly that twice in
+# 36 minutes on 2026-09-17. maxUnavailable 0 makes every voluntary eviction
+# (autoscaler scale-down, `kubectl drain`) refuse postgres-0. GKE node upgrades
+# honor a PDB for up to one hour before they force the drain, so plan upgrades
+# for an idle window (docs/RUNBOOK-K8S.md §1.5 "Disruption protection").
+#
+# Why this lives in the gke overlay and not in components/postgres: the deploy
+# workflow (.github/workflows/deploy-gke.yml) renders `gke-live` from `../gke`
+# only, never the opt-in postgres Component, so a PDB inside the Component
+# would never reach the cluster through CI. A PDB whose selector matches no
+# pods is inert, so this is safe on a gke install that keeps the SQLite
+# fallback.
+#
+# unhealthyPodEvictionPolicy AlwaysAllow: a postgres-0 that is not Ready is
+# already not serving, so the budget must not stop a drain from moving it.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  maxUnavailable: 0
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/component: database

@@ -146,6 +146,60 @@ state at cutover, 96 MB) and `gs://warren-pg-backups-502318/warren/supabase-arch
 
 **Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover. A copy is in the backup bucket as `warren/supabase-archive-2026-07-13.dump`.
 
+#### Disruption protection (warren-a5d2)
+
+Postgres runs one replica on a `ReadWriteOnce` disk.
+When something evicts `postgres-0`, the whole API goes down for 20 to 40 seconds.
+The replacement pod waits for the disk to detach from the old node (a Multi-Attach error) before Postgres can start.
+Every DB-backed route returns 500 with `ECONNREFUSED :5432` until it does.
+On 2026-09-17 the Autopilot cluster autoscaler evicted `postgres-0` twice in 36 minutes to scale a node down.
+
+Three settings stop the autoscaler from doing that again:
+
+| Object | Setting | Where | How it reaches the cluster |
+| --- | --- | --- | --- |
+| `PodDisruptionBudget/postgres` | `maxUnavailable: 0`, `unhealthyPodEvictionPolicy: AlwaysAllow` | `deploy/k8s/overlays/gke/postgres-pdb.yaml` | The deploy workflow (§1.6), on the next release |
+| `StatefulSet/postgres` pod template | `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` | `deploy/k8s/components/postgres/statefulset.yaml` | Your own `kubectl apply -k` of the live overlay that includes the Component |
+| `Deployment/warren` pod template | `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` | `deploy/k8s/base/deployment.yaml` | The deploy workflow (§1.6), on the next release |
+
+The deploy workflow renders `gke-live` from `../gke` only and never applies the postgres Component.
+For this reason the PDB lives in the gke overlay, not in the Component.
+The PDB alone blocks autoscaler scale-down, because the autoscaler never evicts a pod against its budget.
+The StatefulSet annotation is a second guard.
+
+A change to the pod template restarts `postgres-0` one time, so apply it in an idle window.
+Until then, you can annotate the live pod. The annotation stays until Kubernetes recreates the pod:
+
+```bash
+kubectl -n warren annotate pod postgres-0 cluster-autoscaler.kubernetes.io/safe-to-evict=false
+```
+
+The control plane gets the annotation for the same reason.
+It is one replica on the `warren-data` RWO claim, so an eviction has the same Multi-Attach outage.
+An eviction also drops every live event stream.
+The control plane gets no PDB. A rollout is not an eviction, and a zero budget on one replica only stalls node upgrades.
+Autopilot bills pod requests, not nodes, so a node that cannot scale down costs nothing extra.
+
+Node upgrades and drains:
+
+- A GKE node upgrade respects the PDB for up to one hour and then forces the drain. Schedule upgrades for an idle window (a maintenance window on the cluster).
+- `kubectl drain` waits on `postgres-0` until you move it yourself. `kubectl -n warren delete pod postgres-0` is a deletion, not an eviction, so the PDB does not block it.
+- The `AlwaysAllow` policy lets a drain evict a `postgres-0` that is not Ready, because that pod serves nothing.
+
+Verify:
+
+```bash
+kubectl -n warren get pdb postgres          # ALLOWED DISRUPTIONS: 0
+kubectl -n warren get pod postgres-0 \
+  -o jsonpath='{.metadata.annotations.cluster-autoscaler\.kubernetes\.io/safe-to-evict}'
+kubectl -n warren get events --field-selector involvedObject.name=postgres-0 | grep -i scaledown
+```
+
+The server also absorbs a short restart.
+The Postgres pool retries a connection that Postgres refuses (`ECONNREFUSED` or SQLSTATE `57P03`) with a backoff of about 6 seconds in total (`src/db/connect-retry.ts`).
+The retry happens only before the pool sends a query, so it can never apply a write twice.
+A longer outage still returns 500 after the budget.
+
 #### Backups (warren-6db7)
 
 An in-cluster database is only acceptable with independent restore paths.
