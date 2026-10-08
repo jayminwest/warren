@@ -79,16 +79,25 @@ function MobileCard({ title, children }: { title: string; children: ReactNode })
 
 function Field({
 	label,
+	htmlFor,
 	hint,
 	children,
 }: {
 	label: string;
+	/** The control's `id`: renders a real `<label>` so the control gets an accessible name. */
+	htmlFor?: string;
 	hint?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
 		<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
-			<span className={labelClass}>{label}</span>
+			{htmlFor === undefined ? (
+				<span className={labelClass}>{label}</span>
+			) : (
+				<label htmlFor={htmlFor} className={labelClass}>
+					{label}
+				</label>
+			)}
 			{children}
 			{hint ? <p className={hintClass}>{hint}</p> : null}
 		</div>
@@ -148,9 +157,11 @@ export function DispatchForm(props: DispatchFormProps) {
 					<div className="flex flex-col gap-[5px] pb-[12px]">
 						<Field
 							label="Project"
+							htmlFor="dispatch-project"
 							hint={props.project.length > 0 ? `PROJECT ID ${props.project}` : undefined}
 						>
 							<select
+								id="dispatch-project"
 								className={controlClass}
 								value={props.project}
 								onChange={(e) => props.onProject(e.target.value)}
@@ -207,6 +218,7 @@ export function DispatchForm(props: DispatchFormProps) {
 						<div className="col-start-1 row-start-1 flex flex-col gap-[5px] md:w-full">
 							<Field
 								label="Agent"
+								htmlFor="dispatch-agent"
 								hint={
 									props.agentDefaultFrom
 										? `PROJECT DEFAULT · ${props.agentDefaultFrom.sourceFile}`
@@ -214,6 +226,7 @@ export function DispatchForm(props: DispatchFormProps) {
 								}
 							>
 								<select
+									id="dispatch-agent"
 									className={controlClass}
 									value={props.agent}
 									onChange={(e) => props.onAgent(e.target.value)}
@@ -309,8 +322,13 @@ export function DispatchForm(props: DispatchFormProps) {
 								spellCheck={false}
 							/>
 						</Field>
-						<Field label="Timeout" hint="NO PER-RUN TIMEOUT API YET">
-							<select className={`${controlClass} opacity-60`} disabled value="">
+						<Field label="Timeout" htmlFor="dispatch-timeout" hint="NO PER-RUN TIMEOUT API YET">
+							<select
+								id="dispatch-timeout"
+								className={`${controlClass} opacity-60`}
+								disabled
+								value=""
+							>
 								<option value="">—</option>
 							</select>
 						</Field>

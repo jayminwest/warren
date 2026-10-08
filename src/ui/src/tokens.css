@@ -15,6 +15,12 @@
  * full fallback stacks rather than the bare family names, per the issue
  * spec. The @font-face payloads themselves are self-hosted in index.css.
  *
+ * The second deviation (warren-b629): five lightness values move so text
+ * meets WCAG AA 4.5:1 on every surface, which the axe pass in
+ * scripts/ui-visual/a11y.pw.ts enforces. --color-text-3 goes 53% -> 61%,
+ * --color-lt-text-3 58% -> 52%, --color-lt-primary and --color-lt-success
+ * 54% -> 52%, and --color-lt-warning 60% -> 54%.
+ *
  * Below the verbatim block sit two additions of ours, each fenced off with
  * comments: a compatibility layer that keeps the legacy token names
  * (pre-Direction-C vocabulary used across the existing pages) resolving to
@@ -30,7 +36,7 @@
 	--color-thead: oklch(15.5% 0.009 264);
 	--color-text: oklch(96% 0.005 264);
 	--color-text-2: oklch(72% 0.012 264);
-	--color-text-3: oklch(53% 0.014 264);
+	--color-text-3: oklch(61% 0.014 264);
 	--color-border: oklch(24% 0.012 264);
 	--color-border-strong: oklch(31% 0.013 264);
 	--color-primary: oklch(72% 0.11 152);
@@ -48,13 +54,13 @@
 	--color-lt-thead: oklch(98% 0.003 264);
 	--color-lt-text: oklch(22% 0.015 264);
 	--color-lt-text-2: oklch(45% 0.015 264);
-	--color-lt-text-3: oklch(58% 0.014 264);
+	--color-lt-text-3: oklch(52% 0.014 264);
 	--color-lt-border: oklch(90% 0.006 264);
 	--color-lt-border-strong: oklch(82.5% 0.01 264);
-	--color-lt-primary: oklch(54% 0.125 152);
+	--color-lt-primary: oklch(52% 0.125 152);
 	--color-lt-primary-ink: oklch(99% 0.002 152);
-	--color-lt-success: oklch(54% 0.125 150);
-	--color-lt-warning: oklch(60% 0.13 75);
+	--color-lt-success: oklch(52% 0.125 150);
+	--color-lt-warning: oklch(54% 0.13 75);
 	--color-lt-danger: oklch(54% 0.19 27);
 	--color-lt-info: oklch(52% 0.125 240);
 	--color-lt-neutral: oklch(48% 0.018 264);

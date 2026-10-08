@@ -258,6 +258,9 @@ function ChildRow({
 	isGate: boolean;
 }) {
 	const color = CHILD_SQUARE_COLOR[child.state];
+	// The pending dot is an unfilled rail (border-strong); as text that fails
+	// WCAG contrast, so the label falls back to tertiary text (warren-b629).
+	const labelColor = child.state === "pending" ? "var(--color-text-3)" : color;
 	const prLabel =
 		run?.prUrl !== undefined && run.prUrl !== null ? prNumberFromUrl(run.prUrl) : null;
 
@@ -295,7 +298,7 @@ function ChildRow({
 					style={{ backgroundColor: color }}
 					aria-hidden
 				/>
-				<span className="font-mono text-[10px] leading-3" style={{ color }}>
+				<span className="font-mono text-[10px] leading-3" style={{ color: labelColor }}>
 					{child.state}
 				</span>
 			</span>

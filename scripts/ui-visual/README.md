@@ -50,6 +50,22 @@ until the page goes quiet. Quiet means no request in flight (event streams
 aside), no spinner, and web fonts loaded. Timezone and locale are pinned to
 UTC and en-US.
 
+## What the a11y spec asserts
+
+`a11y.pw.ts` (warren-b629) opens the same cases through `openCase` and runs
+axe-core (`@axe-core/playwright`) with the `wcag2a` and `wcag2aa` tags. Any
+violation with impact `serious` or `critical` fails the case. The failure
+message lists the rule id, impact, help URL, and up to eight node selectors.
+
+`a11y-allowlist.json` grandfathers today's violations. Each entry names its
+page, the axe rule id, an optional `viewport` or `theme`, and the seed that
+fixes it. A listed violation that stops reproducing fails the run, so delete
+its entry in the PR that fixes it. `a11y-checks.test.ts` also holds the entry
+count to a ceiling that only goes down.
+
+Filtering, allowlist matching, and the report format live in
+`a11y-checks.ts` and run under `bun test` with no browser.
+
 ## Add a page
 
 Add a `PageSpec` to `PAGES` in `pages.ts`. Give it a kebab-case `id`, the
@@ -73,6 +89,8 @@ delete its entry in the PR that fixes it.
 
 - `pages.ts`: the page manifest, viewports, themes, and case expansion.
 - `smoke-checks.ts`: the pure smoke checks and the known-failure list.
+- `a11y-checks.ts`: the pure axe filtering and allowlist reconciliation;
+  `a11y-allowlist.json` holds the grandfathered violations.
 - `harness.ts`: browser helpers every spec shares (`openCase`,
   `screenshotCase`, `observe`).
 - `fixture-env.ts`: parses the fixture hand-off from `run.ts`.
