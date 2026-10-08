@@ -262,6 +262,10 @@ at the os-eco root. Never edit it in place. It prints one aligned
 status line per gate and a `12/12 gates passed` tally. On failure it
 shows parsed failure signatures plus a `re-run: bun run <gate>` hint.
 `CHECK_ALL_VERBOSE=1` streams full output and `--bail` stops early.
+Each run keeps every gate's full output as `<gate>.log`, with exit
+codes in a summary JSON file, under `$CHECK_ALL_LOG_DIR` or a per-checkout
+directory below the OS temp dir. A failure prints the path of its log.
+Search that log. Do not run the gate again only to see more output.
 
 Warren's resolved manifest, in order:
 
