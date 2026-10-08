@@ -71,6 +71,12 @@ describe("classifyChanges", () => {
 		expect(verdict.kind).toBe("refuse");
 	});
 
+	test("refuses a change to the required-checks gate (warren-dbef)", () => {
+		expect(GATE_PATHS).toContain("scripts/ui-visual/required-checks.ts");
+		const verdict = classifyChanges(["scripts/ui-visual/required-checks.ts"]);
+		expect(verdict.kind).toBe("refuse");
+	});
+
 	test("covers every golden file the guard writes", () => {
 		expect(BASELINE_PATHS).toContain("scripts/ui-visual/__golden__/");
 	});
@@ -272,7 +278,8 @@ describe("auto-merge.yml wiring", () => {
 		expect(wf.on?.pull_request?.types).toEqual(
 			expect.arrayContaining(["labeled", "unlabeled", "synchronize"]),
 		);
-		expect(job?.if).toContain(APPROVAL_LABEL);
+		// warren-dbef moved the admission `if:` to the `targets` job.
+		expect(wf.jobs?.targets?.if).toContain(APPROVAL_LABEL);
 	});
 
 	test("runs the base-branch copy of the gate and fails closed", () => {
@@ -294,8 +301,8 @@ describe("auto-merge.yml wiring", () => {
 	});
 
 	test("disarms when the baseline gate refuses", () => {
-		const step = named("Disarm auto-merge on an unapproved baseline change");
-		expect(step?.if).toBe("steps.baseline.outputs.hit != 'false'");
+		const step = named("Disarm auto-merge when a UI gate refuses");
+		expect(step?.if).toContain("steps.baseline.outputs.hit != 'false'");
 		expect(step?.run).toContain("--disable-auto");
 	});
 });

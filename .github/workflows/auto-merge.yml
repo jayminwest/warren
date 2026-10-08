@@ -29,35 +29,108 @@ name: auto-merge
 # human approver applied `ui-baseline-approved` to that exact baseline
 # content, and disarms auto-merge when it refuses. `labeled`/`unlabeled` are
 # triggers so that applying or removing the label re-judges the PR at once.
+#
+# A third gate (warren-dbef, docs/design/ui-visual-gate.md "The merge gate")
+# requires the `ui-visual` and `design-review` check runs to succeed on the
+# exact head sha of a PR whose diff touches src/ui/ or scripts/ui-visual/.
+# Those checks finish minutes after this workflow first runs, so the first
+# judgement of such a PR refuses and disarms. The `workflow_run` trigger is
+# the re-judge path: each completed `UI design review` run (one completes
+# after every ui-visual run, success or failure) sweeps the open PRs, and
+# the arm job judges each PR whose head now carries both checks green with
+# all three gates, from scratch.
 
 on:
   pull_request:
     types: [opened, ready_for_review, reopened, synchronize, labeled, unlabeled]
+  workflow_run:
+    workflows: [UI design review]
+    types: [completed]
 
 permissions:
   contents: write
   pull-requests: write
+  # warren-dbef: read check runs, and the workflow run behind ui-visual's.
+  checks: read
+  actions: read
 
 jobs:
-  enable-auto-merge:
+  # Which pull requests to judge. On a pull_request event: this PR, when its
+  # author and labels admit it. On workflow_run: the sweep, whose admission
+  # rules (`isCandidate` in scripts/ui-visual/required-checks.ts) mirror this
+  # `if:`. A workflow_run workflow always runs from the default branch, and
+  # the sweep reads every PR field from the API, never from the payload.
+  targets:
     runs-on: ubuntu-latest
     if: >-
-      !github.event.pull_request.draft &&
-      (github.event.pull_request.user.login == github.repository_owner ||
-       (vars.AUTO_MERGE_BOT_LOGIN != '' &&
-        contains(format(',{0},', vars.AUTO_MERGE_BOT_LOGIN),
-                 format(',{0},', github.event.pull_request.user.login)))) &&
-      !contains(github.event.pull_request.labels.*.name, 'no-automerge') &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
-       github.event.label.name == 'ui-baseline-approved')
+      github.event_name == 'workflow_run' ||
+      (!github.event.pull_request.draft &&
+       (github.event.pull_request.user.login == github.repository_owner ||
+        (vars.AUTO_MERGE_BOT_LOGIN != '' &&
+         contains(format(',{0},', vars.AUTO_MERGE_BOT_LOGIN),
+                  format(',{0},', github.event.pull_request.user.login)))) &&
+       !contains(github.event.pull_request.labels.*.name, 'no-automerge') &&
+       ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+        github.event.label.name == 'ui-baseline-approved'))
+    outputs:
+      prs: ${{ steps.event.outputs.prs || steps.sweep.outputs.prs }}
+    steps:
+      - name: Target the pull request of this event
+        id: event
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          prs="$(jq -cn '[{number: (env.PR_NUMBER | tonumber), url: env.PR_URL,
+            base_sha: env.BASE_SHA, base_ref: env.BASE_REF, head_sha: env.HEAD_SHA,
+            head_ref: env.HEAD_REF, head_repo: env.HEAD_REPO}]')"
+          echo "prs=${prs}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7.0.1
+        if: github.event_name == 'workflow_run'
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        if: github.event_name == 'workflow_run'
+        with:
+          bun-version-file: .bun-version
+
+      # The sweep only selects. Every PR it lists is judged again below by
+      # all three gates, each from the PR's base branch copy.
+      - name: Sweep open pull requests whose UI checks are green
+        id: sweep
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          BOT_LOGINS: ${{ vars.AUTO_MERGE_BOT_LOGIN }}
+        run: bun scripts/ui-visual/required-checks.ts targets
+
+  enable-auto-merge:
+    needs: targets
+    if: needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJSON(needs.targets.outputs.prs) }}
     steps:
       # Pin to the PR head SHA, not the default `refs/pull/N/merge` ref.
       # GitHub computes the merge ref asynchronously after a PR is opened,
       # so resolving it is the same race warren-7b2f is about. A head SHA
-      # from the event payload is immutable and always resolvable.
+      # from the event payload (or, on the sweep, the API) is immutable and
+      # always resolvable.
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ matrix.pr.head_sha }}
           fetch-depth: 0
 
       # docs/CONSTITUTION.md Article IX: changes to the constitution, the
@@ -67,8 +140,8 @@ jobs:
       - name: Article IX check (constitution-protected paths)
         id: protected
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ matrix.pr.base_sha }}
+          HEAD_SHA: ${{ matrix.pr.head_sha }}
         run: |
           set -uo pipefail
           PROTECTED='^(docs/CONSTITUTION\.md|\.warren/triggers\.yaml|src/registry/builtins/|\.github/workflows/auto-merge\.yml)'
@@ -127,12 +200,12 @@ jobs:
         id: baseline
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+          BASE_REF: ${{ matrix.pr.base_ref }}
+          BASE_SHA: ${{ matrix.pr.base_sha }}
+          HEAD_SHA: ${{ matrix.pr.head_sha }}
+          HEAD_REF: ${{ matrix.pr.head_ref }}
+          HEAD_REPO: ${{ matrix.pr.head_repo }}
           # Who may approve: the repo variable, else the repository owner.
           # Never a bot login; the gate refuses a list that names one.
           APPROVERS: ${{ vars.UI_BASELINE_APPROVERS || github.repository_owner }}
@@ -153,14 +226,49 @@ jobs:
             echo "hit=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # A refusal must also undo an earlier arm: a PR armed before it gained a
-      # baseline change, or before its approval was removed, would otherwise
-      # merge on green CI. Uses the workflow token; a failure here is loud.
-      - name: Disarm auto-merge on an unapproved baseline change
-        if: steps.baseline.outputs.hit != 'false'
+      # warren-dbef (docs/design/ui-visual-gate.md "The merge gate"): a PR
+      # whose diff touches src/ui/ or scripts/ui-visual/ may arm only when the
+      # `ui-visual` and `design-review` check runs from GitHub Actions both
+      # succeeded on this exact head sha. Any other PR passes. The rules live
+      # in scripts/ui-visual/required-checks.ts, unit-tested, run from the
+      # BASE BRANCH TIP like the baseline gate, with the same fail-closed
+      # wrapper. While the checks are pending this refuses (and disarms); the
+      # workflow_run sweep judges the PR again once they are green. The
+      # refusal names each check that is missing, pending, or failed.
+      - name: UI required checks (ui-visual, design-review)
+        id: ui_checks
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ matrix.pr.base_ref }}
+          BASE_SHA: ${{ matrix.pr.base_sha }}
+          HEAD_SHA: ${{ matrix.pr.head_sha }}
+        run: |
+          set -uo pipefail
+          GATE="$RUNNER_TEMP/required-checks.ts"
+          export DECISION_FILE="$RUNNER_TEMP/ui-checks-decision"
+          : > "$DECISION_FILE"
+          if ! git show "origin/${BASE_REF}:scripts/ui-visual/required-checks.ts" > "$GATE"; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "UI checks: origin/${BASE_REF} has no gate script — refusing auto-merge (fail closed)."
+            exit 0
+          fi
+          if bun "$GATE" gate && grep -qx 'hit=false' "$DECISION_FILE"; then
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A refusal must also undo an earlier arm: a PR armed before it gained a
+      # baseline change, before its approval was removed, or before a push
+      # whose UI checks have not passed yet, would otherwise merge on green
+      # CI. Uses the workflow token; a failure here is loud.
+      - name: Disarm auto-merge when a UI gate refuses
+        if: steps.baseline.outputs.hit != 'false' || steps.ui_checks.outputs.hit != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+          BASELINE_HIT: ${{ steps.baseline.outputs.hit }}
+          UI_CHECKS_HIT: ${{ steps.ui_checks.outputs.hit }}
         run: |
           set -euo pipefail
           armed="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
@@ -170,10 +278,17 @@ jobs:
             exit 0
           fi
           gh pr merge --disable-auto "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
-          echo "auto-merge disarmed: the baseline change has no valid human approval."
+          if [ "$BASELINE_HIT" != "false" ]; then
+            echo "auto-merge disarmed: the baseline change has no valid human approval."
+          fi
+          if [ "$UI_CHECKS_HIT" != "false" ]; then
+            echo "auto-merge disarmed: ui-visual and design-review have not both succeeded on this head."
+          fi
 
       - name: Mint app installation token
-        if: steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false'
+        if: >-
+          steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false' &&
+          steps.ui_checks.outputs.hit == 'false'
         id: app-token
         uses: actions/create-github-app-token@v3.2.0
         with:
@@ -189,12 +304,14 @@ jobs:
       # (the seeds-merge-autoheal repair push will re-trigger us), and retry
       # the arm itself.
       - name: Enable auto-merge (squash)
-        if: steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false'
+        if: >-
+          steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false' &&
+          steps.ui_checks.outputs.hit == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_URL: ${{ matrix.pr.url }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+          HEAD_SHA: ${{ matrix.pr.head_sha }}
         run: |
           set -uo pipefail
 

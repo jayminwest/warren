@@ -25,10 +25,11 @@ human to look at the pixels.
 | Container-only golden generation and the `check:ui-goldens` manifest guard | `warren-a132` | `shipped` |
 | Auto-merge refusal and the human approval label (this record) | `warren-4780` | `shipped` |
 | Before/after/diff crops posted as a sticky PR comment | `warren-70d9` | `next` in plan `pl-10db` |
-| `ui-visual` and `design-review` as required checks for `src/ui` PRs | `warren-dbef` | `next` in plan `pl-10db` |
+| `ui-visual` and `design-review` as required checks for `src/ui` PRs | `warren-dbef` | `shipped` |
 
 Current truth for the shipped rows: `scripts/ui-visual/baseline-approval.ts`
-(the gate), `.github/workflows/auto-merge.yml` (the wiring),
+(the approval gate), `scripts/ui-visual/required-checks.ts` (the merge
+gate for the UI checks), `.github/workflows/auto-merge.yml` (the wiring),
 `scripts/ui-visual/golden-manifest.ts` (the manifest guard), and
 `scripts/ui-visual/README.md` (the operator steps).
 
@@ -48,8 +49,9 @@ The PNGs are not the only way to launder a regression. A looser
 comparison does the same thing. So the files that decide how a render
 compares are in the list too.
 
-A pull request that changes the gate itself
-(`scripts/ui-visual/baseline-approval.ts`) never auto-merges. A human
+A pull request that changes a gate itself
+(`scripts/ui-visual/baseline-approval.ts` or
+`scripts/ui-visual/required-checks.ts`) never auto-merges. A human
 merges it, as with an Article IX path.
 
 ## The approval signal
@@ -168,8 +170,8 @@ and from this step. These inputs all refuse:
   activity log
 - no push before the label event, or a head that git cannot fetch
 
-When the gate refuses, the step `Disarm auto-merge on an unapproved
-baseline change` turns off auto-merge if it is on. That covers a PR
+When the gate refuses, the step `Disarm auto-merge when a UI gate
+refuses` turns off auto-merge if it is on. That covers a PR
 that was armed before it gained a baseline change, or before its label
 came off.
 
@@ -182,16 +184,89 @@ The workflow runs the gate script from the base branch tip
 from the pull request. A PR that edits the gate cannot change how the
 gate judges that PR.
 
+## The merge gate
+
+The golden comparison and the design review only protect `main` if a
+UI pull request cannot merge before they pass. `warren-dbef` closes
+that gap in `auto-merge.yml`. A pull request whose three-dot diff
+touches `src/ui/` or `scripts/ui-visual/` arms auto-merge only when both
+of these check runs report `success` on its exact head commit:
+
+- `ui-visual`, the job in `.github/workflows/ui-visual.yml`.
+- `design-review`, the check run that
+  `.github/workflows/ui-design-review.yml` sets through the Checks API
+  (see `ui-design-review.md` §7). It reports on every PR into `main`,
+  and its "Skipped: no src/ui changes" success counts.
+
+Any other pull request passes this gate untouched. The rules live in
+`scripts/ui-visual/required-checks.ts`. The step `UI required checks
+(ui-visual, design-review)` (id `ui_checks`) runs the base branch tip's
+copy of it, with the same wrapper as the approval gate: only an explicit
+`hit=false` from a gate that exited 0 lets the token mint and the arm
+run.
+
+### Which check runs count
+
+A check run counts only when its source is the GitHub Actions app
+(`app.slug` is `github-actions`). Commit statuses never count, and
+neither does a check run from any other app. A `ui-visual` check run
+counts only when its check suite belongs to a `pull_request` run of
+`.github/workflows/ui-visual.yml` on the same head. That rules out a
+second workflow with a job of the same name, and it rules out the
+`update_goldens` dispatch, which reports `ui-visual` success without
+running the comparison. Among the check runs that count, the newest one
+decides, the same one the PR page shows.
+
+### When it is judged
+
+`auto-merge.yml` runs within seconds of a push, minutes before the
+checks finish. So the first run after a push refuses while the checks
+are pending, and it disarms auto-merge if an earlier head armed it.
+
+The workflow also runs on `workflow_run` when a `UI design review` run
+completes. One completes after every `ui-visual` run, success or
+failure, because the design review's `prepare` job runs on that event.
+The sweep (`required-checks.ts targets`) lists the open pull requests
+that the `pull_request` path would admit and that are not armed yet:
+not a draft, authored by the owner or an `AUTO_MERGE_BOT_LOGIN` login,
+no `no-automerge` label. It keeps each one whose current head has both
+checks green. It reads all of this from the API, never from the
+triggering run's payload. The arm job then runs once per listed pull
+request, as a matrix, with all three gates from scratch.
+
+The other designs were weaker. A `check_run` trigger would miss the
+`design-review` check: a workflow's `GITHUB_TOKEN` writes it, and
+events that token causes do not start workflows. Polling from the first
+run would hold a runner for the length of a design review, which can
+take 30 minutes or more. Re-running the first run would replay its old
+payload, including labels that have since changed.
+
+### What the refusal says
+
+The refusal names each required check and what is wrong with it, for
+example `ui-visual concluded failure; design-review is queued on
+<head>`. It appears in the step log, as a notice annotation on the
+`enable-auto-merge` job, and in the job summary. A failed check needs a
+fix and a new push. The `ui-visual` and `design-review` checks fail on
+the PR itself, which is where the pr-fixer agent picks them up. A
+pending check needs nothing: the sweep re-judges the PR when the design
+review completes.
+
 ## Names that other steps depend on
 
-`warren-dbef` makes the `ui-visual` and `design-review` checks required
-for `src/ui` PRs. These names are stable:
+These names are stable:
 
-- The status check `ui-visual`: the job and check name in
-  `.github/workflows/ui-visual.yml`.
-- The job `enable-auto-merge` in `.github/workflows/auto-merge.yml`.
+- The check `ui-visual`: the job and check name in
+  `.github/workflows/ui-visual.yml`. The merge gate requires it.
+- The check `design-review`, set by `.github/workflows/ui-design-review.yml`.
+  The merge gate requires it, and its `workflow_run` trigger names that
+  workflow's `name:`, `UI design review`.
+- The jobs `targets` and `enable-auto-merge` in
+  `.github/workflows/auto-merge.yml`. `targets` holds the admission
+  `if:` and emits the PR list. `enable-auto-merge` is a matrix over it.
 - The steps `Article IX check (constitution-protected paths)` (id
-  `protected`) and `UI baseline approval check` (id `baseline`). Each
+  `protected`), `UI baseline approval check` (id `baseline`), and `UI
+  required checks (ui-visual, design-review)` (id `ui_checks`). Each
   writes `hit=true` or `hit=false`. A new gate adds a step with its own
   id and joins the `if:` of the token mint and the arm.
 - The label `ui-baseline-approved`, declared in `.github/labels.yml`.
@@ -214,6 +289,21 @@ for `src/ui` PRs. These names are stable:
   If it does, add `scripts/ui-visual/__golden__/` and the other
   baseline paths to `pr.autoMerge.protectedPaths`. Arming then skips,
   and the label event still arms through this workflow.
+- **A workflow can mint a `design-review` check.** The real one is
+  created through the Checks API with a `GITHUB_TOKEN`, so it lands in
+  an unrelated GitHub Actions check suite on the head, and nothing in
+  it says which workflow wrote it. A workflow on a same-repository
+  branch that holds `checks: write` can create a `design-review` check
+  run as GitHub Actions too. The gate pins the app, which stops other
+  apps and commit statuses. It cannot stop a workflow file in a branch
+  of this repository. Review new and changed workflow files by hand.
+- **Only PRs into `main` get the checks.** `ui-visual` and the design
+  review run for pull requests into `main`. A UI pull request into any
+  other base never sees both checks green, so it never auto-merges.
+  Merge it by hand, or retarget it to `main`.
+- **The sweep reports on `main`.** A `workflow_run` run belongs to the
+  default branch's commit, so a refusal or an arm error from the sweep
+  shows on `main`'s Actions page, not on the pull request.
 - **Masks and the harness are outside the list.** A `data-visual-mask`
   attribute in `src/ui` or a change in `scripts/ui-visual/harness.ts`
   can hide a region from the comparison. Code review and the
