@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
 	"files": {
 		"includes": [
 			"src/**",
@@ -17,7 +17,7 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"correctness": {
 				"noUnusedVariables": "error",
 				"noUnusedImports": "error",
@@ -150,6 +150,25 @@
 			"includes": ["scripts/check-all.ts", "scripts/check-ci-parity.ts"],
 			"formatter": {
 				"enabled": false
+			}
+		},
+		// Tailwind class order is canonical across the UI so className diffs stay reviewable
+		// (warren-5f4a, plan pl-10db). "fix": "safe" lets `bun run lint:fix` sort for you.
+		{
+			"includes": ["src/ui/**"],
+			"linter": {
+				"rules": {
+					"nursery": {
+						"useSortedClasses": {
+							"level": "error",
+							"fix": "safe",
+							"options": {
+								"attributes": ["className"],
+								"functions": ["cn", "cva", "clsx"]
+							}
+						}
+					}
+				}
 			}
 		}
 	]

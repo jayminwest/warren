@@ -79,10 +79,10 @@ export function ProjectsPage() {
 			    (canvas layout: 20px semibold title, quiet description). */}
 			<div className="flex flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-1.5">
-					<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+					<h1 className="font-semibold text-(--color-text) text-xl leading-6 tracking-[-0.025em]">
 						Projects
 					</h1>
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-(--color-text-2) text-[12px] leading-4">
 						Repositories warren can dispatch runs against.
 					</p>
 				</div>
@@ -181,7 +181,7 @@ export function ProjectsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					{del.isError ? (
-						<p className="text-sm text-(--color-destructive)">{formatError(del.error)}</p>
+						<p className="text-(--color-destructive) text-sm">{formatError(del.error)}</p>
 					) : null}
 					<DialogFooter>
 						<Button
@@ -210,7 +210,7 @@ export function ProjectsPage() {
 function Th({ className, children }: { className?: string; children: React.ReactNode }) {
 	return (
 		<th
-			className={`border-b border-(--color-border-strong) px-2.5 text-[9px] font-semibold tracking-[0.05em] uppercase text-(--color-text-3) ${className ?? ""}`}
+			className={`border-(--color-border-strong) border-b px-2.5 font-semibold text-(--color-text-3) text-[9px] uppercase tracking-[0.05em] ${className ?? ""}`}
 		>
 			{children}
 		</th>
@@ -241,45 +241,45 @@ function RegistryRow({
 	onDelete: () => void;
 }) {
 	return (
-		<tr className="min-h-[49px] border-b border-(--color-border) last:border-b-0 align-middle">
+		<tr className="min-h-[49px] border-(--color-border) border-b align-middle last:border-b-0">
 			<td className="px-2.5 py-1.5">
 				<div className="flex flex-col gap-0.5">
 					<Link
 						to={`/projects/${encodeURIComponent(project.id)}`}
-						className="font-mono text-[10px] leading-3 text-(--color-text) underline-offset-4 hover:underline"
+						className="font-mono text-(--color-text) text-[10px] leading-3 underline-offset-4 hover:underline"
 					>
 						{repoName(project)}
 					</Link>
-					<span className="truncate font-mono text-[9px] leading-3 text-(--color-text-3)">
+					<span className="truncate font-mono text-(--color-text-3) text-[9px] leading-3">
 						{project.gitUrl}
 					</span>
 				</div>
 			</td>
-			<td className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-2)">
+			<td className="px-2.5 py-1.5 font-mono text-(--color-text-2) text-[10px] leading-3">
 				{project.defaultBranch}
 			</td>
 			<td
-				className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-2)"
+				className="px-2.5 py-1.5 font-mono text-(--color-text-2) text-[10px] leading-3"
 				title={project.lastHeadSha ?? "never fetched"}
 			>
 				{project.lastHeadSha !== null ? project.lastHeadSha.slice(0, 7) : "—"}
 			</td>
 			<td
-				className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3)"
+				className="px-2.5 py-1.5 font-mono text-(--color-text-3) text-[10px] leading-3"
 				title={project.lastFetchedAt ?? "never fetched"}
 			>
 				{project.lastFetchedAt !== null ? relativeTime(project.lastFetchedAt) : "never"}
 			</td>
 			<td className="px-2.5 py-1.5">
 				{project.hasSeeds ? (
-					<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
+					<span className="inline-flex h-5 items-center rounded-(--radius-xs) border border-(--color-border-strong) px-1.5 font-mono text-(--color-primary) text-[9px] leading-3">
 						.seeds
 					</span>
 				) : (
-					<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">—</span>
+					<span className="font-mono text-(--color-text-3) text-[10px] leading-3">—</span>
 				)}
 			</td>
-			<td className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3)">
+			<td className="px-2.5 py-1.5 font-mono text-(--color-text-3) text-[10px] leading-3">
 				{formatDate(project.addedAt)}
 			</td>
 			<td className="px-2.5 py-1.5 text-right">

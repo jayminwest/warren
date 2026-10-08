@@ -53,6 +53,7 @@ export const PUBLIC_WARREN_CONFIG_DEFAULTS_FIELDS = [
  *   text; error messages can narrate host file reads.
  * - `defaultPrompt`, `repoContext` — dispatch prompt text.
  * - `qualityGate` — an executable command string.
+ * - `migrations` — carries a regeneration command string (warren-4371).
  * - `maxCostUsd` — an admission-cap disclosure.
  * - `agentImage`, `preview`, `agent`, `interactiveAgents`, `resources`,
  *   `admission`, `ciFixer`, `healer`, `tracker`, `pr` — nested operator
@@ -66,6 +67,7 @@ export const REDACTED_WARREN_CONFIG_FIELDS = [
 	"defaultPrompt",
 	"repoContext",
 	"qualityGate",
+	"migrations",
 	"maxCostUsd",
 	"agentImage",
 	"preview",

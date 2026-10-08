@@ -235,8 +235,10 @@ describe("tickWatchdog", () => {
 		const events = await repos.events.listByRun(runId);
 		const timedOut = events.find((e) => e.kind === WATCHDOG_TIMED_OUT_KIND);
 		expect(timedOut).toBeDefined();
-		expect((timedOut?.payloadJson as { idleMs?: number }).idleMs).toBe(10 * 60_000);
-		expect((timedOut?.payloadJson as { sandboxRunId?: string }).sandboxRunId).toBe("run_b1");
+		expect((timedOut?.payloadJson as { idleMs?: number } | undefined)?.idleMs).toBe(10 * 60_000);
+		expect((timedOut?.payloadJson as { sandboxRunId?: string } | undefined)?.sandboxRunId).toBe(
+			"run_b1",
+		);
 	});
 
 	test("forwards the active runtimeProvider into the force-fail reap (warren-a7cb)", async () => {

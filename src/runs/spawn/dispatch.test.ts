@@ -221,14 +221,16 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		});
 		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		expect(dispatch).toBeDefined();
-		expect((dispatch?.body as { agentId: string }).agentId).toBe("claude-code");
+		expect((dispatch?.body as { agentId: string } | undefined)?.agentId).toBe("claude-code");
 		// warren-53e6: the same runtime id has to ride on the `up` call so
 		// burrow's collectToolchainPaths mounts claude's binary into the
 		// sandbox. Without this, bwrap fails `execvp claude: No such file or
 		// directory` ~17s into the run.
 		const up = calls.find((c) => c.path === "/sandboxes");
 		expect(up).toBeDefined();
-		expect((up?.body as { agents: readonly string[] }).agents).toEqual(["claude-code"]);
+		expect((up?.body as { agents: readonly string[] } | undefined)?.agents).toEqual([
+			"claude-code",
+		]);
 	});
 
 	test("dispatch falls back to the pi default when frontmatter.runtime is unset (warren-16f8)", async () => {
@@ -247,7 +249,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			prompt: "p",
 		});
 		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
-		expect((dispatch?.body as { agentId: string }).agentId).toBe("pi");
+		expect((dispatch?.body as { agentId: string } | undefined)?.agentId).toBe("pi");
 	});
 
 	// warren-c4be: a legacy row whose runtime id predates registration-time
@@ -364,7 +366,7 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 		});
 		const up = calls.find((c) => c.path === "/sandboxes");
 		expect(up).toBeDefined();
-		const env = (up?.body as { env?: Record<string, string> }).env;
+		const env = (up?.body as { env?: Record<string, string> } | undefined)?.env;
 		expect(env).toBeDefined();
 		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
 		// warren-57fd: the sandbox gets a per-run SCOPED callback token, NOT the

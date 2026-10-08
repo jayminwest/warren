@@ -1,38 +1,35 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SpawnFn, SpawnResult } from "../../projects/clone.ts";
 import {
+	appendMigrationCollisionNote,
+	composeMigrationCollisionNote,
+	detectMigrationJournalCollisions,
 	findCollisions,
-	healMigrationJournalCollisions,
-	type MigrationHealInput,
+	MigrationPreflightError,
+	type MigrationPreflightInput,
 } from "./migration-preflight.ts";
 
 /**
- * warren-1f03: dispatch-time drizzle migration preflight. Detection compares
- * the branch's journal entries against fresh main's; a branch migration whose
- * index/tag also exists on main with different content is a collision, healed
- * prompt-free (delete colliding artifacts, re-run `bun run db:generate`,
- * commit on the host clone branch).
+ * warren-1f03 / warren-4371: dispatch-time drizzle migration journal
+ * preflight. Detection compares the branch's journal entries against fresh
+ * main's; a branch migration whose index/tag also exists on main with a
+ * different tag is a collision. Detection is read-only on the host: it never
+ * runs a repository-defined script, never writes to the clone, and never
+ * commits — the run regenerates inside its sandbox.
  */
 
 const SQLITE_DIR = "src/db/migrations";
 const SQLITE_JOURNAL = `${SQLITE_DIR}/meta/_journal.json`;
 
+/** The only commands the host-side detection may run: read-only git plumbing. */
+const READ_ONLY_GIT = new Set(["ls-files", "cat-file"]);
+
 interface SpawnCall {
 	readonly cmd: readonly string[];
 	readonly cwd: string;
-}
-
-/** Content returned for a `git show` of a tracked migration file. */
-function showResult(joined: string): SpawnResult {
-	// drizzle-kit names snapshots by zero-padded index only; a tag-named
-	// snapshot path does not exist on main (the real failure mode).
-	if (joined.includes("_snapshot.json") && !/\/\d{4}_snapshot\.json$/.test(joined)) {
-		return { stdout: "", stderr: "fatal: path does not exist in origin/main", exitCode: 128 };
-	}
-	return { stdout: "-- sql from main\n", stderr: "", exitCode: 0 };
 }
 
 function makeSpawn(
@@ -46,17 +43,11 @@ function makeSpawn(
 		if (joined.includes("ls-files")) {
 			return { stdout: `${journals.join("\n")}\n`, stderr: "", exitCode: 0 };
 		}
-		if (joined.includes("show") && joined.includes(SQLITE_JOURNAL)) {
+		if (joined.includes("cat-file") && joined.includes(SQLITE_JOURNAL)) {
 			if (mainJournal === null) {
 				return { stdout: "", stderr: "does not exist", exitCode: 128 };
 			}
 			return { stdout: JSON.stringify(mainJournal), stderr: "", exitCode: 0 };
-		}
-		if (joined.includes("show")) {
-			return showResult(joined);
-		}
-		if (joined.includes("rev-parse")) {
-			return { stdout: "deadbeef".repeat(5), stderr: "", exitCode: 0 };
 		}
 		return { stdout: "", stderr: "", exitCode: 0 };
 	};
@@ -86,6 +77,18 @@ async function seedBranchTree(
 	}
 }
 
+/** Snapshot every file under the migrations dir so a test can prove no mutation. */
+async function treeSnapshot(root: string): Promise<Record<string, string>> {
+	const out: Record<string, string> = {};
+	for (const sub of [SQLITE_DIR, `${SQLITE_DIR}/meta`]) {
+		for (const name of await readdir(join(root, sub))) {
+			if (name === "meta") continue;
+			out[`${sub}/${name}`] = await readFile(join(root, sub, name), "utf8");
+		}
+	}
+	return out;
+}
+
 describe("findCollisions (warren-1f03)", () => {
 	test("flags a branch entry whose idx exists on main with a different tag", () => {
 		const found = findCollisions(
@@ -108,56 +111,39 @@ describe("findCollisions (warren-1f03)", () => {
 	});
 });
 
-describe("healMigrationJournalCollisions (warren-1f03)", () => {
+describe("detectMigrationJournalCollisions (warren-4371)", () => {
 	let root: string;
 	beforeEach(async () => {
-		root = await mkdtemp(join(tmpdir(), "warren-1f03-"));
+		root = await mkdtemp(join(tmpdir(), "warren-4371-"));
 	});
 	afterEach(async () => {
 		await rm(root, { recursive: true, force: true });
 	});
 
-	function input(spawn: SpawnFn): MigrationHealInput {
-		return {
-			spawn,
-			projectPath: root,
-			defaultBranch: "main",
-			baseRef: "burrow/run_xxx",
-			env: {},
-		};
+	function input(spawn: SpawnFn): MigrationPreflightInput {
+		return { spawn, projectPath: root, defaultBranch: "main", baseRef: "burrow/run_xxx" };
 	}
 
-	test("no migrations on the branch is a no-op (no generate, no commit)", async () => {
-		// The branch tracks no drizzle journal at all.
-		const { spawn, calls } = makeSpawn(null, []);
-
-		const outcome = await healMigrationJournalCollisions(input(spawn));
-
-		expect(outcome).toEqual({ collisions: [], commitSha: null });
-		expect(calls.some((c) => c.cmd.join(" ").includes("db:generate"))).toBe(false);
-		expect(calls.some((c) => c.cmd.join(" ").includes("commit"))).toBe(false);
+	test("no migrations on the branch reports no collisions", async () => {
+		const { spawn } = makeSpawn(null, []);
+		expect(await detectMigrationJournalCollisions(input(spawn))).toEqual({ collisions: [] });
 	});
 
-	test("a branch migration at a free slot past main's tip is a no-op", async () => {
+	test("a branch migration at a free slot past main's tip reports no collisions", async () => {
 		await seedBranchTree(root, [
 			{ idx: 45, tag: "0045_main" },
 			{ idx: 46, tag: "0046_branch" },
 		]);
-		const { spawn, calls } = makeSpawn(journal([{ idx: 45, tag: "0045_main" }]));
-
-		const outcome = await healMigrationJournalCollisions(input(spawn));
-
-		expect(outcome).toEqual({ collisions: [], commitSha: null });
-		expect(calls.some((c) => c.cmd.join(" ").includes("db:generate"))).toBe(false);
-		// The branch's migration artifacts survive untouched.
-		expect(await Bun.file(join(root, SQLITE_DIR, "0046_branch.sql")).exists()).toBe(true);
+		const { spawn } = makeSpawn(journal([{ idx: 45, tag: "0045_main" }]));
+		expect(await detectMigrationJournalCollisions(input(spawn))).toEqual({ collisions: [] });
 	});
 
-	test("a colliding slot is healed: artifacts deleted, journal re-synced, regenerated, committed", async () => {
+	test("a detected collision runs only read-only git plumbing and leaves the clone untouched", async () => {
 		await seedBranchTree(root, [
 			{ idx: 45, tag: "0045_main" },
 			{ idx: 46, tag: "0046_branch" },
 		]);
+		const before = await treeSnapshot(root);
 		const { spawn, calls } = makeSpawn(
 			journal([
 				{ idx: 45, tag: "0045_main" },
@@ -165,61 +151,54 @@ describe("healMigrationJournalCollisions (warren-1f03)", () => {
 			]),
 		);
 
-		const outcome = await healMigrationJournalCollisions(input(spawn));
+		const outcome = await detectMigrationJournalCollisions(input(spawn));
 
 		expect(outcome.collisions).toEqual([
 			{ migrationsDir: SQLITE_DIR, idx: 46, branchTag: "0046_branch", mainTag: "0046_main" },
 		]);
-		expect(outcome.commitSha).toBe("deadbeef".repeat(5));
-		// The colliding SQL artifact is gone.
-		expect(await Bun.file(join(root, SQLITE_DIR, "0046_branch.sql")).exists()).toBe(false);
-		// The idx-named snapshot was restored from main (drizzle names snapshots
-		// by zero-padded index, not tag — warren-236d).
-		expect(await readFile(join(root, SQLITE_DIR, "meta", "0046_snapshot.json"), "utf8")).toBe(
-			"-- sql from main\n",
-		);
-		// The journal is re-synced to main's entries.
-		const healed = JSON.parse(await readFile(join(root, SQLITE_JOURNAL), "utf8")) as {
-			entries: { idx: number; tag: string }[];
-		};
-		expect(healed.entries.map((e) => e.tag)).toEqual(["0045_main", "0046_main"]);
-		// Regeneration ran before the heal commit.
+		// No repository-defined script, no package manager, no commit: every
+		// spawned command is `git ls-files` or `git cat-file`.
+		expect(calls.length).toBeGreaterThan(0);
+		for (const call of calls) {
+			expect(call.cmd[0]).toBe("git");
+			expect(READ_ONLY_GIT.has(call.cmd[1] ?? "")).toBe(true);
+		}
 		const joined = calls.map((c) => c.cmd.join(" "));
-		const generateAt = joined.findIndex((c) => c.includes("db:generate"));
-		const commitAt = joined.findIndex((c) => c.includes("commit"));
-		expect(generateAt).toBeGreaterThanOrEqual(0);
-		expect(commitAt).toBeGreaterThan(generateAt);
-		// The restore fetched the idx-named snapshot path, never a tag-named one.
-		expect(joined.some((c) => c.includes("meta/0046_snapshot.json"))).toBe(true);
-		expect(joined.some((c) => c.includes("meta/0046_branch_snapshot.json"))).toBe(false);
-		expect(joined.some((c) => c.includes("meta/0046_main_snapshot.json"))).toBe(false);
-		// The commit is authored by the canonical warren bot identity.
-		const commitCmd = calls[commitAt]?.cmd.join(" ") ?? "";
-		expect(commitCmd).toContain("user.name=warren");
-		expect(commitCmd).toContain("user.email=bot@warren.invalid");
+		expect(joined.some((c) => c.includes("db:generate"))).toBe(false);
+		expect(joined.some((c) => /\b(commit|add|bun|npm)\b/.test(c))).toBe(false);
+		// The host clone's migration tree is byte-identical afterwards.
+		expect(await treeSnapshot(root)).toEqual(before);
 	});
 
-	test("a failed regeneration aborts with a clear error and no commit", async () => {
-		await seedBranchTree(root, [
-			{ idx: 45, tag: "0045_main" },
-			{ idx: 46, tag: "0046_branch" },
-		]);
-		const { spawn, calls } = makeSpawn(
-			journal([
-				{ idx: 45, tag: "0045_main" },
-				{ idx: 46, tag: "0046_main" },
-			]),
+	test("a failed journal listing surfaces a typed MigrationPreflightError", async () => {
+		const failing: SpawnFn = async () => ({ stdout: "", stderr: "not a git repo", exitCode: 128 });
+		await expect(detectMigrationJournalCollisions(input(failing))).rejects.toBeInstanceOf(
+			MigrationPreflightError,
 		);
-		const failing: SpawnFn = async (cmd, opts) => {
-			if (cmd.join(" ").includes("db:generate")) {
-				return { stdout: "", stderr: "drizzle-kit exploded", exitCode: 1 };
-			}
-			return spawn(cmd, opts);
-		};
+	});
+});
 
-		await expect(healMigrationJournalCollisions(input(failing))).rejects.toThrow(
-			/drizzle-kit exploded/,
-		);
-		expect(calls.some((c) => c.cmd.join(" ").includes("commit"))).toBe(false);
+describe("composeMigrationCollisionNote (warren-4371)", () => {
+	const collisions = [
+		{ migrationsDir: SQLITE_DIR, idx: 46, branchTag: "0046_branch", mainTag: "0046_main" },
+	];
+
+	test("quotes the project's configured regenerate command for the agent", () => {
+		const note = composeMigrationCollisionNote(collisions, "main", "bun run db:generate");
+		expect(note).toContain("`0046_branch` (idx 46) collides with `0046_main` on `origin/main`");
+		expect(note).toContain("run `bun run db:generate`");
+		expect(note).toContain("Warren did not modify the branch");
+	});
+
+	test("imposes no command convention when the project configures none", () => {
+		const note = composeMigrationCollisionNote(collisions, "trunk", undefined);
+		expect(note).toContain("run this project's migration generator");
+		expect(note).not.toContain("db:generate");
+		expect(note).toContain("`origin/trunk`");
+	});
+
+	test("appendMigrationCollisionNote is the identity when there is no note", () => {
+		expect(appendMigrationCollisionNote("prompt", null)).toBe("prompt");
+		expect(appendMigrationCollisionNote("prompt", "note")).toBe("prompt\n\n---\n\nnote");
 	});
 });
