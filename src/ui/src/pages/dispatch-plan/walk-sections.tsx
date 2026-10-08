@@ -58,16 +58,25 @@ export function MobileCard({ title, children }: { title: string; children: React
 
 export function Field({
 	label,
+	htmlFor,
 	hint,
 	children,
 }: {
 	label: string;
+	/** The control's `id`: renders a real `<label>` so the control gets an accessible name. */
+	htmlFor?: string;
 	hint?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
 		<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
-			<span className={labelClass}>{label}</span>
+			{htmlFor === undefined ? (
+				<span className={labelClass}>{label}</span>
+			) : (
+				<label htmlFor={htmlFor} className={labelClass}>
+					{label}
+				</label>
+			)}
 			{children}
 			{hint ? <p className={hintClass}>{hint}</p> : null}
 		</div>

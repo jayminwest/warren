@@ -114,9 +114,11 @@ function TargetSection(p: SectionProps) {
 				<div className="flex flex-col gap-[5px] pb-[12px]">
 					<Field
 						label="Project"
+						htmlFor="walk-project"
 						hint={d.project.length > 0 ? `PROJECT ID ${d.project}` : undefined}
 					>
 						<select
+							id="walk-project"
 							className={controlClass}
 							value={d.project}
 							onChange={(e) => p.onProject(e.target.value)}
@@ -227,11 +229,13 @@ function RuntimeSection(p: SectionProps) {
 				<div className="flex flex-col gap-[5px] pb-[12px]">
 					<Field
 						label="Agent"
+						htmlFor="walk-agent"
 						hint={
 							p.agentDefaultFrom ? `PROJECT DEFAULT · ${p.agentDefaultFrom.sourceFile}` : undefined
 						}
 					>
 						<select
+							id="walk-agent"
 							className={controlClass}
 							value={d.agent}
 							onChange={(e) => p.onAgent(e.target.value)}
@@ -396,8 +400,8 @@ function GuardrailsSection(p: SectionProps) {
 							spellCheck={false}
 						/>
 					</Field>
-					<Field label="Timeout per child" hint="NO PER-RUN TIMEOUT API YET">
-						<select className={`${controlClass} opacity-60`} disabled value="">
+					<Field label="Timeout per child" htmlFor="walk-timeout" hint="NO PER-RUN TIMEOUT API YET">
+						<select id="walk-timeout" className={`${controlClass} opacity-60`} disabled value="">
 							<option value="">—</option>
 						</select>
 					</Field>
