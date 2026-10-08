@@ -71,7 +71,7 @@ function ProjectSelector() {
 			value={projectId ?? ""}
 			onChange={(e) => setProjectId(e.target.value === "" ? null : e.target.value)}
 			aria-label="Filter by project"
-			className="hidden h-8 rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 font-mono text-[11px] leading-[14px] text-(--color-text-2) md:block"
+			className="hidden h-8 rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 font-mono text-(--color-text-2) text-[11px] leading-[14px] md:block"
 		>
 			<option value="">all projects</option>
 			{rows.map((p) => (
@@ -88,7 +88,7 @@ function RangeSelector() {
 	const { days, setDays } = useTelemetryWindow();
 	return (
 		<div className="hidden items-center gap-3 md:flex">
-			<span className="hidden font-mono text-[11px] tracking-[0.04em] leading-[14px] text-(--color-text-3) sm:inline">
+			<span className="hidden font-mono text-(--color-text-3) text-[11px] leading-[14px] tracking-[0.04em] sm:inline">
 				{endsTodayLabel()}
 			</span>
 			<section
@@ -126,7 +126,7 @@ function RangeSelector() {
  */
 function TabNav() {
 	return (
-		<nav className="hidden w-full shrink-0 items-end gap-6 overflow-x-auto whitespace-nowrap border-b border-(--color-border) md:flex">
+		<nav className="hidden w-full shrink-0 items-end gap-6 overflow-x-auto whitespace-nowrap border-(--color-border) border-b md:flex">
 			{TABS.map(({ path, label }) => (
 				<NavLink
 					key={path}
@@ -182,10 +182,10 @@ export function TelemetryPage() {
 			<div className="flex min-h-full flex-col gap-5 px-3.5 py-6 md:px-6">
 				<header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
 					<div className="flex flex-col gap-1.5">
-						<h1 className="text-[22px] font-semibold leading-7 tracking-[-0.025em] text-(--color-text)">
+						<h1 className="font-semibold text-(--color-text) text-[22px] leading-7 tracking-[-0.025em]">
 							Telemetry
 						</h1>
-						<p className="text-[13px] leading-[18px] text-(--color-text-2)">
+						<p className="text-(--color-text-2) text-[13px] leading-[18px]">
 							Cost, behavior, and delivery across runs.
 						</p>
 					</div>

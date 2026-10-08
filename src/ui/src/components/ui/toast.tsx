@@ -21,7 +21,7 @@ const toastVariants = cva(
 	cn(
 		"group pointer-events-auto relative flex w-full items-start gap-2.5 overflow-hidden rounded-md border p-3 pr-8 shadow-lg",
 		"text-sm",
-		"data-[state=open]:animate-in data-[state=closed]:animate-out",
+		"data-[state=closed]:animate-out data-[state=open]:animate-in",
 		"data-[state=closed]:fade-out-80 data-[state=open]:fade-in",
 		"data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:slide-out-to-right-full",
 		"data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-(--radix-toast-swipe-end-x)",
@@ -119,7 +119,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 							</div>
 							<ToastPrimitive.Close
 								aria-label="Close"
-								className="absolute right-2 top-2 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-(--color-ring)"
+								className="absolute top-2 right-2 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-(--color-ring) focus:ring-2"
 							>
 								<X className="h-3.5 w-3.5" />
 							</ToastPrimitive.Close>
@@ -128,7 +128,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 				})}
 				<ToastPrimitive.Viewport
 					className={cn(
-						"fixed bottom-4 right-4 z-(--z-toast) flex max-h-screen w-full max-w-sm flex-col gap-2 outline-none",
+						"fixed right-4 bottom-4 z-(--z-toast) flex max-h-screen w-full max-w-sm flex-col gap-2 outline-none",
 					)}
 				/>
 			</ToastPrimitive.Provider>

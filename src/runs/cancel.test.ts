@@ -409,7 +409,7 @@ describe("cancelRun", () => {
 		const events = await repos.events.listByRun(runId);
 		expect(events.length).toBe(1);
 		expect(events[0]?.kind).toBe("cancel.requested");
-		expect((events[0]?.payloadJson as { mode: string }).mode).toBe("sandbox_run_lost");
+		expect((events[0]?.payloadJson as { mode: string } | undefined)?.mode).toBe("sandbox_run_lost");
 	});
 
 	test("non-not-found backend errors still propagate without emitting an audit event", async () => {
