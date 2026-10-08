@@ -6,6 +6,7 @@ import { lifecycleBus } from "../lifecycle-bus.ts";
 import { isInfraLostRunFailure } from "../retry/infra-lost-retry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
+import { classifyInfraLoss, infraLossEventPayload, REAP_INFRA_LOSS_KIND } from "./infra-loss.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
 import { detectTerminalProviderError, providerErrorEventPayload } from "./provider-error.ts";
 import { salvageWorkspace, surfacePodSalvage, type WorkspaceSalvageOutcome } from "./salvage.ts";
@@ -15,6 +16,7 @@ import {
 	isTerminal,
 	transitionToTerminal,
 } from "./state.ts";
+import { reapStepError } from "./step-error.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
 import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
 
@@ -46,9 +48,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// "credit balance too low" 400) flips an otherwise-`succeeded` run to
 	// `failed`. The in-stream terminal detect (warren-e281 / pl-5516) keys off
 	// the `agent_end` envelope, so the per-turn `turn_end` error signal slips
-	// through; this reap-time scan of the persisted event log is the safety
-	// net. warren-4001: the run row's declared provider/model ride as the
-	// fallback so an opaque harness message still names the pair.
+	// through; this reap-time scan of the event log is the safety net.
+	// warren-4001: the row's provider/model are the fallback for an opaque message.
 	const providerError = await detectTerminalProviderError(input.repos, run.id, {
 		fallbackProvider: run.provider,
 		fallbackModel: run.model,
@@ -85,12 +86,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		return row;
 	};
 	const fail = async (step: ReapStep, err: unknown, path?: string): Promise<void> => {
-		const message = err instanceof Error ? err.message : String(err);
-		const stepError: ReapStepError =
-			path !== undefined ? { step, message, path } : { step, message };
-		errors.push(stepError);
-		await emit("reap_failed", stepError);
-		log.error({ event: "reap.step_failed", step, err: message, path }, "reap step failed");
+		const e = reapStepError(step, err, path);
+		errors.push(e);
+		await emit("reap_failed", e);
+		log.error({ event: "reap.step_failed", step, err: e.message, path }, "reap step failed");
 	};
 	// Fold a finalize failed-stage into `errors[]` WITHOUT re-emitting — the
 	// matching `reap_failed` event already rode `FinalizeResult.events` and was
@@ -202,10 +201,25 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			? "failed"
 			: input.outcome;
 
-	if (failedFromProviderError && providerError !== null) {
-		// warren-4001: structured provider-error surface — the payload names
-		// provider/model/status so a degraded upstream pool is diagnosable
-		// from the event stream alone.
+	// warren-a757: a SYNTHESIZED agent exit over a substrate the runtime lost (Spot
+	// preemption, vanished pod, OOM) is an infra cause, not a model error (./infra-loss.ts).
+	const workspaceHandle: RunHandle | null =
+		run.sandboxId !== null
+			? { runId: run.id, sandboxId: run.sandboxId, providerRunId: run.sandboxRunId ?? "" }
+			: null;
+	const infraLoss = failedFromProviderError
+		? await classifyInfraLoss({
+				provider,
+				handle: workspaceHandle,
+				signal: providerError,
+				pushedWork: state.branchPushed && state.commitsAhead !== 0,
+			})
+		: null;
+	const blamesProvider = failedFromProviderError && infraLoss === null;
+	if (infraLoss !== null) {
+		await emit(REAP_INFRA_LOSS_KIND, infraLossEventPayload(infraLoss, providerErrorMessage));
+	} else if (blamesProvider && providerError !== null) {
+		// warren-4001: structured provider-error surface (provider/model/status).
 		await emit("reap.provider_error", providerErrorEventPayload(providerError));
 	}
 
@@ -214,6 +228,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		failureReason = "dropped_commit";
 	} else if (noChangesFailure) {
 		failureReason = "no_changes";
+	} else if (infraLoss !== null) {
+		failureReason = infraLoss.failureReason;
 	} else if (failedFromProviderError) {
 		failureReason = "provider_error";
 	} else if (finalizeFailed) {
@@ -326,7 +342,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	await emit("reap.completed", {
 		state: finalState,
 		failureReason,
-		providerError: failedFromProviderError ? providerErrorMessage : null,
+		providerError: blamesProvider ? providerErrorMessage : null,
 		mulch: {
 			updated: state.mulchUpdated,
 			skipped: state.mulchSkipped,
@@ -365,10 +381,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// Route the sandbox teardown through the provider seam (warren-1f56). The
 	// `terminate` closure is null when the run has no burrow or reap never
 	// resolved the worker — the same skip the old `workerClient === null` gate had.
-	const workspaceHandle: RunHandle | null =
-		run.sandboxId !== null
-			? { runId: run.id, sandboxId: run.sandboxId, providerRunId: run.sandboxRunId ?? "" }
-			: null;
 	const terminate = workspaceHandle !== null ? () => provider.terminate(workspaceHandle) : null;
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
@@ -450,7 +462,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			event: "reap.completed",
 			state: finalState,
 			failureReason,
-			providerError: failedFromProviderError ? providerErrorMessage : null,
+			providerError: blamesProvider ? providerErrorMessage : null,
 			mulchUpdated: state.mulchUpdated,
 			mulchSkipped: state.mulchSkipped,
 			mulchAppended: state.mulchAppended,
@@ -474,7 +486,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	return {
 		state: finalState,
 		failureReason,
-		providerError: failedFromProviderError ? providerErrorMessage : null,
+		providerError: blamesProvider ? providerErrorMessage : null,
 		mulchUpdated: state.mulchUpdated,
 		mulchSkipped: state.mulchSkipped,
 		mulchAppended: state.mulchAppended,

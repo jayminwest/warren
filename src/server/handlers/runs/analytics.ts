@@ -71,16 +71,20 @@ interface AnalyticsWindow {
  * to 90 days, matching `GET /analytics/cost` (warren-30cc). Both bounds and
  * `projectId` are validated lightly — a malformed date is a 400 because the
  * lexicographic ISO8601 compare in `listForAnalytics` would silently produce
- * surprising results otherwise.
+ * surprising results otherwise. `nowMs` anchors the default `to` bound
+ * (`deps.now`, so a frozen-clock boot resolves a stable window).
  */
-export function parseAnalyticsWindow(ctx: { url: URL }): {
+export function parseAnalyticsWindow(
+	ctx: { url: URL },
+	nowMs?: number,
+): {
 	echo: { projectId: string | null; from: string | null; to: string | null };
 	filter: AnalyticsWindow;
 } {
 	const projectId = ctx.url.searchParams.get("projectId") ?? undefined;
 	const from = parseAnalyticsDateBound(ctx, "from");
 	const to = parseAnalyticsDateBound(ctx, "to");
-	const window = resolveAnalyticsWindowBounds(from, to);
+	const window = resolveAnalyticsWindowBounds(from, to, nowMs);
 	const filter: AnalyticsWindow = { from: window.from, to: window.to };
 	if (projectId !== undefined) filter.projectId = projectId;
 	return {
@@ -263,7 +267,7 @@ function buildTokensSection(metrics: RunMetrics): RunAnalyticsTokensSection {
  */
 export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
-		const { echo, filter } = parseAnalyticsWindow(ctx);
+		const { echo, filter } = parseAnalyticsWindow(ctx, deps.now?.().getTime());
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const tokens = buildTokensSection(metrics);
 		const outcomes = await loadRunOutcomes(deps, rows, metrics);

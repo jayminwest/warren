@@ -18,7 +18,9 @@ describe("fetchGitHubUserLogin", () => {
 		const user = await fetchGitHubUserLogin("ghp_test", {
 			fetch: fakeFetch((input, init) => {
 				calls.push(String(input));
-				expect((init?.headers as Record<string, string>).authorization).toBe("Bearer ghp_test");
+				expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+					"Bearer ghp_test",
+				);
 				return jsonResponse({ login: "octocat", id: 123 });
 			}),
 		});

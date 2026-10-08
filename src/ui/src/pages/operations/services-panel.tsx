@@ -10,7 +10,7 @@ import { cn, relativeTime } from "@/lib/utils.ts";
 
 function ServiceRow({ name, detail, ok }: { name: string; detail: string; ok: boolean | null }) {
 	return (
-		<div className="flex min-h-[43px] flex-1 items-center gap-2 border-b border-(--color-border) px-3 py-1.5 last:border-b-0">
+		<div className="flex min-h-[43px] flex-1 items-center gap-2 border-(--color-border) border-b px-3 py-1.5 last:border-b-0">
 			<span
 				className={cn(
 					"h-1.5 w-1.5 shrink-0 rounded-full",
@@ -21,8 +21,8 @@ function ServiceRow({ name, detail, ok }: { name: string; detail: string; ok: bo
 				aria-hidden
 			/>
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span className="text-[11px] leading-3.5 font-medium text-(--color-text)">{name}</span>
-				<span className="font-mono text-[9px] leading-[13px] text-(--color-text-3)">{detail}</span>
+				<span className="font-medium text-(--color-text) text-[11px] leading-3.5">{name}</span>
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-[13px]">{detail}</span>
 			</span>
 		</div>
 	);
@@ -38,11 +38,11 @@ export function ServicesPanel({
 	const services = overview?.services;
 	return (
 		<div className="flex min-w-0 flex-[1.8] flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-			<div className="flex h-[39px] shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
-				<span className="text-[11px] leading-3.5 font-semibold text-(--color-text)">Services</span>
+			<div className="flex h-[39px] shrink-0 items-center gap-2 border-(--color-border) border-b px-3">
+				<span className="font-semibold text-(--color-text) text-[11px] leading-3.5">Services</span>
 				<span className="flex-1" />
 				{overview ? (
-					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+					<span className="font-mono text-(--color-text-3) text-[9px] leading-3">
 						snapshot {relativeTime(overview.generatedAt)}
 					</span>
 				) : null}

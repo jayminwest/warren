@@ -74,7 +74,8 @@ export function opsOverviewHandler(deps: ServerDeps): RouteHandler {
 				runtime: deps.runtimeProvider.kind,
 				lifecycleStream: deps.lifecycleStream !== undefined,
 			},
-			{ window },
+			// deps.now: the frozen-clock seam (ui-visual fixture boot, warren-010b).
+			{ window, ...(deps.now !== undefined ? { now: deps.now() } : {}) },
 		);
 		const projected = isPublicOnly(ctx.actor) ? toPublicOpsOverview(body) : body;
 		return jsonResponse(200, projected);

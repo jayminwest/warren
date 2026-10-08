@@ -36,7 +36,19 @@ runBranchPrefix: warren
 # built-in claude-code / pi prompts don't fall back to the
 # fuzzy "look for it in CLAUDE.md" heuristic. Must mirror CI — see
 # warren-57cd / pl-da5b step 4 and AGENTS.md "Quality gates".
-qualityGate: bun run check:all
+# `--bail` (warren-7e82) stops at the first failing gate so an agent sees a
+# cheap static failure in seconds, not after coverage. A green run still
+# executes every gate, so the CI mirror is intact.
+qualityGate: bun run check:all --bail
+
+# In-sandbox migration repair guidance (warren-4371). When a ref-dispatch
+# lands on a branch whose drizzle migration journal collides with main's,
+# warren detects it at dispatch (read-only, on the host) and tells the
+# agent to repair it inside its sandbox, quoting this command. Warren
+# never executes it on the host. package.json's db:generate regenerates
+# both the sqlite and postgres journals.
+migrations:
+  regenerateCommand: bun run db:generate
 
 # Per-run preview environment. CANONICAL home is .warren/preview.yaml
 # (top-level document = the preview block itself). The nested form below

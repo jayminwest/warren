@@ -106,6 +106,26 @@ every clone refresh, and `repoContext` rides the composed prompt so it
 reaches docker and k8s runs too. The end-to-end recipe lives in
 [`docs/onboarding-external-repos.md`](../onboarding-external-repos.md).
 
+**`migrations.regenerateCommand` (warren-4371).** Optional guidance for
+the dispatch-time drizzle migration journal preflight
+(`src/runs/spawn/migration-preflight.ts`, schema in
+`src/warren-config/migrations-config.ts`). For a ref-dispatch onto an
+existing branch, warren compares the branch's `meta/_journal.json`
+entries with `origin/<defaultBranch>`'s. The check is detection only: it
+reads the working-tree journal and runs `git ls-files` / `git cat-file`
+on the host clone, and nothing else. On a slot collision warren appends a
+repair note to the dispatched prompt and records a
+`migration_journal_collision` system event; the agent repairs and
+regenerates the migrations **inside its sandbox**. The note quotes
+`regenerateCommand` when set (warren's own repo sets
+`bun run db:generate`), and otherwise asks for "this project's migration
+generator" so no convention is imposed on unfamiliar repositories. The
+control plane never executes the command. It is redacted from the public
+`.warren/` projection like `qualityGate`. This replaced the warren-1f03
+host-side heal, which ran the repository's generate script and committed
+on the host clone outside the run's isolation boundary (trust boundary:
+`SECURITY.md` "Repository code stays out of the control plane").
+
 **`pr.autoMerge` (warren-6c5a, plan pl-92a3).** Opt-in warren-armed
 auto-merge for this project's PRs. An absent block (the default) means
 the feature is off; present, the shape is

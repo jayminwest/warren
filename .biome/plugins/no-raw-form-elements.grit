@@ -1,0 +1,22 @@
+// no-raw-form-elements (warren-6772)
+//
+// Flags raw JSX <button>, <input>, <select>, and <textarea> elements. The
+// components/ui primitives own focus rings, touch targets, and theming, so
+// pages render those instead. biome.jsonc scopes this plugin to
+// src/ui/src/**/*.tsx minus src/ui/src/components/ui/** (where the
+// primitives wrap the raw elements) and minus the files grandfathered in
+// scripts/ui-raw-elements-allowlist.json. See src/ui/README.md.
+language js
+
+or {
+	JsxOpeningElement(name = $name),
+	JsxSelfClosingElement(name = $name)
+} where {
+	or {
+		and { $name <: "button", $msg = "raw <button>: use components/ui/button (see src/ui/README.md)" },
+		and { $name <: "input", $msg = "raw <input>: use components/ui/input (see src/ui/README.md)" },
+		and { $name <: "select", $msg = "raw <select>: use or add components/ui/select (see src/ui/README.md)" },
+		and { $name <: "textarea", $msg = "raw <textarea>: use or add components/ui/textarea (see src/ui/README.md)" }
+	},
+	register_diagnostic(span = $name, message = $msg, severity = "error")
+}

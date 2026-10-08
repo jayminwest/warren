@@ -3,6 +3,12 @@
 # runs (see warren-008a / pl-da5b). Diverging from `check:all` here would
 # recreate the gate-drift that warren-5797 was opened to kill. If a check
 # is too slow for the hook, fix the check — don't carve out a subset.
+#
+# `--bail` (warren-7e82) stops at the first failing gate. On a green tree it
+# runs every gate, so the battery a commit must pass is unchanged. On a red
+# tree it rejects the commit seconds after a cheap static gate fails instead
+# of first spending minutes in check:coverage. The commit is refused either
+# way, so nothing that used to be blocked gets through.
 set -euo pipefail
 
 # Git exports GIT_DIR, GIT_WORK_TREE, and GIT_INDEX_FILE to every hook it runs,
@@ -13,4 +19,4 @@ set -euo pipefail
 # inherited vars so the gates see a plain shell. This runs the same battery,
 # so the single-source-of-truth rule above still holds.
 exec env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
-	bun run check:all
+	bun run check:all --bail

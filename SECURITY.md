@@ -47,6 +47,14 @@ Warren owns its sandbox and runtime implementations. It has no Burrow daemon, so
 
 Isolation limits damage from an agent process. It does not make untrusted repository code safe to run with unrestricted credentials or network access. Review the selected runtime capabilities and project-specific agent image before dispatching against untrusted code.
 
+### Repository code stays out of the control plane
+
+The control plane does not run scripts that a registered repository defines. Dispatch-time checks on the host clone read files and run read-only git commands only. Repository code runs inside the run's sandbox, with the run's credentials and limits.
+
+The migration journal preflight (warren-4371) follows this rule. It detects a drizzle migration slot collision between the dispatch branch and the default branch. It does not repair the collision on the host and does not commit to the host clone.
+
+When it finds a collision, warren adds a repair note to the agent prompt and records a `migration_journal_collision` run event. The agent then regenerates the migrations inside its sandbox. The optional `migrations.regenerateCommand` key in `.warren/config.yaml` names the command that the note quotes. Warren never runs that command on the host.
+
 ## Forge credentials
 
 GitHub access sits behind the `Forge` seam.

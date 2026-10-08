@@ -314,7 +314,7 @@ describe("createBridgeRegistry", () => {
 		expect(tail.length).toBe(1);
 		expect(tail[0]?.kind).toBe("bridge_fatal");
 		expect(tail[0]?.stream).toBe("system");
-		expect((tail[0]?.payloadJson as { error: string }).error).toMatch(/placement/);
+		expect((tail[0]?.payloadJson as { error: string } | undefined)?.error).toMatch(/placement/);
 	});
 
 	test("stopAll() aborts a reconnect sleep so the loop exits promptly", async () => {

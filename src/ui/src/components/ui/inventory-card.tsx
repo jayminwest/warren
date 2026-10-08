@@ -72,12 +72,12 @@ export function InventoryRowCard({
 		titleTo !== undefined ? (
 			<Link
 				to={titleTo}
-				className="truncate font-mono text-[11px] leading-[13px] text-(--color-text) hover:underline"
+				className="truncate font-mono text-(--color-text) text-[11px] leading-[13px] hover:underline"
 			>
 				{title}
 			</Link>
 		) : (
-			<span className="truncate font-mono text-[11px] leading-[13px] text-(--color-text)">
+			<span className="truncate font-mono text-(--color-text) text-[11px] leading-[13px]">
 				{title}
 			</span>
 		);
@@ -85,7 +85,7 @@ export function InventoryRowCard({
 	return (
 		<div
 			className={cn(
-				"flex flex-col gap-2 border-b border-(--color-border) last:border-b-0",
+				"flex flex-col gap-2 border-(--color-border) border-b last:border-b-0",
 				roomy ? "px-3 py-2.5" : "px-2.5 py-2.5",
 			)}
 		>
@@ -108,7 +108,7 @@ export function InventoryRowCard({
 				<span className="flex min-w-0 flex-1 flex-col gap-[2px]">
 					{titleNode}
 					{subline !== undefined ? (
-						<span className="truncate font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+						<span className="truncate font-mono text-(--color-text-3) text-[9px] leading-[11px]">
 							{subline}
 						</span>
 					) : null}
@@ -120,7 +120,7 @@ export function InventoryRowCard({
 			{meta !== undefined || children !== undefined ? (
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					{meta !== undefined ? (
-						<span className="min-w-0 flex-1 truncate font-mono text-[9px] leading-[11px] text-(--color-text-3)">
+						<span className="min-w-0 flex-1 truncate font-mono text-(--color-text-3) text-[9px] leading-[11px]">
 							{meta}
 						</span>
 					) : (
@@ -136,7 +136,7 @@ export function InventoryRowCard({
 /** A quiet figure line inside the card's trailing column. */
 export function CardFigure({ value, className }: { value: ReactNode; className?: string }) {
 	return (
-		<span className={cn("font-mono text-[10px] leading-[12px] text-(--color-text-2)", className)}>
+		<span className={cn("font-mono text-(--color-text-2) text-[10px] leading-[12px]", className)}>
 			{value}
 		</span>
 	);

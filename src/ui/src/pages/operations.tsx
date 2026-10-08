@@ -71,10 +71,10 @@ export function OperationsPage() {
 		<div className="flex min-w-0 flex-1 flex-col gap-4 px-3.5 pt-4 pb-12 md:px-6 md:pt-5">
 			<header className="flex items-center gap-2.5 pb-1 md:flex-wrap md:items-start md:justify-between md:gap-4">
 				<div className="flex min-w-0 flex-1 flex-col gap-0.5 md:flex-none md:gap-1.5">
-					<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.02em] text-(--color-text) md:text-xl md:leading-6 md:tracking-[-0.025em]">
+					<h1 className="font-semibold text-(--color-text) text-[17px] leading-[22px] tracking-[-0.02em] md:text-xl md:leading-6 md:tracking-[-0.025em]">
 						Operations
 					</h1>
-					<p className="text-[11px] leading-3.5 text-(--color-text-2) md:text-[12px] md:leading-4">
+					<p className="text-(--color-text-2) text-[11px] leading-3.5 md:text-[12px] md:leading-4">
 						Server health and current run activity.
 					</p>
 				</div>
@@ -93,7 +93,7 @@ export function OperationsPage() {
 									(window === w
 										? "bg-(--color-thead) text-(--color-text)"
 										: "text-(--color-text-3) hover:text-(--color-text)") +
-									" px-2 py-[3px] font-mono text-[9px] leading-3 uppercase"
+									"px-2 py-[3px] font-mono text-[9px] uppercase leading-3"
 								}
 							>
 								{w.toUpperCase()}
@@ -104,7 +104,7 @@ export function OperationsPage() {
 					<OperatorOnly>
 						<Link
 							to="/dispatch"
-							className="flex items-center gap-1.5 rounded-(--radius-sm) bg-(--color-primary) px-[11px] py-[7px] text-[11px] leading-3.5 font-medium text-(--color-primary-ink) hover:opacity-90 md:h-8 md:px-3 md:py-0"
+							className="flex items-center gap-1.5 rounded-(--radius-sm) bg-(--color-primary) px-[11px] py-[7px] font-medium text-(--color-primary-ink) text-[11px] leading-3.5 hover:opacity-90 md:h-8 md:px-3 md:py-0"
 						>
 							<span className="md:hidden">＋ Dispatch</span>
 							<span className="hidden md:inline">＋ Dispatch run</span>

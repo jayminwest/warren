@@ -52,6 +52,9 @@
 #   - WARREN_GIT_AUTHOR_NAME/EMAIL feed run pods' GIT_AUTHOR_*/GIT_COMMITTER_*
 #     (composeRunEnv, warren-4e36) — without them every in-pod `git commit`
 #     fails with "Author identity unknown".
+#   - A PodDisruptionBudget (postgres-pdb.yaml, warren-a5d2) refuses voluntary
+#     evictions of the in-cluster postgres-0 so Autopilot scale-down cannot
+#     take the database down. Inert when the postgres Component is not used.
 #   - Autopilot ignores fixed storageClassName choices for some tiers; the
 #     default `standard-rwo` binds the PVC. The repo-cache is OPT-IN
 #     (warren-554f): if you enable it and later go multi-node you need an RWM
@@ -63,6 +66,9 @@ resources:
   - managedcertificate.yaml
   - frontendconfig.yaml
   - backendconfig.yaml
+  # Postgres disruption budget (warren-a5d2). Here, not in the opt-in
+  # components/postgres, because CI's gke-live render only pulls ../gke.
+  - postgres-pdb.yaml
 images:
   - name: warren
     newName: LOCATION-docker.pkg.dev/PROJECT/warren/warren

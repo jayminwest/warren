@@ -155,7 +155,7 @@ describe("createPreviewProxyHandler (subdomain mode)", () => {
 			fetch: fetchStub(async (input, init) => {
 				captured.url = typeof input === "string" ? input : (input as Request).url;
 				captured.method = init?.method;
-				captured.host = (init?.headers as Headers).get("host");
+				captured.host = (init?.headers as Headers | undefined)?.get("host") ?? null;
 				return new Response("ok-from-upstream", { status: 200 });
 			}),
 		});

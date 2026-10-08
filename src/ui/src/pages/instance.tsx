@@ -47,6 +47,7 @@ function FactField({
 	mono = true,
 	variant = "resolved",
 	className,
+	mask,
 }: {
 	label: string;
 	value: string;
@@ -54,11 +55,14 @@ function FactField({
 	mono?: boolean;
 	variant?: "editable" | "resolved";
 	className?: string;
+	/** Blank the value in ui-visual screenshots (release- or time-dependent). */
+	mask?: boolean;
 }) {
 	return (
 		<div className={cn("flex min-w-0 flex-1 flex-col gap-[5px]", className)}>
-			<span className="text-[10px] leading-3 font-medium text-(--color-text-2)">{label}</span>
+			<span className="font-medium text-(--color-text-2) text-[10px] leading-3">{label}</span>
 			<span
+				data-visual-mask={mask ? "" : undefined}
 				className={cn(
 					"flex min-w-0 items-center truncate rounded-(--radius-sm) border px-2.5 py-2 font-mono text-[11px] leading-[14px]",
 					variant === "editable"
@@ -72,7 +76,7 @@ function FactField({
 				{value}
 			</span>
 			{hint ? (
-				<span className="font-mono text-[8px] leading-[10px] tracking-[0.05em] text-(--color-text-3) md:text-[9px] md:leading-3 md:tracking-normal">
+				<span className="font-mono text-(--color-text-3) text-[8px] leading-[10px] tracking-[0.05em] md:text-[9px] md:leading-3 md:tracking-normal">
 					{hint}
 				</span>
 			) : null}
@@ -101,14 +105,14 @@ function Section({
 			className={cn(
 				"flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)",
 				"md:gap-3.5 md:overflow-visible md:rounded-none md:border-0 md:p-4",
-				!last && "md:border-b md:border-(--color-border)",
+				!last && "md:border-(--color-border) md:border-b",
 			)}
 		>
-			<div className="flex flex-col gap-[2px] border-b border-(--color-border) bg-(--color-thead) px-3 py-2.5 md:gap-[3px] md:border-b-0 md:bg-transparent md:px-0 md:py-0">
-				<h2 className="text-[12px] leading-[15px] font-semibold text-(--color-text) md:leading-4">
+			<div className="flex flex-col gap-[2px] border-(--color-border) border-b bg-(--color-thead) px-3 py-2.5 md:gap-[3px] md:border-b-0 md:bg-transparent md:px-0 md:py-0">
+				<h2 className="font-semibold text-(--color-text) text-[12px] leading-[15px] md:leading-4">
 					{title}
 				</h2>
-				<p className="text-[10px] leading-[13px] text-(--color-text-3) md:text-[11px] md:leading-[14px]">
+				<p className="text-(--color-text-3) text-[10px] leading-[13px] md:text-[11px] md:leading-[14px]">
 					{sub}
 				</p>
 			</div>
@@ -148,13 +152,19 @@ function AuthModePills({ mode }: { mode: InstanceFactsResponse["authMode"] }) {
  * a fixed 110px mono column and the value is right-aligned at full
  * strength; at md+ it reverts to the justify-between row.
  */
-function FactRow({ label, value }: { label: string; value: string }) {
+/**
+ * `mask` marks a release- or wall-clock value (version, uptime) with
+ * `data-visual-mask` so the ui-visual screenshots (scripts/ui-visual)
+ * blank it out.
+ */
+function FactRow({ label, value, mask }: { label: string; value: string; mask?: boolean }) {
 	return (
 		<div className="flex items-center gap-2 px-3 py-[7px] md:gap-3 md:px-0 md:py-0">
-			<span className="w-[110px] shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3) md:w-auto md:font-sans md:text-[11px] md:leading-[14px]">
+			<span className="w-[110px] shrink-0 font-mono text-(--color-text-3) text-[9px] leading-3 md:w-auto md:font-sans md:text-[11px] md:leading-[14px]">
 				{label}
 			</span>
 			<span
+				data-visual-mask={mask ? "" : undefined}
 				className={cn(
 					"flex min-w-0 flex-1 justify-end truncate text-right font-mono text-[10px] leading-3",
 					"md:block md:text-[11px] md:leading-[14px]",
@@ -182,7 +192,7 @@ function InstanceSection({ facts }: { facts: InstanceFactsResponse | undefined }
 					value={runtime}
 					hint="WARREN_RUNTIME · RESOLVED AT BOOT · READ-ONLY"
 				/>
-				<FactField label="Version" value={version} hint="READ-ONLY" />
+				<FactField label="Version" value={version} hint="READ-ONLY" mask />
 			</div>
 			<div className="grid w-full grid-cols-2 gap-2.5 sm:flex sm:flex-row sm:gap-3">
 				<FactField label="Database backend" value={dbBackend} hint="WARREN_DB_URL · READ-ONLY" />
@@ -202,11 +212,11 @@ function AuthenticationSection({ facts }: { facts: InstanceFactsResponse | undef
 	return (
 		<Section title="Authentication" sub="How access is authenticated.">
 			<div className="flex flex-col gap-[5px]">
-				<span className="text-[10px] leading-3 font-medium text-(--color-text-2)">Auth mode</span>
+				<span className="font-medium text-(--color-text-2) text-[10px] leading-3">Auth mode</span>
 				{authMode ? (
 					<AuthModePills mode={authMode} />
 				) : (
-					<span className="h-8 font-mono text-[12px] leading-4 text-(--color-text-3)">—</span>
+					<span className="h-8 font-mono text-(--color-text-3) text-[12px] leading-4">—</span>
 				)}
 			</div>
 		</Section>
@@ -241,11 +251,11 @@ function AdmissionSection({ facts }: { facts: InstanceFactsResponse | undefined 
 					/>
 				</div>
 			) : (
-				<p className="text-[10px] leading-[14px] text-(--color-text-3)">
+				<p className="text-(--color-text-3) text-[10px] leading-[14px]">
 					{facts ? "Admission caps are K8s-only — not active under this runtime provider." : "—"}
 				</p>
 			)}
-			<p className="text-[10px] leading-[14px] text-(--color-text-3)">
+			<p className="text-(--color-text-3) text-[10px] leading-[14px]">
 				Set in the environment, resolved at boot. The admission gate reports them in admission
 				events.
 			</p>
@@ -270,19 +280,19 @@ function FactsRail({ facts }: { facts: InstanceFactsResponse | undefined }) {
 
 	return (
 		<aside className="flex w-full shrink-0 flex-col rounded-(--radius-md) border border-(--color-border) bg-(--color-sidebar) md:bg-(--color-surface) lg:w-[380px]">
-			<header className="flex items-center justify-between border-b border-(--color-border) px-3 py-2.5 md:px-4 md:py-3">
-				<h2 className="text-[12px] leading-[15px] font-semibold text-(--color-text) md:text-[13px] md:leading-4">
+			<header className="flex items-center justify-between border-(--color-border) border-b px-3 py-2.5 md:px-4 md:py-3">
+				<h2 className="font-semibold text-(--color-text) text-[12px] leading-[15px] md:text-[13px] md:leading-4">
 					Instance facts
 				</h2>
-				<span className="font-mono text-[9px] leading-[11px] tracking-[0.06em] text-(--color-success) md:text-[10px] md:leading-3 md:text-(--color-text-3)">
+				<span className="font-mono text-(--color-success) text-[9px] leading-[11px] tracking-[0.06em] md:text-(--color-text-3) md:text-[10px] md:leading-3">
 					LIVE
 				</span>
 			</header>
 			<div className="flex flex-col py-1.5 md:gap-2.5 md:px-4 md:py-3.5">
-				<FactRow label="version" value={version} />
+				<FactRow label="version" value={version} mask />
 				<FactRow label="runtime" value={runtime} />
 				<FactRow label="database" value={dbBackend} />
-				<FactRow label="uptime" value={uptime} />
+				<FactRow label="uptime" value={uptime} mask />
 				<FactRow
 					label="admission caps"
 					value={admission ? "k8s · active" : facts ? "not active" : "—"}
@@ -322,10 +332,10 @@ export function InstancePage() {
 	return (
 		<div className="flex min-h-full flex-col gap-3.5 px-3.5 pt-6 pb-12 md:gap-5 md:px-6">
 			<header className="flex flex-col gap-1.5">
-				<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.025em] text-(--color-text) md:text-[22px] md:leading-7">
+				<h1 className="font-semibold text-(--color-text) text-[17px] leading-[22px] tracking-[-0.025em] md:text-[22px] md:leading-7">
 					Instance
 				</h1>
-				<p className="max-w-prose text-[11px] leading-[14px] text-(--color-text-2) md:text-[13px] md:leading-[18px]">
+				<p className="max-w-prose text-(--color-text-2) text-[11px] leading-[14px] md:text-[13px] md:leading-[18px]">
 					Server settings, read-only. Configure via environment or a project&apos;s
 					.warren/config.yaml.
 				</p>

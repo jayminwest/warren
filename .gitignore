@@ -48,3 +48,6 @@ deploy/k8s/overlays/gke-film/
 # and outside git history; promote anything durable into docs or `sd plan`.
 local-planning/
 .atlas/
+
+# ui-visual harness output: screenshots, Playwright report and traces (warren-99e1)
+scripts/ui-visual/out/

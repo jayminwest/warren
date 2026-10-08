@@ -1,0 +1,1 @@
+{"type":"decision","classification":"tactical","recorded_at":"2026-10-08T17:49:00.257Z","evidence":{"commit":"33114201813b14bb0ab7f542e566d99506c6041c"},"title":"Repo config cannot approve host execution","rationale":".warren/config.yaml is repo-controlled; only operator-side settings can opt into host-side execution (warren-4371)","id":"mx-9d133b"}

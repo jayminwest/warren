@@ -139,19 +139,19 @@ export function EventExplorerPage() {
 
 	return (
 		<div className="flex min-h-full flex-col gap-4 px-3.5 pt-5 pb-12 md:px-6">
-			<div className="font-mono text-[10px] leading-3 tracking-[0.06em] text-(--color-text-3)">
+			<div className="font-mono text-(--color-text-3) text-[10px] leading-3 tracking-[0.06em]">
 				OPERATIONS / EVENT EXPLORER
 			</div>
 
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<div className="flex min-w-0 flex-grow flex-col gap-1.5">
 					<div className="flex items-center gap-2.5">
-						<h1 className="text-[17px] font-semibold leading-[22px] tracking-[-0.02em] text-(--color-text) md:text-[22px] md:leading-7 md:tracking-[-0.025em]">
+						<h1 className="font-semibold text-(--color-text) text-[17px] leading-[22px] tracking-[-0.02em] md:text-[22px] md:leading-7 md:tracking-[-0.025em]">
 							Event explorer
 						</h1>
 						{follow && <LiveBadge className="hidden md:inline-flex" />}
 					</div>
-					<p className="max-w-prose text-[13px] leading-[18px] text-(--color-text-2)">
+					<p className="max-w-prose text-(--color-text-2) text-[13px] leading-[18px]">
 						Search, filter, follow, and export run events.
 					</p>
 				</div>
@@ -211,7 +211,7 @@ function LiveBadge({ className }: { className?: string }) {
 			)}
 		>
 			<span className="h-1.5 w-1.5 rounded-full bg-(--color-success)" />
-			<span className="font-mono text-[9px] leading-3 tracking-[0.08em] text-(--color-success)">
+			<span className="font-mono text-(--color-success) text-[9px] leading-3 tracking-[0.08em]">
 				LIVE
 			</span>
 		</span>
@@ -280,8 +280,8 @@ function FilterStrip({
 						className={cn(
 							responsiveFormControl,
 							state.rangeId === r.id
-								? "bg-(--color-surface-raised) px-2.5 font-mono leading-[17px] text-(--color-text) sm:h-auto sm:py-1.5 sm:text-[10px] sm:leading-3"
-								: "px-2.5 font-mono leading-[17px] text-(--color-text-3) hover:text-(--color-text-2) sm:h-auto sm:py-1.5 sm:text-[10px] sm:leading-3",
+								? "bg-(--color-surface-raised) px-2.5 font-mono text-(--color-text) leading-[17px] sm:h-auto sm:py-1.5 sm:text-[10px] sm:leading-3"
+								: "px-2.5 font-mono text-(--color-text-3) leading-[17px] hover:text-(--color-text-2) sm:h-auto sm:py-1.5 sm:text-[10px] sm:leading-3",
 						)}
 					>
 						{r.label}
@@ -317,7 +317,7 @@ function RowsPanel({
 }) {
 	const lastRow = offset + rows.length;
 	return (
-		<div className="-mt-4 flex flex-col rounded-b border border-t-0 border-(--color-border) bg-(--color-sidebar)">
+		<div className="-mt-4 flex flex-col rounded-b border border-(--color-border) border-t-0 bg-(--color-sidebar)">
 			{pending && (
 				<div className="flex items-center justify-center gap-2 py-10">
 					<Spinner label="Loading events" />
@@ -346,7 +346,7 @@ function RowsPanel({
 				/>
 			))}
 			{success && rows.length > 0 && (
-				<div className="flex items-center justify-between px-3 py-2 font-mono text-[9px] leading-[11px] text-(--color-text-3) md:text-[10px] md:leading-3">
+				<div className="flex items-center justify-between px-3 py-2 font-mono text-(--color-text-3) text-[9px] leading-[11px] md:text-[10px] md:leading-3">
 					<span>
 						{offset + 1}–{lastRow} of {total}
 					</span>
@@ -389,7 +389,7 @@ function EventRowView({
 	const payloadJson =
 		row.payload === undefined ? "—" : (JSON.stringify(row.payload, null, 2) ?? "—");
 	return (
-		<div className="border-b border-(--color-border) last:border-b-0">
+		<div className="border-(--color-border) border-b last:border-b-0">
 			<button
 				type="button"
 				onClick={onToggle}
@@ -397,10 +397,10 @@ function EventRowView({
 				className="flex w-full flex-col items-start gap-0.5 px-3 py-[7px] text-left hover:bg-(--color-surface-hover) md:flex-row md:gap-2.5"
 			>
 				<div className="flex w-full items-center gap-2 md:contents">
-					<span className="hidden shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:block md:w-12">
+					<span className="hidden shrink-0 font-mono text-(--color-text-3) text-[10px] leading-3 md:block md:w-12">
 						{row.id}
 					</span>
-					<span className="w-[46px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:w-16">
+					<span className="w-[46px] shrink-0 font-mono text-(--color-text-3) text-[10px] leading-3 md:w-16">
 						{formatEventClock(row.ts)}
 					</span>
 					<span
@@ -408,18 +408,18 @@ function EventRowView({
 					>
 						{row.kind}
 					</span>
-					<span className="min-w-0 flex-1 truncate font-mono text-[10px] leading-[14px] text-(--color-text-2)">
+					<span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2) text-[10px] leading-[14px]">
 						{row.runId} · {summarizeEventPayload(row.payload)}
 					</span>
 				</div>
 				{/* Mobile line 2 (warren-e2e2): the wire row carries no per-event
 				agent/project fields, so the indented metadata line shows seq + run. */}
-				<span className="pl-[54px] font-mono text-[9px] leading-3 text-(--color-text-3) md:hidden">
+				<span className="pl-[54px] font-mono text-(--color-text-3) text-[9px] leading-3 md:hidden">
 					seq {row.seq} · {row.runId}
 				</span>
 			</button>
 			{expanded && (
-				<pre className="mx-2 mb-2 overflow-x-auto rounded-sm border-l border-(--color-border-strong) px-2.5 py-[7px] font-mono text-[10px] leading-[15px] text-(--color-text-3) md:mx-[5.5rem]">
+				<pre className="mx-2 mb-2 overflow-x-auto rounded-sm border-(--color-border-strong) border-l px-2.5 py-[7px] font-mono text-(--color-text-3) text-[10px] leading-[15px] md:mx-[5.5rem]">
 					{payloadJson}
 				</pre>
 			)}

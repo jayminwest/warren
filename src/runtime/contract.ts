@@ -140,11 +140,10 @@ export type RunPhase = RunState;
  * - `error` — agent/runtime failed.
  * - `oom_killed` — killed by the cgroup/OOM killer (§6.5): burrow's oomKilled()
  *   probe; K8s `terminated.reason=="OOMKilled"`.
- * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`)
- *   under node pressure, usually ephemeral-storage exhaustion (warren-c0cd).
- *   K8s-only; an infra-capacity signal, not a container or agent fault.
- * - `preempted` (warren-ea4b) — Spot preemption: the pod's (spot-labelled) node
- *   was reclaimed. K8s-only; witness set in `./k8s/status-map.ts`.
+ * - `evicted` — K8s-only kubelet eviction under node pressure (warren-c0cd): an
+ *   infra-capacity signal, not a container or agent fault.
+ * - `preempted` (warren-ea4b/a757) — K8s-only: the pod's node was reclaimed or
+ *   lost (Spot, NotReady, deleted). Witnesses in `./k8s/status-map.ts`.
  * - `cancelled` — graceful stop via `cancel()`.
  * - `lost` — run vanished (burrow 404 / pod GC'd); pairs with `exists:false`.
  */
@@ -158,8 +157,7 @@ export type TerminalReason =
 	| "lost";
 
 /**
- * Out-of-band reconcile/recovery snapshot — what the watchdog/recovery/pod-watcher
- * read. `status()` NEVER throws on a missing run; it returns `exists:false` (§6.7).
+ * Reconcile snapshot (watchdog/recovery/pod-watcher); never throws on a missing run (§6.7).
  */
 export interface RunStatus {
 	phase: RunPhase;
@@ -173,6 +171,8 @@ export interface RunStatus {
 	lastEventTs: string | null;
 	/** `false` ⇒ run_lost (burrow 404 / pod GC'd) — a value, not a throw */
 	exists: boolean;
+	/** warren-a757 K8s node-loss witness; may ride a NON-terminal phase, so only reap reads it. */
+	nodeLost?: boolean;
 }
 
 /** Steering priority — canonical `INBOX_PRIORITIES` (`src/core/wire.ts`), warren-7b7a. */
@@ -486,12 +486,12 @@ export interface RuntimeProvider {
 
 	/**
 	 * Resolve the run's workspace path + push branch (warren-e9e1) — the neutral
-	 * replacement for reap's direct `burrows.get`. LocalProvider returns the live
-	 * burrow worktree path + branch; K8sProvider returns `{ workspacePath: null,
-	 * branch }` (the pod's `emptyDir` is host-unreachable). Throws only on a
-	 * genuine resolution failure — a `null` workspace path is a value, not a throw.
-	 * The domain gates its success pipeline on this resolving rather than on a
-	 * host path existing, so succeeded K8s runs reach `finalize`.
+	 * replacement for reap's direct `burrows.get`. Reap-time only: LocalProvider
+	 * stops the agent, seals its private git dir (warren-3c1e), and returns the
+	 * path + branch; K8sProvider returns `{ workspacePath: null, branch }` (the
+	 * pod's `emptyDir` is host-unreachable). Throws only on a genuine resolution
+	 * failure — a `null` workspace path is a value, not a throw. The domain gates
+	 * its success pipeline on this resolving, so succeeded K8s runs reach `finalize`.
 	 */
 	workspaceInfo(handle: RunHandle): Promise<WorkspaceInfo>;
 

@@ -68,8 +68,8 @@ from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
 backends exist.
 
 - `LocalProvider` (`src/runtime/local/`, the default) runs the
-  in-process engine. It materializes a worktree, composes a bwrap
-  profile from the warren-owned sandbox (`src/sandbox/`), and drives
+  in-process engine. It materializes a checkout over a per-run private
+  git dir (warren-3c1e), composes a bwrap profile from the warren-owned sandbox (`src/sandbox/`), and drives
   the agent through a host-side loop. The runtime adapters
   (`src/runtime/adapters/`) own the per-harness command, parser, and
   steering shapes.
@@ -120,6 +120,10 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
   section and the user task. The blessed way to onboard a mirror of a
   repo you do not control — see
   [docs/onboarding-external-repos.md](docs/onboarding-external-repos.md).
+- `migrations.regenerateCommand` (warren-4371) names the command that
+  the migration-collision prompt note quotes. The agent runs it inside
+  its sandbox. Warren never runs repository scripts on the host. See
+  [docs/design/warren-config.md](docs/design/warren-config.md).
 - `preview` — per-run preview environments. The canonical home is
   `.warren/preview.yaml`. See
   [docs/design/preview-environments.md](docs/design/preview-environments.md).
@@ -227,6 +231,7 @@ bun run acceptance             # end-to-end acceptance scenarios
 bun run acceptance:container   # acceptance scenarios in container mode
 bun run acceptance:public      # scenario 39, the public-instance leak guard
 bun run acceptance:nightly     # the nightly acceptance suite
+bun run check:ui-visual        # Playwright smoke over every UI screen (scripts/ui-visual/README.md)
 ```
 
 CI (`.github/workflows/ci.yml`) runs each manifest gate as its own
@@ -258,6 +263,10 @@ at the os-eco root. Never edit it in place. It prints one aligned
 status line per gate and a `12/12 gates passed` tally. On failure it
 shows parsed failure signatures plus a `re-run: bun run <gate>` hint.
 `CHECK_ALL_VERBOSE=1` streams full output and `--bail` stops early.
+Each run keeps every gate's full output as `<gate>.log`, with exit
+codes in a summary JSON file, under `$CHECK_ALL_LOG_DIR` or a per-checkout
+directory below the OS temp dir. A failure prints the path of its log.
+Search that log. Do not run the gate again only to see more output.
 
 Warren's resolved manifest, in order:
 
@@ -280,7 +289,39 @@ CI would reject. `check:ci-parity` proves the local manifest and the CI
 workflow agree in both directions. Per-repo escape hatches live in
 `scripts/ci-parity-config.json`.
 
-Ten repo-specific guards ride inside the `lint` gate rather than
+### Validation discipline (warren-7e82)
+
+A full gate run costs minutes, and coverage is most of that time. One
+green run on your final inputs is the evidence. Do not repeat a broad
+run on inputs that did not change.
+
+- Prepare dependencies once, before the first test run. On a fresh
+  clone, run `bun install` (its `prepare` script arms the hook) and
+  `bun run ui:install`. The root suite includes the `src/ui/` tests.
+  `check:extensions` installs extension dependencies itself.
+- While you iterate, run focused tests (`bun test path/to/x.test.ts`)
+  and the cheap static gates (`bun run lint`, `bun run typecheck`).
+  For the whole suite, run `bun run check:coverage` once. Do not run a
+  bare `bun test` and then the coverage gate on the same inputs.
+- Use `bun run check:all --bail` for the final gate. `--bail` stops at
+  the first failing gate. A green run still runs every gate. This
+  repo's `.warren/config.yaml` sets it as `qualityGate`, so dispatched
+  agents get it in `$WARREN_QUALITY_GATE`.
+- The pre-commit hook runs that same gate on the working tree. If the
+  hook is active and no change stays unstaged, a successful commit of
+  your final inputs is your green gate run. Do not run `check:all`
+  again just before that commit or just to report completion. Never
+  skip the hook with `--no-verify`.
+- Capture the full output and the true exit status once:
+  `bun run check:all --bail > /tmp/gate.log 2>&1; echo "exit=$?"`.
+  Then search the log. Do not run an unchanged command again to apply a
+  different `tail` or `grep` filter. A pipe into `tail` hides the exit
+  status unless you set `set -o pipefail`.
+- Run a gate again only when its inputs changed, to confirm the fix
+  for a failure you diagnosed, or as a bounded flake test that you
+  declare. Never report success with a red gate.
+
+Twelve repo-specific guards ride inside the `lint` gate rather than
 taking a manifest slot, because the canonical gate vocabulary is
 frozen. Each also runs standalone under the matching `check:` script
 name.
@@ -309,6 +350,16 @@ name.
   tsconfig and Biome config exclude `extensions/` on purpose, so before
   this guard an extension could sit red on main behind green gates. The
   guard runs a frozen install first when a package has no `node_modules`
+- `scripts/check-tailwind-arbitrary.ts` (warren-7bc4) counts Tailwind
+  arbitrary values such as `text-[10px]` per `src/ui/src` file and fails
+  any file over its count in `scripts/tailwind-arbitrary-budgets.json`.
+  `--update` lowers counts and refuses to raise them. At zero, Biome's
+  `noTailwindArbitraryValue` rule replaces this guard
+- `scripts/check-ui-raw-elements.ts` (warren-6772) guards the Biome
+  GritQL plugins in `.biome/plugins/` that ban raw form elements and
+  non-CSS-variable `style={}` outside `src/ui/src/components/ui/`. It
+  fails a stale or new entry in `scripts/ui-raw-elements-allowlist.json`
+  and regenerates the matching `biome.jsonc` block with `--write`
 
 `gen:cli-ref:check` rides the same gate and holds the generated CLI
 reference in place.
@@ -702,6 +753,40 @@ public-instance leak guard. It is the only scenario wired into CI, via
 `.github/workflows/acceptance-public.yml` and
 `bun run acceptance:public`. The rest of the suite runs locally and on
 the nightly workflow.
+
+## UI bugs: reproduction first
+
+A UI bug fix starts with a failing reproduction (warren-9fd7). Do not
+change non-test code until the reproduction exists and fails. This rule
+applies to every seed or issue that reports a rendering, layout, or copy
+defect in `src/ui/`, and to every agent that works one.
+
+1. Write `scripts/ui-visual/repros/<seed-id>.pw.ts`. It loads the page
+   through `openCase` from `scripts/ui-visual/harness.ts` against the
+   fixture boot. Assert on layout, overflow, or text. Use a targeted
+   `toHaveScreenshot` only when no structural assertion can see the bug,
+   because screenshots match only inside the CI container.
+2. Run `bun run check:ui-visual --build repros/<seed-id>.pw.ts` and
+   confirm that it fails for the reason the issue describes. Commit the
+   spec alone.
+3. Fix the bug. Run the same command and confirm that the spec passes.
+   Commit the fix.
+4. In the PR body, link the red commit and the green commit, and paste
+   the failing assertion from step 2.
+
+If the fixture data cannot show the bug, shape the response inside the
+spec with `page.route`, as `scripts/ui-visual/repros/warren-e9cd.pw.ts`
+does. The repro stays in the tree after the merge. `check:ui-visual`
+runs every file in the directory, so the bug cannot return silently.
+
+Name each file `<seed-id>.pw.ts`, never `<seed-id>.spec.ts`, because
+`bun test` loads spec files. `scripts/ui-visual/repros.test.ts` enforces
+the name.
+
+Human reporters use the UI bug issue template
+(`.github/ISSUE_TEMPLATE/ui-bug.yml`), which asks for the page,
+viewport, theme, and a screenshot. The harness details are in
+[scripts/ui-visual/README.md](scripts/ui-visual/README.md).
 
 ## Session completion protocol
 

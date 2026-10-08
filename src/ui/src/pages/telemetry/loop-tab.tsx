@@ -1,9 +1,10 @@
+import { useMemo } from "react";
 import type { RunAnalyticsTotals, RunDayBucket, RunDeliveryMetrics } from "@/api/client.ts";
 import { cn } from "@/lib/utils.ts";
 import { formatDuration } from "@/pages/telemetry/format.ts";
+import { outcomeBuckets } from "@/pages/telemetry/loop-tab.buckets.ts";
 import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
-import { useIsDesktop } from "@/pages/telemetry/use-is-desktop.ts";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
 /**
@@ -48,7 +49,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 	return (
 		<span className="flex items-center gap-1.5">
 			<span className={cn("h-2 w-2 shrink-0 rounded-[1px]", color)} aria-hidden />
-			<span className="font-mono text-[11px] leading-[14px] text-(--color-text-2)">{label}</span>
+			<span className="font-mono text-(--color-text-2) text-[11px] leading-[14px]">{label}</span>
 		</span>
 	);
 }
@@ -109,7 +110,7 @@ function StageRow({
 			title={known ? formatDuration(medianMs) : "no API surface for this stage yet"}
 			value={formatDuration(medianMs)}
 			valueClass={cn(
-				"max-md:w-[26px] max-md:flex max-md:flex-wrap max-md:justify-end max-md:text-right max-md:text-[10px] max-md:leading-3",
+				"max-md:flex max-md:w-[26px] max-md:flex-wrap max-md:justify-end max-md:text-right max-md:text-[10px] max-md:leading-3",
 				highlight && known ? "font-semibold text-(--color-primary)" : undefined,
 			)}
 		/>
@@ -163,8 +164,8 @@ function OutcomesChart({ totals, series }: OutcomesData) {
 				))}
 			</div>
 			<div className="flex w-full items-center justify-between">
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">{axis(first)}</span>
-				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">{axis(last)}</span>
+				<span className="font-mono text-(--color-text-3) text-[10px] leading-3">{axis(first)}</span>
+				<span className="font-mono text-(--color-text-3) text-[10px] leading-3">{axis(last)}</span>
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<Legend
@@ -182,49 +183,18 @@ function OutcomesChart({ totals, series }: OutcomesData) {
 }
 
 /**
- * Collapse daily buckets into Monday-keyed weekly buckets (warren-756e
- * choice): 90D forces ~626px of min-width-[3px] columns into a 347px
- * box below md, so the below-md arm renders one column per week —
- * the daily detail stays a desktop affordance, like the mock (no
- * daily chart at 375px).
+ * One column per UTC day in the window, zero-run days included, folded to
+ * weeks only at 90 days and on every width (warren-e9cd), so the column
+ * count, the column widths, and the axis always agree with the window.
  */
-function collapseToWeeks(series: readonly RunDayBucket[]): RunDayBucket[] {
-	const weeks = new Map<string, RunDayBucket>();
-	for (const b of series) {
-		const d = new Date(`${b.key}T00:00:00Z`);
-		if (Number.isNaN(d.getTime())) continue;
-		const day = d.getUTCDay();
-		const monday = new Date(d);
-		monday.setUTCDate(d.getUTCDate() - ((day + 6) % 7));
-		const key = monday.toISOString().slice(0, 10);
-		const acc = weeks.get(key);
-		if (acc === undefined) {
-			weeks.set(key, { ...b, key });
-		} else {
-			weeks.set(key, {
-				...acc,
-				succeeded: acc.succeeded + b.succeeded,
-				cancelled: acc.cancelled + b.cancelled,
-				failed: acc.failed + b.failed,
-				runs: acc.runs + b.runs,
-			});
-		}
-	}
-	return [...weeks.values()].sort((a, b) => a.key.localeCompare(b.key));
-}
-
-function OutcomesPanel({
-	runs,
-	days,
-	weekly,
-}: {
-	runs: ReturnType<typeof useTelemetryWindow>["runs"];
-	days: number;
-	weekly: boolean;
-}) {
+function OutcomesPanel() {
+	const { runs, days, from, to } = useTelemetryWindow();
 	const totals = runs.data?.totals;
-	const daily = [...(runs.data?.timeSeries ?? [])].sort((a, b) => a.key.localeCompare(b.key));
-	const series = weekly ? collapseToWeeks(daily) : daily;
+	const timeSeries = runs.data?.timeSeries;
+	const series = useMemo(
+		() => outcomeBuckets(timeSeries ?? [], days, from, to),
+		[timeSeries, days, from, to],
+	);
 
 	return (
 		<TelemetryPanel
@@ -233,11 +203,11 @@ function OutcomesPanel({
 			className="flex-1"
 		>
 			{runs.isError ? (
-				<p className="text-sm text-(--color-danger)">
+				<p className="text-(--color-danger) text-sm">
 					Failed to load run analytics. {(runs.error as Error | null)?.message ?? ""}
 				</p>
-			) : series.length === 0 && !runs.isLoading ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">No runs ended in this window.</p>
+			) : (totals?.runs ?? 0) === 0 && !runs.isLoading ? (
+				<p className="text-(--color-text-3) text-[12px] leading-4">No runs ended in this window.</p>
 			) : (
 				<OutcomesChart totals={totals} series={series} />
 			)}
@@ -246,8 +216,7 @@ function OutcomesPanel({
 }
 
 export function TelemetryLoopTab() {
-	const { runs, days } = useTelemetryWindow();
-	const isDesktop = useIsDesktop();
+	const { runs } = useTelemetryWindow();
 	const totals = runs.data?.totals;
 	const stages = buildStages(totals, runs.data?.delivery);
 	const knownMax = stages.reduce((m, s) => Math.max(m, s.medianMs ?? 0), 0);
@@ -260,7 +229,7 @@ export function TelemetryLoopTab() {
 
 	return (
 		<div className="flex flex-col gap-4 lg:flex-row">
-			<OutcomesPanel runs={runs} days={days} weekly={!isDesktop} />
+			<OutcomesPanel />
 
 			<TelemetryPanel title="Stage timings" meta="MEDIAN PER RUN" className="flex-1">
 				{stages.map((s, i) => (

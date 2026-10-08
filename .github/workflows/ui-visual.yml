@@ -1,0 +1,162 @@
+name: UI visual
+
+# Runs `bun run check:ui-visual` (warren-99e1) on PRs that can change what
+# the web UI renders (warren-5aa3, plan pl-10db step 9). The harness boots
+# warren against a seeded, clock-frozen fixture and opens every screen in
+# Chromium at two viewports and two themes.
+#
+# Why its OWN workflow rather than a step in ci.yml: the check:all gate
+# manifest is frozen, and `scripts/check-ci-parity.ts` requires every
+# `bun run <X>` in `.github/workflows/ci*.yml` to be reachable from it.
+# This file is not `ci*.yml`, so check:ci-parity never reads it and needs
+# no escape-hatch entry (the same shape as acceptance-public.yml).
+#
+# Why the Playwright container: fonts and rasterization must be identical
+# on every run, so the golden screenshots (warren-a132) can be generated
+# and compared in exactly this image. The tag must equal the
+# `@playwright/test` devDependency (the image ships the matching browser
+# build at /ms-playwright), and the digest stops a re-pushed tag from
+# shifting pixels under us. `scripts/ui-visual/ci-workflow.test.ts` fails
+# when the tag and the devDependency drift apart. To bump: change both,
+# then refresh the digest with
+#   curl -sI -H 'Accept: application/vnd.oci.image.index.v1+json' \
+#     https://mcr.microsoft.com/v2/playwright/manifests/vX.Y.Z-noble
+# and read `docker-content-digest`.
+#
+# Contract for the downstream steps of pl-10db:
+#   - The job and its status check are both named `ui-visual`. Keep the
+#     name stable: warren-dbef requires it for auto-merge of src/ui PRs.
+#     The path filter means the check never reports on a PR that touches
+#     none of these paths, so require it only for PRs that match them.
+#   - Every run uploads `scripts/ui-visual/out/` (screenshots, HTML report,
+#     traces, and Playwright's expected/actual/diff images once
+#     toHaveScreenshot lands) as `ui-screenshots-<head sha>`, plus
+#     `out/ci-meta.json` naming the PR, head sha, and outcome, so a
+#     `workflow_run` follow-up (warren-70d9's PR comment) can find the
+#     artifact without the PR's write permissions.
+#   - Golden screenshots (warren-a132): `golden.pw.ts` compares every
+#     golden case against `scripts/ui-visual/__golden__/`. It runs only
+#     here: the job sets WARREN_UI_VISUAL_GOLDEN=1, and the spec also
+#     requires linux/x64. A mismatch writes
+#     `out/golden-diff/<case>/{expected,actual,diff}.png` + `result.json`.
+#     Before comparing, `check:ui-goldens` rejects a baseline set whose
+#     `manifest.json` does not match the PNGs, this image, or Playwright.
+#   - Regenerating baselines: dispatch with `update_goldens: true`
+#     (`gh workflow run ui-visual.yml --ref <branch> -f update_goldens=true`).
+#     The run deletes the old PNGs, renders the set with
+#     `--update-snapshots=all`, writes `manifest.json`, and uploads
+#     `__golden__/` as `ui-goldens-<sha>`. It never commits; a human
+#     downloads the artifact and commits it (warren-4780 adds the approval).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/ui/**"
+      - "src/core/**"
+      - "src/client/ndjson.ts"
+      - "src/server/ui.ts"
+      - "src/server/response.ts"
+      - "scripts/ui-visual/**"
+      - ".github/workflows/ui-visual.yml"
+      - "package.json"
+      - "bun.lock"
+      - ".bun-version"
+  push:
+    branches: [main]
+    paths:
+      - "src/ui/**"
+      - "src/core/**"
+      - "src/client/ndjson.ts"
+      - "src/server/ui.ts"
+      - "src/server/response.ts"
+      - "scripts/ui-visual/**"
+      - ".github/workflows/ui-visual.yml"
+      - "package.json"
+      - "bun.lock"
+      - ".bun-version"
+  workflow_dispatch:
+    inputs:
+      update_goldens:
+        description: Regenerate the golden baselines and upload them as ui-goldens-<sha>
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ui-visual:
+    name: ui-visual
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+      # Chromium wants more shared memory than docker's 64 MB default.
+      options: --ipc=host
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Arms golden.pw.ts (scripts/ui-visual/golden-cases.ts goldenGate).
+      WARREN_UI_VISUAL_GOLDEN: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # The image ships Node but not bun. npm installs the exact version in
+      # .bun-version without needing unzip, which the image also lacks.
+      - name: Install bun
+        run: npm install --global --no-fund --no-audit "bun@$(cat .bun-version)"
+
+      - run: bun install --frozen-lockfile
+      # build:ui runs the src/ui frozen-lockfile install itself (ui:install).
+      - run: bun run build:ui
+
+      - name: Check the golden baselines are CI-generated
+        if: ${{ !inputs.update_goldens }}
+        run: bun run check:ui-goldens
+      # Runs even when the guard fails, so smoke still reports and uploads.
+      - name: Compare against the golden baselines
+        if: ${{ !inputs.update_goldens && !cancelled() }}
+        run: bun run check:ui-visual
+
+      - name: Regenerate the golden baselines
+        if: ${{ inputs.update_goldens }}
+        run: |
+          rm -f scripts/ui-visual/__golden__/*.png scripts/ui-visual/__golden__/manifest.json
+          bun run check:ui-visual --update-snapshots=all
+
+      - name: Record run metadata for follow-up workflows
+        if: always()
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          mkdir -p scripts/ui-visual/out
+          printf '{"pr":%s,"headSha":"%s","baseSha":"%s","event":"%s","outcome":"%s"}\n' \
+            "${PR_NUMBER:-null}" "$HEAD_SHA" "$BASE_SHA" "$GITHUB_EVENT_NAME" "$OUTCOME" \
+            > scripts/ui-visual/out/ci-meta.json
+
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots-${{ env.HEAD_SHA }}
+          path: scripts/ui-visual/out/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Write the golden generator manifest
+        if: ${{ inputs.update_goldens && !cancelled() }}
+        run: bun run scripts/ui-visual/goldens.ts write
+      - name: Upload the regenerated baselines
+        if: ${{ inputs.update_goldens && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-goldens-${{ env.HEAD_SHA }}
+          path: scripts/ui-visual/__golden__/
+          retention-days: 14
+          if-no-files-found: error

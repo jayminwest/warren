@@ -148,36 +148,34 @@ describe("buildBwrapArgv", () => {
 		expect(argv.slice(dashDash + 1)).toEqual(["echo", "hi"]);
 	});
 
-	test("workspaceGitdir is bound read-only with writable carve-outs (burrow-7a80, warren-8926)", () => {
-		// Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points
-		// at `<hostClonePath>/.git/worktrees/<id>`. The /workspace bind doesn't
-		// reach that path, so without this mount every git invocation inside the
-		// sandbox fails with `fatal: not a git repository`. The common dir itself
-		// is read-only; only the carve-outs are writable, then the admin binding
-		// files are re-protected — in that order.
-		const admin = "/host/clone/.git/worktrees/ws";
+	test("binds the private git dir read-write over a read-only object store (burrow-7a80, warren-3c1e)", () => {
+		// The workspace `.git` file points at the run's private git dir, which
+		// the /workspace bind doesn't reach. The private dir is writable; its
+		// config and alternates are re-protected after it; only the host
+		// clone's objects/ is mounted (read-only), never the rest of its .git.
+		const gd = "/data/local/gitdirs/ws";
+		const objects = "/host/clone/.git/objects";
+		const alternates = `${gd}/objects/info/alternates`;
 		const argv = buildBwrapArgv(
 			baseProfile({
 				workspace: "/host/ws",
-				workspaceGitdir: "/host/clone/.git",
-				workspaceGitWritable: [admin, "/host/clone/.git/objects"],
-				workspaceGitProtected: [`${admin}/commondir`, "/host/clone/.git/objects/info"],
+				workspaceGit: {
+					gitDir: gd,
+					protectedPaths: [`${gd}/config`, alternates],
+					hostGitDir: "/host/clone/.git",
+					sharedObjects: objects,
+					deniedRoots: ["/data/local/gitdirs", "/data/local/gitdirs-sealed"],
+				},
 			}),
 			cmd(),
 		);
-		expectAdjacent(argv, "--ro-bind", "/host/clone/.git", "/host/clone/.git");
-		expectAdjacent(argv, "--bind", admin, admin);
-		expectAdjacent(argv, "--bind", "/host/clone/.git/objects", "/host/clone/.git/objects");
-		expectAdjacent(argv, "--ro-bind", `${admin}/commondir`, `${admin}/commondir`);
-		const info = "/host/clone/.git/objects/info";
-		expectAdjacent(argv, "--ro-bind", info, info);
-		expect(argv.indexOf("/host/clone/.git/objects")).toBeLessThan(argv.indexOf(info));
-		expect(argv.join(" ")).not.toContain("--bind /host/clone/.git /host/clone/.git");
-		const roCommon = argv.indexOf("/host/clone/.git");
-		const rwAdmin = argv.indexOf(admin);
-		const roProtected = argv.indexOf(`${admin}/commondir`);
-		expect(roCommon).toBeLessThan(rwAdmin);
-		expect(rwAdmin).toBeLessThan(roProtected);
+		expectAdjacent(argv, "--ro-bind", objects, objects);
+		expectAdjacent(argv, "--bind", gd, gd);
+		expectAdjacent(argv, "--ro-bind", `${gd}/config`, `${gd}/config`);
+		expectAdjacent(argv, "--ro-bind", alternates, alternates);
+		expect(argv).not.toContain("/host/clone/.git");
+		expect(argv.indexOf(gd)).toBeLessThan(argv.indexOf(`${gd}/config`));
+		expect(argv.indexOf(gd)).toBeLessThan(argv.indexOf(alternates));
 		// The workspace bind must still be present (and downstream of the gitdir
 		// bind so `/workspace` doesn't shadow anything).
 		expectAdjacent(argv, "--bind", "/host/ws", "/workspace");

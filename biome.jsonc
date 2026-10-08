@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
 	"files": {
 		"includes": [
 			"src/**",
@@ -7,6 +7,7 @@
 			"drizzle.config.ts",
 			"!**/node_modules",
 			"!src/ui/dist",
+			"!scripts/ui-visual/out",
 			"!**/__golden__",
 			"!.claude",
 			"!extensions"
@@ -17,7 +18,7 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"correctness": {
 				"noUnusedVariables": "error",
 				"noUnusedImports": "error",
@@ -62,6 +63,57 @@
 		"lineWidth": 100
 	},
 	"overrides": [
+		// Biome GritQL plugins (warren-6772): raw form elements and style={} are banned in
+		// src/ui/src outside components/ui. The files below the exemption are grandfathered.
+		// BEGIN GENERATED ui-raw-elements: `bun run check:ui-raw-elements --write` rewrites this block
+		// from scripts/ui-raw-elements-allowlist.json. Do not edit by hand.
+		{
+			"includes": [
+				"src/ui/src/**/*.tsx",
+				"!src/ui/src/components/ui/**",
+				"!src/ui/src/components/add-project-dialog.tsx",
+				"!src/ui/src/components/console/console-bottom-nav.tsx",
+				"!src/ui/src/components/console/console-sidebar.tsx",
+				"!src/ui/src/pages/dispatch-plan.tsx",
+				"!src/ui/src/pages/dispatch-plan/walk-form.tsx",
+				"!src/ui/src/pages/dispatch/dispatch-form.tsx",
+				"!src/ui/src/pages/event-explorer-mobile-filter-strip.tsx",
+				"!src/ui/src/pages/event-explorer.tsx",
+				"!src/ui/src/pages/login.tsx",
+				"!src/ui/src/pages/operations.tsx",
+				"!src/ui/src/pages/plan-run-detail.tsx",
+				"!src/ui/src/pages/plan-runs.tsx",
+				"!src/ui/src/pages/run-detail/event-tail.tsx",
+				"!src/ui/src/pages/run-detail/index.tsx",
+				"!src/ui/src/pages/run-detail/preview-panel.tsx",
+				"!src/ui/src/pages/run-detail/side-panels.tsx",
+				"!src/ui/src/pages/run-detail/steering-panel.tsx",
+				"!src/ui/src/pages/runs.tsx",
+				"!src/ui/src/pages/runs/runs-filter-bar.tsx",
+				"!src/ui/src/pages/runs/runs-table.tsx",
+				"!src/ui/src/pages/telemetry.tsx"
+			],
+			"plugins": ["./.biome/plugins/no-raw-form-elements.grit"]
+		},
+		{
+			"includes": [
+				"src/ui/src/**/*.tsx",
+				"!src/ui/src/components/ui/**",
+				"!src/ui/src/pages/login.tsx",
+				"!src/ui/src/pages/plan-run-detail.tsx",
+				"!src/ui/src/pages/plan-run-detail/child-walk.tsx",
+				"!src/ui/src/pages/plan-run-detail/detail-rail.tsx",
+				"!src/ui/src/pages/plan-runs/walk-cards.tsx",
+				"!src/ui/src/pages/plan-runs/walk-row.tsx",
+				"!src/ui/src/pages/runs/runs-table.tsx",
+				"!src/ui/src/pages/telemetry/economics-panels.tsx",
+				"!src/ui/src/pages/telemetry/judge-tab.tsx",
+				"!src/ui/src/pages/telemetry/loop-tab.tsx",
+				"!src/ui/src/pages/telemetry/meter-bar.tsx"
+			],
+			"plugins": ["./.biome/plugins/no-inline-style.grit"]
+		},
+		// END GENERATED ui-raw-elements
 		// Existing files above the project-wide cognitive-complexity limit of 15 are grandfathered.
 		// This ratchet only shrinks: refactor an offender below the limit, then remove its line;
 		// never add new exceptions. The UI entries joined the same policy in warren-c8bd.
@@ -150,6 +202,25 @@
 			"includes": ["scripts/check-all.ts", "scripts/check-ci-parity.ts"],
 			"formatter": {
 				"enabled": false
+			}
+		},
+		// Tailwind class order is canonical across the UI so className diffs stay reviewable
+		// (warren-5f4a, plan pl-10db). "fix": "safe" lets `bun run lint:fix` sort for you.
+		{
+			"includes": ["src/ui/**"],
+			"linter": {
+				"rules": {
+					"nursery": {
+						"useSortedClasses": {
+							"level": "error",
+							"fix": "safe",
+							"options": {
+								"attributes": ["className"],
+								"functions": ["cn", "cva", "clsx"]
+							}
+						}
+					}
+				}
 			}
 		}
 	]

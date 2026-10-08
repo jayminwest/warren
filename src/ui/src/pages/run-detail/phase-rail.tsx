@@ -14,7 +14,7 @@ function PhaseCell({ cell, first, last }: { cell: PhaseCellData; first: boolean;
 		<div
 			className={cn(
 				"flex flex-1 flex-col gap-[5px] px-3 py-2.5",
-				!last && "border-r border-(--color-border)",
+				!last && "border-(--color-border) border-r",
 				cellClass(cell.state),
 				first && "rounded-tl-(--radius-md)",
 			)}
@@ -26,14 +26,14 @@ function PhaseCell({ cell, first, last }: { cell: PhaseCellData; first: boolean;
 				/>
 				<span
 					className={cn(
-						"text-[10px] leading-3 font-medium",
+						"font-medium text-[10px] leading-3",
 						cell.state === "active" ? "text-(--color-text)" : "text-(--color-text-2)",
 					)}
 				>
 					{cell.label}
 				</span>
 			</span>
-			<span className="pl-[13px] font-mono text-[9px] leading-3 text-(--color-text-3)">
+			<span className="pl-[13px] font-mono text-(--color-text-3) text-[9px] leading-3">
 				{cellSub(cell)}
 			</span>
 		</div>
@@ -97,7 +97,7 @@ export function PhaseRail({ run, events }: { run: RunRow; events: RunEvent[] }) 
 export function PhaseRailStrip({ run, events }: { run: RunRow; events: RunEvent[] }) {
 	const phases = derivePhases(run, events);
 	return (
-		<div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-(--color-border) px-3.5 py-3">
+		<div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-(--color-border) border-b px-3.5 py-3">
 			{phases.map((p, i) => (
 				<Fragment key={p.label}>
 					{i > 0 && <span aria-hidden className="h-px w-3.5 shrink-0 bg-(--color-border)" />}

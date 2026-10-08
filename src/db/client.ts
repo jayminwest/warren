@@ -19,7 +19,9 @@
  * `migrate()` so the 12-step ALTER pattern in 0003 survives, FK back on after.
  * Postgres branch: pg.Pool with `max` from options or env-default; migrations
  * apply via `drizzle-orm/node-postgres/migrator` against the per-dialect
- * folder. `pg.Pool.end()` is async — the close hook awaits it, which is why
+ * folder. The pool is a `RetryingPool` (warren-a5d2): a connection refused
+ * while Postgres restarts is retried briefly at acquire time, never mid-query.
+ * `pg.Pool.end()` is async — the close hook awaits it, which is why
  * `WarrenDb.close()` was always typed as `Promise<void>`.
  */
 
@@ -31,8 +33,9 @@ import { drizzle as drizzleSqlite } from "drizzle-orm/bun-sqlite";
 import { migrate as migrateSqlite } from "drizzle-orm/bun-sqlite/migrator";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import { migrate as migratePg } from "drizzle-orm/node-postgres/migrator";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import { ValidationError } from "../core/errors.ts";
+import { type ConnectRetryOptions, RetryingPool } from "./connect-retry.ts";
 import * as pgSchema from "./schema/postgres.ts";
 import * as schema from "./schema.ts";
 import { parseDatabaseUrl } from "./url.ts";
@@ -113,6 +116,12 @@ export interface OpenDatabaseOptions {
 	 * (read by step 5 server config). Defaults to `DEFAULT_PG_POOL_MAX`.
 	 */
 	pgPoolMax?: number;
+	/**
+	 * Bounded retry of a refused Postgres connection at acquire time
+	 * (warren-a5d2, `./connect-retry.ts`). Defaults to the module's short
+	 * backoff; pass `{ delaysMs: [] }` to disable.
+	 */
+	pgConnectRetry?: ConnectRetryOptions;
 }
 
 export async function openDatabase(options: {
@@ -181,7 +190,7 @@ async function openPostgres(
 		});
 	}
 
-	const pool = new Pool({ connectionString, max });
+	const pool = new RetryingPool({ connectionString, max }, options.pgConnectRetry);
 	const db = drizzlePg(pool, { schema: pgSchema });
 
 	if (!options.skipMigrations) {

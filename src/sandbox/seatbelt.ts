@@ -149,34 +149,30 @@ export function buildSeatbeltProfile(
 }
 
 /**
- * Worktree-backed workspaces carry a `.git` *file* whose `gitdir:` points at
- * `<gitCommonDir>/worktrees/<id>`, outside the workspace subpath. Read on the
- * common dir lets the pointer dereference so the agent can run `git commit`
- * in its workspace (burrow-7a80). Write is granted only on the validated
- * carve-outs (own admin dir, objects/refs/logs, plus the packed-refs literals
- * git locks during ref updates); the admin dir's binding/config files are
- * denied again (warren-8926). Seatbelt resolves symlinks and refuses hard
- * links and renames onto a denied path, so a carve-out cannot write through.
+ * The workspace's `.git` file points at the run's private git dir, outside
+ * the workspace subpath (burrow-7a80). The run owns that dir (warren-3c1e):
+ * read+write, except its `config` and `objects/info/alternates`, and its
+ * root cannot be renamed or removed (bwrap/docker get that for free because
+ * the root is a mount point). The host clone's git dir and the gitdirs root
+ * holding sibling runs' private dirs are denied outright — even under a broad
+ * grant such as /private/tmp — except the host `objects/` (readable, the
+ * alternate object store) and the run's own dir. Seatbelt
+ * resolves symlinks and refuses hard links and renames onto a denied path.
  */
 function renderWorkspaceGitRules(profile: SandboxProfile): string[] {
-	const common = profile.workspaceGitdir;
-	if (!common) return [];
+	const git = profile.workspaceGit;
+	if (git === undefined) return [];
 	const rw = "file-read-data file-read-metadata file-write*";
 	const out = [
-		`(allow file-read-data file-read-metadata (subpath ${sbString(common)}))`,
-		`(deny file-write* (subpath ${sbString(common)}))`,
+		`(deny file-read-data file-write* (subpath ${sbString(git.hostGitDir)}))`,
+		...git.deniedRoots.map(
+			(root) => `(deny file-read-data file-write* (subpath ${sbString(root)}))`,
+		),
+		`(allow file-read-data file-read-metadata (subpath ${sbString(git.sharedObjects)}))`,
+		`(allow ${rw} (subpath ${sbString(git.gitDir)}))`,
+		`(deny file-write-unlink (literal ${sbString(git.gitDir)}))`,
 	];
-	for (const name of ["packed-refs", "packed-refs.lock"]) {
-		out.push(`(allow ${rw} (literal ${sbString(join(common, name))}))`);
-	}
-	for (const path of profile.workspaceGitWritable ?? []) {
-		out.push(`(allow ${rw} (subpath ${sbString(path)}))`);
-		// A subpath grant also matches the root itself: forbid renaming or
-		// removing the carve-out root so it cannot be swapped for another dir
-		// (bwrap/docker get this for free — each root is a mount point).
-		out.push(`(deny file-write-unlink (literal ${sbString(path)}))`);
-	}
-	for (const path of profile.workspaceGitProtected ?? []) {
+	for (const path of git.protectedPaths) {
 		out.push(`(deny file-write* (subpath ${sbString(path)}))`);
 	}
 	return out;
