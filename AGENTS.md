@@ -754,6 +754,40 @@ public-instance leak guard. It is the only scenario wired into CI, via
 `bun run acceptance:public`. The rest of the suite runs locally and on
 the nightly workflow.
 
+## UI bugs: reproduction first
+
+A UI bug fix starts with a failing reproduction (warren-9fd7). Do not
+change non-test code until the reproduction exists and fails. This rule
+applies to every seed or issue that reports a rendering, layout, or copy
+defect in `src/ui/`, and to every agent that works one.
+
+1. Write `scripts/ui-visual/repros/<seed-id>.pw.ts`. It loads the page
+   through `openCase` from `scripts/ui-visual/harness.ts` against the
+   fixture boot. Assert on layout, overflow, or text. Use a targeted
+   `toHaveScreenshot` only when no structural assertion can see the bug,
+   because screenshots match only inside the CI container.
+2. Run `bun run check:ui-visual --build repros/<seed-id>.pw.ts` and
+   confirm that it fails for the reason the issue describes. Commit the
+   spec alone.
+3. Fix the bug. Run the same command and confirm that the spec passes.
+   Commit the fix.
+4. In the PR body, link the red commit and the green commit, and paste
+   the failing assertion from step 2.
+
+If the fixture data cannot show the bug, shape the response inside the
+spec with `page.route`, as `scripts/ui-visual/repros/warren-e9cd.pw.ts`
+does. The repro stays in the tree after the merge. `check:ui-visual`
+runs every file in the directory, so the bug cannot return silently.
+
+Name each file `<seed-id>.pw.ts`, never `<seed-id>.spec.ts`, because
+`bun test` loads spec files. `scripts/ui-visual/repros.test.ts` enforces
+the name.
+
+Human reporters use the UI bug issue template
+(`.github/ISSUE_TEMPLATE/ui-bug.yml`), which asks for the page,
+viewport, theme, and a screenshot. The harness details are in
+[scripts/ui-visual/README.md](scripts/ui-visual/README.md).
+
 ## Session completion protocol
 
 When ending a work session, complete ALL steps:

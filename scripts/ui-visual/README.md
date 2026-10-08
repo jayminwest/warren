@@ -166,6 +166,35 @@ runs in the workflow before every comparison. It fails when:
 - a page manifest case has no baseline, or a baseline has no case
 - the set is over 8 MB, or a stray file sits in `__golden__/`
 
+### The PR comment
+
+`.github/workflows/ui-visual-comment.yml` (warren-70d9) follows every
+completed ui-visual PR run with `workflow_run`. It runs the default branch's
+`pr-comment.ts`, downloads `ui-screenshots-<sha>`, and keeps ONE comment on
+the PR, keyed by the hidden marker `<!-- ui-visual -->`:
+
+- Golden diffs: a row per failed case (page, viewport, theme, share of
+  pixels changed) and, for the six biggest changes, one PNG with the golden,
+  the PR's render, and the diff side by side. Each crop is cut to the bounding
+  box of the red pixels in `diff.png`, padded by 24 px, capped at 900 rows,
+  and halved (or more) when the strip is wider than 2400 px.
+- A later green run edits the comment to say the goldens match. A clean PR
+  that never failed gets no comment.
+
+The crops are committed to the orphan branch `ui-visual-artifacts` through
+the Git Data API and embedded by raw URL; a workflow artifact cannot be
+shown inline. Every write drops files older than 30 days, and the branch
+history restarts once a month, so the branch stays small. If the push
+fails, the comment still lists the cases and links the artifact.
+
+The job never runs PR code. The PR number in `ci-meta.json` counts only
+when that open PR's head sha equals the run's head sha from the API. It
+posts with the auto-merge GitHub App token. Re-post for any run with
+`gh workflow run ui-visual-comment.yml -f run_id=<ui-visual run id>`.
+
+`sticky-comment.ts` is the reusable part: any other bot comment (the
+design-review findings, warren-a694) passes its own `stickyMarker(name)`.
+
 ### Masks
 
 Mark anything that changes per release, per host, or per wall-clock second
@@ -184,6 +213,37 @@ no longer exists.
 Mark a wall-clock value in the UI with a `data-visual-mask` attribute so
 screenshots blank it. Use the per-page `mask` selectors only when the markup
 cannot carry the attribute.
+
+## Reproductions
+
+A UI bug fix starts with a failing reproduction (warren-9fd7). The spec
+lives in `repros/<seed-id>.pw.ts`, one per bug, and stays after the fix as
+a regression guard. Playwright's `testMatch` already covers the directory,
+so `check:ui-visual` runs every repro with the other specs. The workflow:
+
+1. Write the spec. Load the page with `openCase` from `harness.ts`, then
+   assert on what the bug breaks: element counts, bounding boxes,
+   overflow, or text. A targeted `toHaveScreenshot` is the last resort,
+   because screenshots only match inside the CI container and a repro must
+   hold on a laptop too.
+2. Run it and watch it fail for the reported reason, then commit it alone:
+
+   ```bash
+   bun run check:ui-visual --build repros/<seed-id>.pw.ts
+   ```
+
+3. Fix the bug, run the same command until it passes, and commit the fix.
+4. Link both commits in the PR body, with the failing assertion text.
+
+When the seeded fixture cannot show the bug, reshape the API response in
+the spec with `page.route`, as `repros/warren-e9cd.pw.ts` does to send the
+sparse daily series production returned. Filter cases from
+`harnessCases()` down to the pages, viewports, and themes the bug touches.
+
+Name repros `<seed-id>.pw.ts`, never `<seed-id>.spec.ts`: `bun test` would
+load a spec file and fail the root suite. `repros.test.ts` enforces the
+name and checks that `.github/ISSUE_TEMPLATE/ui-bug.yml` keeps asking for
+the page, viewport, theme, and a screenshot.
 
 ## Known failures
 
@@ -207,6 +267,12 @@ delete its entry in the PR that fixes it.
   `node:` modules, because `auto-merge.yml` runs the base branch's copy alone.
 - `__golden__/`: the committed baselines and `manifest.json`. CI writes them,
   never a laptop.
+- `repros/`: one `<seed-id>.pw.ts` reproduction per UI bug;
+  `repros.test.ts` guards the names and the UI bug issue template.
+- `pr-comment.ts`: the PR-comment job. `diff-comment.ts` picks the cases and
+  writes the text, `diff-crop.ts` and `png.ts` cut the crops,
+  `artifact-branch.ts` hosts them, `sticky-comment.ts` and `gh-api.ts` talk
+  to GitHub (`fake-gh-api.ts` stands in for it under `bun test`).
 - `fixture-env.ts`: parses the fixture hand-off from `run.ts`.
 - `run.ts`: the `check:ui-visual` entry point.
 - `playwright.config.ts`: Chromium only. `snapshotPathTemplate` points at

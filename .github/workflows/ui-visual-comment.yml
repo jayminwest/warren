@@ -1,0 +1,87 @@
+name: UI visual comment
+
+# Posts the golden screenshot diffs of a ui-visual run as ONE sticky PR
+# comment (warren-70d9, plan pl-10db step 12): a row per failed case (page,
+# viewport, theme, diff pixel ratio) and a cropped expected | actual | diff
+# image for up to six of them. A later run that matches the goldens edits
+# the same comment to say so. The comment is keyed by `<!-- ui-visual -->`;
+# warren-a694's design-review comment uses its own marker through the same
+# helper (scripts/ui-visual/sticky-comment.ts).
+#
+# Why workflow_run: the ui-visual job runs PR code (and fork PRs) with a
+# read-only token and no secrets. This job runs the DEFAULT branch's code
+# with write access, and only reads the run's artifact as data. It never
+# checks out or runs the PR's code, so the App token minted here is never
+# reachable from a PR branch. The PR number in the artifact counts only when
+# the open PR's head sha equals the run's head sha (from the API).
+#
+# Images: the crops are committed to the orphan `ui-visual-artifacts` branch
+# through the Git Data API and embedded by raw URL. Files older than 30 days
+# are pruned on every write (scripts/ui-visual/artifact-branch.ts). If that
+# push fails, the comment still lists the cases and links the artifact.
+#
+# Uses the same GitHub App installation token as auto-merge.yml and
+# size-overshoot-report.yml (AUTO_MERGE_APP_ID + AUTO_MERGE_APP_PRIVATE_KEY):
+# it needs pull_requests: write for the comment and contents: write for the
+# artifact branch. Without the App configured it falls back to GITHUB_TOKEN
+# with the job permissions below.
+#
+# NOTE: workflow_run jobs run from the default branch's copy of this file,
+# so it takes effect once merged. `workflow_dispatch` with a run id re-posts
+# the comment for any ui-visual run (run_id from `gh run list -w ui-visual.yml`).
+
+on:
+  workflow_run:
+    workflows: [UI visual]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: The ui-visual run to report on
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: ui-visual-comment-${{ github.event.workflow_run.head_sha || inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    name: ui-visual-comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'pull_request' &&
+       contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion))
+    steps:
+      - name: Mint app installation token
+        id: app-token
+        if: ${{ vars.AUTO_MERGE_APP_ID != '' }}
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
+      # The default branch, never the PR head: this job only runs trusted code.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # No `bun install`: the comment scripts import node builtins and their
+      # own modules only, so nothing from the registry runs next to the token.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Post or update the sticky comment
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        run: bun scripts/ui-visual/pr-comment.ts

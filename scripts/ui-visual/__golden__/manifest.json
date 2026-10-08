@@ -4,10 +4,10 @@
 	"playwright": "1.64.0",
 	"image": "mcr.microsoft.com/playwright:v1.64.0-noble",
 	"digest": "sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f",
-	"sha": "7a3b18c201753bc36504837d70809d28c709618a",
+	"sha": "1f607abdaa66ab300b6153365a63ea38cfc8763c",
 	"run": {
-		"id": "37803800953",
-		"url": "https://github.com/jayminwest/warren/actions/runs/37803800953"
+		"id": "37806975137",
+		"url": "https://github.com/jayminwest/warren/actions/runs/37806975137"
 	},
 	"files": {
 		"agents-desktop-dark.png": {
@@ -29,14 +29,14 @@
 			"height": 852
 		},
 		"dispatch-desktop-dark.png": {
-			"sha256": "1638ae185a8ac23ebe3a962ee9fb01bbd2f37d8f71cc4aa5e93c6d5da4ff1d90",
-			"bytes": 91657,
+			"sha256": "11a98538300a123b46db6cfd382101e6e96de8fba2309edf2f8eeca539d9adaa",
+			"bytes": 91679,
 			"width": 1440,
 			"height": 990
 		},
 		"dispatch-desktop-light.png": {
-			"sha256": "e0b78ccba3136879c3c531260c65f4e2427ef3d73044a0e5786ac1b533db0375",
-			"bytes": 92160,
+			"sha256": "af80812b7d6f3bcf2b1015bfcd0b249e619450c8cb02c06cadf534b921631d43",
+			"bytes": 92141,
 			"width": 1440,
 			"height": 990
 		},
@@ -47,8 +47,8 @@
 			"height": 1467
 		},
 		"dispatch-plan-desktop-dark.png": {
-			"sha256": "fc28acfcd1b48b5698d5e83c513e78851c086f5b0ca2d54eb88aba8d398e658e",
-			"bytes": 110079,
+			"sha256": "02b099752db399b0196dbabc3b293770b31768173ad29e478aff574017d18820",
+			"bytes": 110060,
 			"width": 1440,
 			"height": 1115
 		},
@@ -77,8 +77,8 @@
 			"height": 2186
 		},
 		"events-phone-light.png": {
-			"sha256": "eb09f7ef374bd2efb8235975cc4e171f8d0e12e46d563be1d9d2a5aa23eb7769",
-			"bytes": 285931,
+			"sha256": "abf6f9645e30bc448c92832c9cfbfe6f05d4eae19fabbc8bff4362822d843dd7",
+			"bytes": 285978,
 			"width": 393,
 			"height": 3234
 		},
@@ -119,20 +119,20 @@
 			"height": 852
 		},
 		"operations-desktop-dark.png": {
-			"sha256": "28ba880ad01e0d04dc4c59b4df643ee49ea61cc432680229ce170b5e364f705f",
-			"bytes": 124418,
+			"sha256": "23165cfbd44701054d8139dbb3cfdabf23aaac14572b2cd139d0136b10ad714f",
+			"bytes": 124363,
 			"width": 1440,
 			"height": 922
 		},
 		"operations-desktop-light.png": {
-			"sha256": "ee3d8ccbf2d6f3c08d3a1a8bc8d4d4bddb697298bb57c8250316a0453020f143",
-			"bytes": 124248,
+			"sha256": "5b2258f10ee97d65422efb8ddfb97289397654deb8ab9571184e60e82f054bde",
+			"bytes": 124193,
 			"width": 1440,
 			"height": 922
 		},
 		"operations-phone-light.png": {
-			"sha256": "afaf480deb2a1f15add0f25df421e7cb7977222383f6a2a58f53e0fc022ff48c",
-			"bytes": 66258,
+			"sha256": "27c70d5b784b7ce1dc3fb504f43cee3069c73cded7db6885fdaf4adcbbcd9b6d",
+			"bytes": 66241,
 			"width": 393,
 			"height": 1089
 		},
@@ -173,20 +173,20 @@
 			"height": 852
 		},
 		"project-detail-desktop-dark.png": {
-			"sha256": "dda2a2f9e8f0c45d096b568382b7b8c226996b5af542589968b597cf40c8c759",
-			"bytes": 84987,
+			"sha256": "9e9053de3cca70ab5d1ec85d10bda3dff643e9fc18c3616a119dcb5e04f21766",
+			"bytes": 84993,
 			"width": 1440,
 			"height": 900
 		},
 		"project-detail-desktop-light.png": {
-			"sha256": "ffdb5f2814095c789adf7ff232dc17503fd59e4d1debff963c4e621a2c1c2d3a",
-			"bytes": 85112,
+			"sha256": "21e0b41b90fe9af41b6d3cedba6beb767b1ab26848bcd1293ee64fb30dd3d5e9",
+			"bytes": 85094,
 			"width": 1440,
 			"height": 900
 		},
 		"project-detail-phone-light.png": {
-			"sha256": "780807d29595112fbbae9bb368acfd1699c377e34faec89d12de741f17ca191b",
-			"bytes": 56682,
+			"sha256": "65aaee958e108353a70603dedf22b15f36461f988986d03889195e88a70e31fa",
+			"bytes": 56647,
 			"width": 393,
 			"height": 1230
 		},
@@ -197,8 +197,8 @@
 			"height": 900
 		},
 		"projects-desktop-light.png": {
-			"sha256": "3afe53dde1b0f9d4a17a0e7aa4fac088b7f5636562ba126813b0e7bfdf87723b",
-			"bytes": 54881,
+			"sha256": "80b5eb51e21f33ba00f2b1c7073ff86fec8c8d619a8da6046a178c4011269f04",
+			"bytes": 54864,
 			"width": 1440,
 			"height": 900
 		},
@@ -209,8 +209,8 @@
 			"height": 852
 		},
 		"run-detail-desktop-dark.png": {
-			"sha256": "b2c34770725d7879aaddc6fe8158a721dd5a0867875324ffcb4cf099b370f317",
-			"bytes": 151354,
+			"sha256": "a4ee15a76985242d00e6c39ad7a5858e9fcf109eaccf5f1891697c68cd676ccb",
+			"bytes": 151347,
 			"width": 1440,
 			"height": 900
 		},
@@ -263,20 +263,20 @@
 			"height": 852
 		},
 		"telemetry-behavior-desktop-dark.png": {
-			"sha256": "f61c343cbc45d4059b79a4ae806fdc6aad942b55e8702f42ffff17d5179d3fd8",
-			"bytes": 74356,
+			"sha256": "fa6a5da7ed870828e131b0a3e242069db3d2c925d9c8468d3138800f0b6e3de2",
+			"bytes": 74335,
 			"width": 1440,
 			"height": 900
 		},
 		"telemetry-behavior-desktop-light.png": {
-			"sha256": "78c27d38ff53c2178802bc14e97727ba83bc562b21e6d9f9700e9973995a1c00",
-			"bytes": 74345,
+			"sha256": "86840ae06a3c5434024b1b92470052d2ad790a873b5d46ad13cd7ac65637e1cd",
+			"bytes": 74291,
 			"width": 1440,
 			"height": 900
 		},
 		"telemetry-behavior-phone-light.png": {
-			"sha256": "51d7b6866ffee9008c1de838a039ba760f801b072157d664173072d427be4972",
-			"bytes": 177116,
+			"sha256": "eff37f697ad38c4b9e6054d9c36eb94d855149be1aadb91904f901ae3656c931",
+			"bytes": 176883,
 			"width": 393,
 			"height": 3852
 		},
@@ -293,8 +293,8 @@
 			"height": 2758
 		},
 		"telemetry-economics-phone-light.png": {
-			"sha256": "51d7b6866ffee9008c1de838a039ba760f801b072157d664173072d427be4972",
-			"bytes": 177116,
+			"sha256": "eff37f697ad38c4b9e6054d9c36eb94d855149be1aadb91904f901ae3656c931",
+			"bytes": 176883,
 			"width": 393,
 			"height": 3852
 		},
@@ -305,20 +305,20 @@
 			"height": 1042
 		},
 		"telemetry-judge-desktop-light.png": {
-			"sha256": "c8e2be313e1ff93da144fda2133f63c0c463c978a5c33b71acb3f0efdd7c52cf",
-			"bytes": 102875,
+			"sha256": "ea01e0ca29f4304c540466587a410d9984368f006caa3860e272bf89936c469b",
+			"bytes": 102873,
 			"width": 1440,
 			"height": 1042
 		},
 		"telemetry-judge-phone-light.png": {
-			"sha256": "bf01d38d189baf152e825efd6480c71bf95bacf790c7fcd0e76ae0853577dce4",
-			"bytes": 177120,
+			"sha256": "be1028e3520fd19fc351d9fa1a7ab257e39ef5edbfb449ce303418b01315d0ef",
+			"bytes": 176887,
 			"width": 393,
 			"height": 3852
 		},
 		"telemetry-loop-desktop-dark.png": {
-			"sha256": "798ca573d2e0ad6846a458c2962565f3add5ea0143249f708117c101d5631fdf",
-			"bytes": 69431,
+			"sha256": "154fa3c6458153f0d5115f3c5f39569e1929d751abb15b4c05c79fbcb7774959",
+			"bytes": 69450,
 			"width": 1440,
 			"height": 900
 		},
@@ -329,8 +329,8 @@
 			"height": 900
 		},
 		"telemetry-loop-phone-light.png": {
-			"sha256": "51d7b6866ffee9008c1de838a039ba760f801b072157d664173072d427be4972",
-			"bytes": 177116,
+			"sha256": "be1028e3520fd19fc351d9fa1a7ab257e39ef5edbfb449ce303418b01315d0ef",
+			"bytes": 176887,
 			"width": 393,
 			"height": 3852
 		}

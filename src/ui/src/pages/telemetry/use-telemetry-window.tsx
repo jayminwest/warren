@@ -6,7 +6,11 @@ import {
 	runAnalyticsApi,
 } from "@/api/client.ts";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
-import { telemetryAnalyticsFilter, telemetryQueryKey } from "./telemetry-window.helpers.ts";
+import {
+	telemetryAnalyticsFilter,
+	telemetryQueryKey,
+	telemetryWindowBounds,
+} from "./telemetry-window.helpers.ts";
 
 /**
  * The Telemetry window (warren-7197 / pl-7e38 step 14): the shared
@@ -29,7 +33,7 @@ export interface TelemetryWindow {
 	/** Selected project id, or null for every project (warren-1548). */
 	readonly projectId: string | null;
 	readonly setProjectId: (projectId: string | null) => void;
-	/** ISO instant: the window start (now - days). */
+	/** ISO instant: UTC midnight opening the first day of the window. */
 	readonly from: string;
 	/** ISO instant: the window end (now). */
 	readonly to: string;
@@ -49,13 +53,9 @@ export function TelemetryWindowProvider({ children }: { children: ReactNode }) {
 	const [days, setDays] = useState<TelemetryRangeDays>(DEFAULT_TELEMETRY_RANGE_DAYS);
 	const [projectId, setProjectId] = useState<string | null>(null);
 
-	const { from, to } = useMemo(() => {
-		const now = Date.now();
-		return {
-			from: new Date(now - days * 24 * 60 * 60 * 1000).toISOString(),
-			to: new Date(now).toISOString(),
-		};
-	}, [days]);
+	// Calendar days in UTC (warren-e9cd): "14 days" is today and the 13
+	// days before it, so every figure and the outcome chart agree.
+	const { from, to } = useMemo(() => telemetryWindowBounds(days, Date.now()), [days]);
 
 	const caps = useCapabilities();
 	const isOperator = caps.can("readOperator");
