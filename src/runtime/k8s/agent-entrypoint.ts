@@ -365,12 +365,11 @@ export async function runAgent(
 		await hold.stop();
 	}
 
-	// Exit 137 is the kubelet/kernel SIGKILL an OOM produces; surface it as a
-	// distinct system event (parity with burrow's dispatch, design §3.2). The
-	// pod-watcher/status-map also catches the real OOMKilled container reason —
-	// this is the in-stream witness.
+	// Exit 137 is a SIGKILL from ANYONE: a cgroup OOM, or a Spot node shutting
+	// down (warren-a757). In-pod we cannot tell which, so the witness is neutral;
+	// the runtime's `terminated.reason == OOMKilled` (status-map) owns `oom_killed`.
 	if (exitCode === 137) {
-		emitSystem(out, "oom_killed", { exitCode });
+		emitSystem(out, "agent_killed", { exitCode, signal: "SIGKILL" });
 	}
 	if (streamError !== undefined) {
 		emitSystem(out, "error", {

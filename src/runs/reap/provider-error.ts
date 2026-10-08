@@ -83,6 +83,26 @@ export interface ProviderErrorSignal {
 	readonly httpStatus: number | null;
 	/** The upstream error body (redacted + truncated) when embedded, else `null`. */
 	readonly upstreamBody: string | null;
+	/**
+	 * Set when the "error" is the runtime's SYNTHESIZED `agent_end` (warren-9a4a:
+	 * the agent process exited without its own terminal envelope) — the exit
+	 * code it carried. No model turn produced it, so reap asks the runtime
+	 * whether the substrate killed the agent before blaming the provider
+	 * (warren-a757, `./infra-loss.ts`). Absent for a model-authored error.
+	 */
+	readonly synthesizedExitCode?: number | null;
+}
+
+/** The runtime's marker on a synthesized `agent_end` (k8s entrypoint, local drive). */
+const SYNTHESIZED_EXIT_REASON = "agent_exit_without_terminal_envelope";
+
+/** The synthesized exit's code, when `env` is the runtime's synthesized `agent_end`. */
+function synthesizedExit(env: AgentEventEnvelope): { synthesizedExitCode: number | null } | null {
+	if (env.payload.synthesized !== true || env.payload.reason !== SYNTHESIZED_EXIT_REASON) {
+		return null;
+	}
+	const code = env.payload.exitCode;
+	return { synthesizedExitCode: typeof code === "number" ? code : null };
 }
 
 /** The `reap.provider_error` event payload for a detected signal (warren-4001). */
@@ -217,6 +237,7 @@ function enrichProviderError(
 		model,
 		httpStatus,
 		upstreamBody: upstream === null ? null : sanitizeProviderText(upstream.body, envPattern),
+		...synthesizedExit(env),
 	};
 }
 
