@@ -226,7 +226,9 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		expect(events).toHaveLength(1);
 		expect(events[0]?.kind).toBe(UNKNOWN_TRIGGER_EVENT);
 		expect(events[0]?.stream).toBe("system");
-		expect((events[0]?.payloadJson as { trigger: string }).trigger).toBe("totally-made-up");
+		expect((events[0]?.payloadJson as { trigger: string } | undefined)?.trigger).toBe(
+			"totally-made-up",
+		);
 	});
 });
 

@@ -67,7 +67,7 @@ export function ProjectFactsPanel({ project }: { project: ProjectRow }) {
 			<dl className="flex flex-col gap-2.5 px-3.5 py-3">
 				{rows.map((row) => (
 					<div key={row.label} className="flex items-center gap-2.5">
-						<dt className="max-md:w-[110px] md:w-[100px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
+						<dt className="shrink-0 text-(--color-text-3) text-[11px] leading-[14px] max-md:w-[110px] md:w-[100px]">
 							{row.label}
 						</dt>
 						<dd
@@ -103,7 +103,7 @@ export function RecentRunsPanel({ projectId }: { projectId: string }) {
 				<div className="min-w-0 flex-1" />
 				<Link
 					to="/runs"
-					className="text-[10px] leading-3 font-medium text-(--color-primary) underline-offset-2 hover:underline"
+					className="font-medium text-(--color-primary) text-[10px] leading-3 underline-offset-2 hover:underline"
 				>
 					View all →
 				</Link>
@@ -134,13 +134,13 @@ function RecentRunRow({ run }: { run: RunRow }) {
 			/>
 			<Link
 				to={`/runs/${encodeURIComponent(run.id)}`}
-				className="min-w-0 truncate font-mono text-[10px] leading-3 text-(--color-text-2) underline-offset-2 hover:underline"
+				className="min-w-0 truncate font-mono text-(--color-text-2) text-[10px] leading-3 underline-offset-2 hover:underline"
 			>
 				{run.id}
 			</Link>
 			<div className="min-w-0 flex-1" />
 			<span
-				className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)"
+				className="shrink-0 font-mono text-(--color-text-3) text-[9px] leading-3"
 				title={startedAtOf(run) ?? undefined}
 			>
 				{relativeTime(startedAtOf(run))}
