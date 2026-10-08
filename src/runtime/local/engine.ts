@@ -31,7 +31,6 @@ import { collectProviderEnv } from "../../core/providers.ts";
 import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import { defaultFs } from "../../runs/reap/util.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
-import { branchExists, discoverHostClone } from "../../workspace/git/worktree.ts";
 import {
 	type MaterializedWorkspace,
 	materializeProjectWorkspace,
@@ -63,6 +62,7 @@ import {
 } from "./manifest.ts";
 import {
 	type LocalStateRoots,
+	localGitDirPath,
 	localHomePath,
 	localSandboxId,
 	localWorkspacePath,
@@ -133,26 +133,27 @@ export class LocalEngine {
 		const homePath = localHomePath(this.roots, sandboxId);
 		await mkdir(homePath, { recursive: true, mode: 0o700 });
 
+		const gitDirPath = localGitDirPath(this.roots, sandboxId);
+		const reclaimDirs = async (): Promise<void> => {
+			for (const dir of [homePath, workspacePath, gitDirPath]) {
+				await rm(dir, { recursive: true, force: true }).catch(() => {});
+			}
+		};
+
 		let workspace: MaterializedWorkspace;
 		try {
-			// warren-326f: an existing-branch dispatch pins branch === baseBranch and
-			// the branch already exists locally (the refresh checked it out) and on
-			// the remote. Carving it with `-b` would fail; a non-detached checkout
-			// would collide with the host clone's HEAD — so check out detached when
-			// the branch pre-exists, and never delete it at teardown (it predates
-			// the run). Every other dispatch takes the untouched carve path.
-			let checkoutExisting = false;
-			if (spec.branch === spec.baseBranch) {
-				const hostClone = await discoverHostClone(spec.hostClonePathHint);
-				checkoutExisting =
-					hostClone !== null && (await branchExists(hostClone.topLevel, spec.branch));
-			}
+			// warren-3c1e: the run gets a private git dir over the host clone's
+			// object store, so its branch ref exists only there. The branch starts
+			// at baseBranch — which, on a warren-326f existing-branch dispatch
+			// (branch === baseBranch), is the branch's own tip. Nothing is carved
+			// in or deleted from the host clone.
 			workspace = await materializeProjectWorkspace({
 				workspacePath,
 				branch: spec.branch,
-				...(checkoutExisting ? { detached: true as const } : { createBranch: true as const }),
+				createBranch: true,
 				baseBranch: spec.baseBranch,
 				projectRoot: spec.hostClonePathHint,
+				privateGitDir: gitDirPath,
 				// warren-8926: no originUrl — the clone fallback is refused for
 				// local/docker runs (see pinWorkspaceGit), so fail fast instead.
 			});
@@ -160,8 +161,7 @@ export class LocalEngine {
 		} catch (err) {
 			// Partial-failure cleanup (the rollback posture burrow's provider owned):
 			// reclaim the dirs we made and rethrow the ORIGINAL error.
-			await rm(homePath, { recursive: true, force: true }).catch(() => {});
-			await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
+			await reclaimDirs();
 			throw err;
 		}
 
@@ -169,8 +169,8 @@ export class LocalEngine {
 		const frontmatter = readFrontmatterForProfile(spec.metadata);
 		let profile: Awaited<ReturnType<typeof buildLocalSandboxProfile>>;
 		try {
-			// warren-8926: validate the worktree git scope BEFORE the agent runs
-			// and pin host-side git for this workspace to it.
+			// warren-8926/3c1e: validate the private git scope BEFORE the agent
+			// runs and pin host-side git for this workspace to it.
 			const gitScope = pinWorkspaceGit(workspace.workspacePath, workspace.source);
 			profile = await buildLocalSandboxProfile({
 				spec,
@@ -185,8 +185,7 @@ export class LocalEngine {
 			await removeMaterializedWorkspace({ workspacePath, source: workspace.source }).catch(
 				() => {},
 			);
-			await rm(homePath, { recursive: true, force: true }).catch(() => {});
-			await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
+			await reclaimDirs();
 			throw err;
 		}
 
@@ -440,6 +439,11 @@ export class LocalEngine {
 			await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
 			unpinWorkspaceGit(workspacePath);
 		}
+		// The private git dir path is deterministic from the sandbox id, so it is
+		// reclaimed even when the manifest is already gone (warren-3c1e).
+		await rm(localGitDirPath(this.roots, handle.sandboxId), { recursive: true, force: true }).catch(
+			() => {},
+		);
 		if (homePath !== null) {
 			await rm(homePath, { recursive: true, force: true }).catch(() => {});
 		}

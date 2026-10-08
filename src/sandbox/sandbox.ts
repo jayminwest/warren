@@ -223,12 +223,14 @@ function canonicalizeProfilePaths(profile: SandboxProfile): SandboxProfile {
 		toolchainPaths: profile.toolchainPaths.map(realpathOrSelf),
 		sshAuthSock: profile.sshAuthSock ? realpathOrSelf(profile.sshAuthSock) : profile.sshAuthSock,
 	};
-	if (profile.workspaceGitdir) out.workspaceGitdir = realpathOrSelf(profile.workspaceGitdir);
-	if (profile.workspaceGitWritable) {
-		out.workspaceGitWritable = profile.workspaceGitWritable.map(realpathOrSelf);
-	}
-	if (profile.workspaceGitProtected) {
-		out.workspaceGitProtected = profile.workspaceGitProtected.map(realpathOrSelf);
+	const git = profile.workspaceGit;
+	if (git !== undefined) {
+		out.workspaceGit = {
+			gitDir: realpathOrSelf(git.gitDir),
+			protectedPaths: git.protectedPaths.map(realpathOrSelf),
+			hostGitDir: realpathOrSelf(git.hostGitDir),
+			sharedObjects: realpathOrSelf(git.sharedObjects),
+		};
 	}
 	return out;
 }

@@ -33,7 +33,7 @@ import { dirname, join } from "node:path";
 import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
 import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import { WARREN_SANDBOX_GIT_ENV } from "../../sandbox/git-preflight.ts";
-import { resolveWorkspaceGitScope, type WorkspaceGitScope } from "../../sandbox/git-scope.ts";
+import type { PrivateGitScope } from "../../sandbox/git-scope.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
 import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
@@ -306,26 +306,25 @@ export interface BuildProfileInput {
 	readonly frontmatter?: Record<string, unknown>;
 	/** Test seam for `Bun.which`. */
 	readonly which?: (name: string) => string | null;
-	/** Pre-resolved git scope (the engine pins it); resolved here when omitted. */
-	readonly gitScope?: WorkspaceGitScope | null;
+	/** The validated private git scope the engine pinned (warren-3c1e). */
+	readonly gitScope?: PrivateGitScope | null;
 }
 
 /**
- * warren-8926: worktree-backed workspaces expose the clone's common dir
- * read-only plus a validated writable carve-out. A pointer that escapes the
- * clone throws before the sandbox starts.
+ * warren-3c1e: the run's private git dir is writable (minus its config and
+ * alternates file) and the host clone's object store is read-only.
  */
 function workspaceGitFields(
-	workspace: MaterializedWorkspace,
-	given: WorkspaceGitScope | null | undefined,
-): Pick<SandboxProfile, "workspaceGitdir" | "workspaceGitWritable" | "workspaceGitProtected"> {
-	const common = workspace.source.gitCommonDir;
-	if (common === undefined) return {};
-	const scope = given ?? resolveWorkspaceGitScope(workspace.workspacePath, common);
+	scope: PrivateGitScope | null | undefined,
+): Pick<SandboxProfile, "workspaceGit"> {
+	if (scope === null || scope === undefined) return {};
 	return {
-		workspaceGitdir: scope.commonDir,
-		workspaceGitWritable: scope.writable,
-		workspaceGitProtected: scope.protectedPaths,
+		workspaceGit: {
+			gitDir: scope.gitDir,
+			protectedPaths: [...scope.protectedPaths],
+			hostGitDir: scope.hostGitDir,
+			sharedObjects: scope.sharedObjects,
+		},
 	};
 }
 
@@ -354,7 +353,7 @@ export async function buildLocalSandboxProfile(input: BuildProfileInput): Promis
 		setEnv: input.env,
 		toolchainPaths: resolveToolchainPaths(spec.runtimeId, input.which),
 		...(workspace.identity !== null ? { gitconfigFile: WORKSPACE_GITCONFIG_FILENAME } : {}),
-		...workspaceGitFields(workspace, input.gitScope),
+		...workspaceGitFields(input.gitScope),
 		// warren-fabb: per-project agent image override — consumed only by the
 		// container spawn seams (docker); the bwrap profile builder ignores it.
 		...(spec.agentImage !== undefined ? { agentImage: spec.agentImage } : {}),

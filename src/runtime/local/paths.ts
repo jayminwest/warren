@@ -7,6 +7,10 @@
  * `runs` table):
  *
  *   <dataDir>/local/workspaces/<sandboxId>   — the run's git worktree/clone
+ *   <dataDir>/local/gitdirs/<sandboxId>      — the run's private git dir
+ *                                               (warren-3c1e: refs/objects of
+ *                                               its own over the host clone's
+ *                                               object store)
  *   <dataDir>/local/homes/<sandboxId>        — the run's private writable HOME
  *                                               (warren-c865: harness state
  *                                               never lands in the worktree)
@@ -30,6 +34,7 @@ export interface LocalStateRoots {
 	readonly dataDir: string;
 	readonly workspaces: string;
 	readonly homes: string;
+	readonly gitdirs: string;
 	readonly manifests: string;
 }
 
@@ -40,6 +45,7 @@ export function resolveLocalStateRoots(env: LocalPathsEnv): LocalStateRoots {
 		dataDir,
 		workspaces: join(base, "workspaces"),
 		homes: join(base, "homes"),
+		gitdirs: join(base, "gitdirs"),
 		manifests: join(base, "manifests"),
 	};
 }
@@ -55,6 +61,11 @@ export function localWorkspacePath(roots: LocalStateRoots, sandboxId: string): s
 
 export function localHomePath(roots: LocalStateRoots, sandboxId: string): string {
 	return join(roots.homes, sandboxId);
+}
+
+/** The run's private git dir (warren-3c1e). */
+export function localGitDirPath(roots: LocalStateRoots, sandboxId: string): string {
+	return join(roots.gitdirs, sandboxId);
 }
 
 export function localManifestPath(roots: LocalStateRoots, sandboxId: string): string {

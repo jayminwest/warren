@@ -42,6 +42,7 @@ import {
 	resolveWorkspaceIdentity,
 	writeWorkspaceGitconfig,
 } from "./git/identity.ts";
+import { materializePrivateGitDir, type PrivateGitDirResult } from "./git/private-gitdir.ts";
 import {
 	addWorktree,
 	addWorktreeDetached,
@@ -53,10 +54,19 @@ import {
 	removeWorktree,
 } from "./git/worktree.ts";
 
-export type WorkspaceSourceKind = "worktree" | "clone";
+/**
+ * `private` (warren-3c1e): a checkout of the host clone backed by a per-run
+ * private git dir that borrows the clone's objects through alternates. See
+ * `./git/private-gitdir.ts`. The local runtime materializes only this kind.
+ */
+export type WorkspaceSourceKind = "worktree" | "clone" | "private";
 
 export interface MaterializedWorkspaceSource {
 	kind: WorkspaceSourceKind;
+	/** `private` only: the run's own git dir (canonical). */
+	gitDir?: string;
+	/** `private` only: sha256 of the warren-written private `config`. */
+	gitConfigSha256?: string;
 	/** Branch checked out in the workspace. */
 	branch: string;
 	/**
@@ -67,16 +77,13 @@ export interface MaterializedWorkspaceSource {
 	/** Host clone the worktree was added against. Absent when `kind === 'clone'`. */
 	hostClonePath?: string;
 	/**
-	 * Absolute host path of the parent clone's `.git` common dir (the directory
-	 * shared by every worktree of the same clone). Set when `kind === 'worktree'`.
+	 * Absolute host path of the parent clone's `.git` common dir. Set when
+	 * `kind` is `worktree` or `private`.
 	 *
-	 * `git worktree add` writes the worktree's `.git` *file* with an absolute
-	 * `gitdir:` pointer at `<gitCommonDir>/worktrees/<id>`; the sandbox bind
-	 * for `/workspace` does not cover that path, so without an explicit
-	 * mount of `gitCommonDir` every git invocation inside the sandbox fails
-	 * with `fatal: not a git repository` (burrow-7a80). The sandbox profile
-	 * builders mount this read-only at the same host path, with only the
-	 * run's own admin dir plus objects/refs/logs writable (warren-8926).
+	 * For `private` (warren-3c1e) only `<gitCommonDir>/objects` reaches the
+	 * sandbox, read-only, as the private git dir's alternate object store.
+	 * For a legacy `worktree` the `.git` file pointed into
+	 * `<gitCommonDir>/worktrees/<id>` (burrow-7a80, warren-8926).
 	 */
 	gitCommonDir?: string;
 	/** Origin URL used for fresh clones. Absent for worktrees. */
@@ -136,6 +143,11 @@ export interface MaterializeProjectOptions {
 	projectRoot?: string;
 	/** Explicit clone fallback (when no host clone is found). */
 	originUrl?: string;
+	/**
+	 * warren-3c1e: with a host clone, materialize against this per-run private
+	 * git dir (alternates over the clone's objects) instead of a worktree.
+	 */
+	privateGitDir?: string;
 	identity?: IdentitySpec;
 	/** Override host env (testing). */
 	hostEnv?: Record<string, string | undefined>;
@@ -148,15 +160,19 @@ export async function materializeProjectWorkspace(
 
 	const hostClone = options.projectRoot ? await discoverHostClone(options.projectRoot) : null;
 
-	const source = hostClone
-		? await materializeViaWorktree(hostClone, options)
-		: await materializeViaClone(options);
+	const source =
+		hostClone && options.privateGitDir !== undefined
+			? await materializeViaPrivateGitDir(hostClone, options.privateGitDir, options)
+			: hostClone
+				? await materializeViaWorktree(hostClone, options)
+				: await materializeViaClone(options);
 
 	// Before the identity file lands: `.gitconfig.burrow` is itself one of the
-	// excluded paths (warren-194a).
+	// excluded paths (warren-194a). A private git dir owns its `info/exclude`
+	// exactly as a fresh clone does.
 	await installWorkspaceExcludes({
 		workspacePath: options.workspacePath,
-		kind: source.kind,
+		kind: source.kind === "worktree" ? "worktree" : "clone",
 		hostEnv: options.hostEnv,
 	});
 	const identity = await applyIdentity(options.workspacePath, options.identity, options.hostEnv);
@@ -224,6 +240,12 @@ export interface RemoveWorkspaceOptions {
 }
 
 export async function removeMaterializedWorkspace(opts: RemoveWorkspaceOptions): Promise<void> {
+	if (opts.source.kind === "private") {
+		// Nothing in the host clone belongs to the run: drop both dirs.
+		await rm(opts.workspacePath, { recursive: true, force: true });
+		if (opts.source.gitDir) await rm(opts.source.gitDir, { recursive: true, force: true });
+		return;
+	}
 	if (opts.source.kind === "worktree") {
 		const hostClonePath = opts.source.hostClonePath;
 		if (!hostClonePath) {
@@ -306,6 +328,48 @@ async function materializeViaWorktree(
 	};
 	if (options.detached === true) source.carvedBranch = false;
 	return source;
+}
+
+/**
+ * warren-3c1e: the branch starts at the base branch when carved, or at the
+ * branch itself for a detached / existing-branch dispatch. Either way the
+ * branch ref is created in the private git dir only.
+ */
+async function materializeViaPrivateGitDir(
+	hostClone: HostClone,
+	gitDir: string,
+	options: MaterializeProjectOptions,
+): Promise<MaterializedWorkspaceSource> {
+	const createBranch = options.createBranch ?? true;
+	const startPoint =
+		options.detached !== true && createBranch ? options.baseBranch : options.branch;
+	if (startPoint === undefined) {
+		throw new WorkspaceMaterializationError(
+			"materializeProjectWorkspace: baseBranch is required when createBranch is true",
+			{ recoveryHint: "Thread the project's default branch (RunSpec.baseBranch)." },
+		);
+	}
+	let result: PrivateGitDirResult;
+	try {
+		result = await materializePrivateGitDir({
+			hostClone,
+			workspacePath: options.workspacePath,
+			gitDir,
+			branch: options.branch,
+			startPoint,
+		});
+	} catch (err) {
+		await rm(gitDir, { recursive: true, force: true }).catch(() => {});
+		throw wrapMaterializationError(`failed to materialize ${options.workspacePath}`, err);
+	}
+	return {
+		kind: "private",
+		branch: options.branch,
+		hostClonePath: hostClone.topLevel,
+		gitCommonDir: result.hostGitDir,
+		gitDir: result.gitDir,
+		gitConfigSha256: result.configSha256,
+	};
 }
 
 async function materializeViaClone(

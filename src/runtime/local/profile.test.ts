@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
-import { adminDirOf, makeWorktreeFixture } from "../../sandbox/git-scope.test-helpers.ts";
-import { WorkspaceGitScopeError } from "../../sandbox/git-scope.ts";
+import { makePrivateGitFixture } from "../../sandbox/git-scope.test-helpers.ts";
+import { resolvePrivateGitScope } from "../../sandbox/git-scope.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
 import type { RunSpec } from "../contract.ts";
 import {
@@ -246,50 +246,49 @@ describe("buildLocalSandboxProfile", () => {
 		expect(withIdentity.gitconfigFile).toBe(".gitconfig.burrow");
 	});
 
-	test("mounts the git common dir read-only with validated carve-outs (warren-8926)", async () => {
-		const fx = makeWorktreeFixture();
+	test("mounts the validated private git scope (warren-3c1e)", async () => {
+		const fx = await makePrivateGitFixture();
 		try {
 			const workspace: MaterializedWorkspace = {
 				workspacePath: fx.ws,
-				source: {
-					kind: "worktree",
-					branch: "warren/run",
-					hostClonePath: fx.clone,
-					gitCommonDir: fx.common,
-				},
+				source: fx.source,
 				identity: null,
 			};
+			const gitScope = resolvePrivateGitScope({
+				workspacePath: fx.ws,
+				gitDir: fx.gitDir,
+				hostGitDir: fx.hostGitDir,
+				configSha256: fx.source.gitConfigSha256 ?? "",
+			});
 			const profile = await buildLocalSandboxProfile({
 				spec: makeSpec(),
 				env: {},
 				workspace,
 				homePath: "/tmp/home",
+				gitScope,
 			});
-			const admin = adminDirOf(fx.ws);
-			expect(profile.workspaceGitdir).toBe(fx.common);
-			expect(profile.workspaceGitWritable?.[0]).toBe(admin);
-			expect(profile.workspaceGitWritable).not.toContain(adminDirOf(fx.sibling));
-			expect(profile.workspaceGitProtected).toContain(join(admin, "commondir"));
+			expect(profile.workspaceGit).toEqual({
+				gitDir: fx.gitDir,
+				protectedPaths: [
+					join(fx.gitDir, "config"),
+					join(fx.gitDir, "objects", "info", "alternates"),
+				],
+				hostGitDir: fx.hostGitDir,
+				sharedObjects: join(fx.hostGitDir, "objects"),
+			});
 		} finally {
 			rmSync(fx.root, { recursive: true, force: true });
 		}
 	});
 
-	test("refuses a worktree whose gitdir pointer escapes the clone", async () => {
-		const fx = makeWorktreeFixture();
-		try {
-			writeFileSync(join(fx.ws, ".git"), `gitdir: ${adminDirOf(fx.sibling)}\n`);
-			const workspace: MaterializedWorkspace = {
-				workspacePath: fx.ws,
-				source: { kind: "worktree", branch: "warren/run", gitCommonDir: fx.common },
-				identity: null,
-			};
-			await expect(
-				buildLocalSandboxProfile({ spec: makeSpec(), env: {}, workspace, homePath: "/tmp/h" }),
-			).rejects.toThrow(WorkspaceGitScopeError);
-		} finally {
-			rmSync(fx.root, { recursive: true, force: true });
-		}
+	test("omits git mounts when no scope is passed", async () => {
+		const profile = await buildLocalSandboxProfile({
+			spec: makeSpec(),
+			env: {},
+			workspace: fakeWorkspace(),
+			homePath: "/tmp/home",
+		});
+		expect(profile.workspaceGit).toBeUndefined();
 	});
 
 	test("per-run resources win over burrow.toml limits", async () => {

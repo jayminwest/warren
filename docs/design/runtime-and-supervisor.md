@@ -90,6 +90,57 @@ Verified empirically on Docker 28.4 / Ubuntu 24.04. (These container
 flags apply to the `local` topology only; the `k8s` runtime has no
 bwrap — the pod boundary is the sandbox.)
 
+## Run git metadata
+
+> **Scope: the `local` and `docker` runtime providers** (warren-3c1e,
+> after warren-8926). K8s pods clone into their own emptyDir and share
+> nothing with a host clone.
+
+Each run gets a private git dir at `<dataDir>/local/gitdirs/<sandboxId>`
+(`src/workspace/git/private-gitdir.ts`). The run shares only the host
+clone's object store with other runs.
+
+- **Materialization.** `git init --separate-git-dir` makes the dir and
+  the workspace `.git` pointer. `objects/info/alternates` names the host
+  clone's `objects/`. A `packed-refs` snapshot copies the host's
+  branches, remote-tracking refs, and tags. The run branch exists only
+  in the private dir. The config copies the host's `remote.*` entries
+  and `core.hooksPath`, and warren records its sha256. No objects are
+  copied, so a materialization costs a few small files.
+- **Sandbox.** The private dir is read-write, so ref updates, ref
+  deletions, and `packed-refs.lock` work the same under bwrap, Seatbelt,
+  and docker. Its `config` and `objects/info/alternates` stay
+  read-only. The host clone's `objects/` is read-only. Nothing else of
+  the host clone's `.git` is reachable: bwrap and docker do not mount
+  it, and Seatbelt denies it together with the sibling gitdirs. A run
+  can thus never move the host's base branch or another run's refs.
+- **Host-side git.** Finalize, reap, and salvage pin git to the private
+  dir (`src/runtime/local/git-pin.ts`), with hooks and fsmonitor off.
+  Before each host git call, `assertPrivateGitDirIntact`
+  (`src/sandbox/git-scope.ts`) refuses the dir if it holds a symlink, a
+  special file, or a hard link. It also refuses a changed config, a
+  changed alternates file, or a `commondir` file. Host git thus never
+  follows a path the run planted or honors config the run wrote.
+- **Teardown.** `terminate` and the workspace GC remove the private
+  dir with the workspace. The host clone keeps no per-run branch or
+  worktree.
+
+Known limits:
+
+- `git branch -D` inside the run prints a config-write warning, because
+  git tries to drop a `branch.<name>` section from the read-only
+  config. The ref is still deleted.
+- Commits-ahead, PR context, and the seeds reset resolve `baseBranch`
+  from the run's private snapshot. A run that moves its copy of the
+  base can only skew its own outcome. It cannot affect the host or
+  other runs.
+- On macOS, cancel signals only the direct child of `sandbox-exec`. A
+  background process the run left alive could race the host-side
+  check. Linux bwrap kills the whole namespace.
+- A manifest from before warren-3c1e (a shared-clone worktree) is not
+  re-pinned after a restart, so host git refuses it and the run fails
+  closed.
+
 ## Event durability rationale
 
 The engine's run store holds the live event log; warren's bridge

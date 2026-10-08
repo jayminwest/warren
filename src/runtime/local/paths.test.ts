@@ -17,6 +17,7 @@ describe("resolveLocalStateRoots", () => {
 		expect(roots.workspaces).toBe("/state/local/workspaces");
 		expect(roots.homes).toBe("/state/local/homes");
 		expect(roots.manifests).toBe("/state/local/manifests");
+		expect(roots.gitdirs).toBe("/state/local/gitdirs");
 	});
 
 	test("defaults to /data when WARREN_DATA_DIR is unset or blank", () => {

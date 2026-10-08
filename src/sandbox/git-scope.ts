@@ -1,103 +1,99 @@
 /**
- * Git-metadata scope for worktree-backed local runs (warren-8926).
+ * Git-metadata scope for local runs (warren-8926, warren-3c1e).
  *
- * A worktree workspace carries a `.git` *file* whose `gitdir:` points at
- * `<gitCommonDir>/worktrees/<id>`. The sandbox must expose the common dir so
- * that pointer dereferences (burrow-7a80). The invariant this module defines:
- * a run may write only what committing on its own branch needs; everything
- * the host's own git reads as configuration stays read-only.
+ * Each local run owns a PRIVATE git dir (`src/workspace/git/private-gitdir.ts`)
+ * that shares only the host clone's object store, read-only, through
+ * `objects/info/alternates`. The trust boundary this module defines:
  *
- *   - The common dir is exposed READ-ONLY (config, hooks, info/, packed-refs,
- *     HEAD, sibling `worktrees/<other>/`).
- *   - Writable: the run's own `worktrees/<id>/` admin dir (HEAD, index,
- *     per-worktree logs), plus `objects/`, `refs/`, and `logs/` — the shared
- *     stores `git commit` must append to.
- *   - Inside the writable admin dir, the files that bind it to a repository
- *     or carry config (`commondir`, `gitdir`, `config.worktree`) are
- *     re-protected read-only, as is `objects/info/` inside `objects/`.
- *   - The writable roots themselves cannot be renamed or removed.
+ *   - Inside the sandbox the run may write its private git dir: refs,
+ *     packed-refs (and its lock), logs, HEAD, index, and its own objects.
+ *     Ref updates and deletions therefore behave the same on Linux bwrap
+ *     and macOS Seatbelt.
+ *   - Two warren-written files stay read-only inside it: `config` (host-side
+ *     git reads it) and `objects/info/alternates` (host-side git follows it).
+ *   - The host clone's `objects/` is readable, never writable. The rest of
+ *     the host clone's git dir (config, hooks, refs, packed-refs, logs,
+ *     sibling metadata) is not exposed at all: bwrap and docker never mount
+ *     it, and Seatbelt denies it.
  *
- * Host-side git never relies on the admin dir's contents to find the
- * repository: it is pinned with `--git-dir`, `--work-tree`, and
- * `GIT_COMMON_DIR` (`src/workspace/git/host-git.ts`).
+ * Host-side git (finalize, reap push, salvage) is pinned to the private dir
+ * with `--git-dir`/`--work-tree`/`GIT_COMMON_DIR` and runs
+ * `assertPrivateGitDirIntact` before EVERY invocation
+ * (`src/workspace/git/host-git.ts`). That check is the boundary; the sandbox
+ * protections are defense in depth. It refuses the run's git dir when:
  *
- * Known limitations, tracked as follow-up (private per-run git metadata):
- *   - `refs/` and `logs/` are shared by every worktree of the clone, so a run
- *     can still move another branch's ref.
- *   - Symlinks created inside the writable carve-outs are not policed.
- *   - With the common-dir root read-only, git cannot create
- *     `<common>/packed-refs.lock`. macOS grants those two literal paths;
- *     Linux bind mounts cannot grant creating one file in a read-only dir, so
- *     there ref updates print a harmless lock error and ref DELETION fails.
+ *   - any entry under it is a symlink, a special file, or a hard link
+ *     (git never creates these in its own dir; a planted one would make
+ *     host-side git read or append outside the run),
+ *   - `config` or `objects/info/alternates` differ from what warren wrote,
+ *   - a `commondir` file appeared (it would redirect git to another repo).
  *
- * Every path is validated host-side before use: the `.git` pointer must be a
- * regular file whose gitdir resolves (realpath) to a direct child of
- * `<common>/worktrees/`, the admin dir's `gitdir` backlink must name this
- * workspace, its `commondir` must resolve back to the same common dir, and no
- * granted path may be a symlink.
+ * The run cannot touch any ref another run or base-branch resolution reads:
+ * the host clone's refs are not mounted, and every run's refs are its own.
  */
 
-import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { WarrenError } from "../core/errors.ts";
 
-/** Shared common-dir stores a worktree commit writes into. */
-export const SHARED_WRITABLE_GIT_DIRS: readonly string[] = ["objects", "refs", "logs"];
-
-/** Admin-dir files re-protected read-only inside the writable admin dir. */
-export const PROTECTED_ADMIN_FILES: readonly string[] = ["commondir", "gitdir", "config.worktree"];
+/** Private-dir files re-protected read-only inside the writable git dir. */
+export const PRIVATE_GIT_PROTECTED: readonly string[] = ["config", "objects/info/alternates"];
 
 export class WorkspaceGitScopeError extends WarrenError {
 	readonly code = "workspace_git_scope_invalid";
 }
 
-export interface WorkspaceGitScope {
-	/** Canonical common dir — exposed read-only. */
-	readonly commonDir: string;
-	/** Canonical `<common>/worktrees/<id>` admin dir of this workspace. */
+export interface PrivateGitScope {
+	/** Canonical per-run private git dir, read-write in the sandbox. */
 	readonly gitDir: string;
-	/** Canonical paths under `commonDir` exposed read-write. */
-	readonly writable: string[];
-	/** Files/dirs inside a writable path that must stay read-only. */
+	/** Canonical host clone common dir; never exposed except `sharedObjects`. */
+	readonly hostGitDir: string;
+	/** `<hostGitDir>/objects`, read-only in the sandbox (the alternate). */
+	readonly sharedObjects: string;
+	/** Absolute paths inside `gitDir` kept read-only in the sandbox. */
 	readonly protectedPaths: string[];
+	/** sha256 of the warren-written `config`. */
+	readonly configSha256: string;
+}
+
+export interface ResolvePrivateGitScopeInput {
+	readonly workspacePath: string;
+	readonly gitDir: string;
+	readonly hostGitDir: string;
+	readonly configSha256: string;
+	/**
+	 * Check the workspace `.git` pointer (default true). Only meaningful
+	 * before the agent runs: host-side git never reads `.git`, so a re-pin
+	 * after a restart skips it rather than failing on a run-rewritten file.
+	 */
+	readonly checkPointer?: boolean;
 }
 
 function fail(message: string, cause?: unknown): never {
 	throw new WorkspaceGitScopeError(`git scope: ${message}`, {
 		...(cause !== undefined ? { cause } : {}),
-		recoveryHint: "re-materialize the run workspace with `git worktree add` from the host clone",
+		recoveryHint:
+			"the run's private git dir is not in the shape warren materialized; " +
+			"salvage the workspace by hand and re-dispatch",
 	});
 }
 
-function realDir(path: string, what: string): string {
+/** `path` must be a real directory whose canonical path is `path` itself. */
+function assertCanonicalDir(path: string, what: string): void {
+	let stat: ReturnType<typeof lstatSync>;
 	let real: string;
 	try {
+		stat = lstatSync(path);
 		real = realpathSync(path);
 	} catch (err) {
 		fail(`${what} ${path} does not exist`, err);
 	}
-	if (!lstatSync(real).isDirectory()) fail(`${what} ${path} is not a directory`);
-	return real;
+	if (!stat.isDirectory()) fail(`${what} ${path} must be a real directory, not a symlink`);
+	if (real !== path) fail(`${what} ${path} resolves to ${real}`);
 }
 
-/** Read the `gitdir:` pointer out of the workspace's `.git` file. */
-function readGitdirPointer(workspacePath: string): string {
-	const dotGit = join(workspacePath, ".git");
-	let stat: ReturnType<typeof lstatSync>;
-	try {
-		stat = lstatSync(dotGit);
-	} catch (err) {
-		fail(`${dotGit} is missing`, err);
-	}
-	if (!stat.isFile()) fail(`${dotGit} must be a regular gitdir file, not a symlink or directory`);
-	const match = /^gitdir:[ \t]*(.+?)[ \t]*$/m.exec(readFileSync(dotGit, "utf8"));
-	if (match?.[1] === undefined) fail(`${dotGit} carries no gitdir: pointer`);
-	return resolve(workspacePath, match[1]);
-}
-
-/** Read a small admin-dir file that must be a regular file, not a symlink. */
-function readAdminFile(gitDir: string, name: string): string {
-	const path = join(gitDir, name);
+function readRegularFile(path: string): Buffer {
 	let stat: ReturnType<typeof lstatSync>;
 	try {
 		stat = lstatSync(path);
@@ -105,82 +101,74 @@ function readAdminFile(gitDir: string, name: string): string {
 		fail(`${path} is missing`, err);
 	}
 	if (!stat.isFile()) fail(`${path} must be a regular file`);
-	return readFileSync(path, "utf8").trim();
+	return readFileSync(path);
 }
 
-/** `<admin>/gitdir` holds the path of the worktree's `.git` file. */
-function assertBacklink(gitDir: string, workspacePath: string): void {
-	const raw = readAdminFile(gitDir, "gitdir");
-	const owner = realDir(dirname(resolve(gitDir, raw)), "worktree backlink");
-	if (owner !== realDir(workspacePath, "workspace")) {
-		fail(`worktree gitdir ${gitDir} belongs to ${owner}, not ${workspacePath}`);
-	}
-}
-
-function ensureProtectedFiles(gitDir: string): string[] {
-	const out: string[] = [];
-	for (const name of PROTECTED_ADMIN_FILES) {
-		const path = join(gitDir, name);
-		// config.worktree may not exist yet; an empty file is inert to git and
-		// gives the read-only bind something to protect.
-		if (name === "config.worktree") {
-			try {
-				lstatSync(path);
-			} catch {
-				writeFileSync(path, "");
-			}
-		}
-		readAdminFile(gitDir, name);
-		out.push(path);
-	}
-	return out;
+/** The workspace `.git` must be a regular file pointing at exactly `gitDir`. */
+function assertGitdirPointer(workspacePath: string, gitDir: string): void {
+	const body = readRegularFile(join(workspacePath, ".git")).toString("utf8");
+	const match = /^gitdir:[ \t]*(.+?)[ \t]*$/m.exec(body);
+	if (match?.[1] !== gitDir) fail(`${workspacePath}/.git does not point at ${gitDir}`);
 }
 
 /**
- * Resolve and validate the Git metadata a worktree-backed run may touch.
- * Throws `WorkspaceGitScopeError` on any pointer that escapes the clone's
- * common dir. Creates `<common>/logs` when absent so the read-only parent
- * never blocks the first reflog write.
+ * Walk the git dir without following anything: every entry must be a real
+ * directory or a regular file with a single link.
  */
-export function resolveWorkspaceGitScope(
-	workspacePath: string,
-	gitCommonDir: string,
-): WorkspaceGitScope {
-	const commonDir = realDir(gitCommonDir, "git common dir");
-	const worktreesDir = join(commonDir, "worktrees");
-
-	const gitDir = realDir(readGitdirPointer(workspacePath), "worktree gitdir");
-	if (dirname(gitDir) !== worktreesDir) {
-		fail(`worktree gitdir ${gitDir} is not a direct child of ${worktreesDir}`);
-	}
-	// The admin dir must point back at THIS workspace — a pointer at another
-	// worktree's admin dir (directly or via a symlinked entry) is rejected.
-	assertBacklink(gitDir, workspacePath);
-
-	const commondirRaw = readAdminFile(gitDir, "commondir");
-	if (realDir(resolve(gitDir, commondirRaw), "worktree commondir") !== commonDir) {
-		fail(`worktree gitdir ${gitDir} points at a different common dir`);
-	}
-
-	const writable = [gitDir];
-	for (const name of SHARED_WRITABLE_GIT_DIRS) {
-		const path = join(commonDir, name);
-		mkdirSync(path, { recursive: true });
+function assertNoLinks(dir: string): void {
+	for (const name of readdirSync(dir)) {
+		const path = join(dir, name);
 		const stat = lstatSync(path);
-		if (!stat.isDirectory() || stat.isSymbolicLink()) {
-			fail(`${path} must be a real directory, not a symlink`);
+		if (stat.isDirectory()) {
+			assertNoLinks(path);
+			continue;
 		}
-		writable.push(path);
+		if (stat.isSymbolicLink()) fail(`${path} is a symlink`);
+		if (!stat.isFile()) fail(`${path} is not a regular file`);
+		if (stat.nlink !== 1) fail(`${path} is hard-linked (${stat.nlink} links)`);
 	}
-	const protectedPaths = ensureProtectedFiles(gitDir);
-	// objects/info carries repository-wide pointers (alternates) that the
-	// host's git follows; keep it read-only inside the writable objects/.
-	const objectsInfo = join(commonDir, "objects", "info");
-	mkdirSync(objectsInfo, { recursive: true });
-	const infoStat = lstatSync(objectsInfo);
-	if (!infoStat.isDirectory() || infoStat.isSymbolicLink()) {
-		fail(`${objectsInfo} must be a real directory, not a symlink`);
+}
+
+/**
+ * The host-side boundary check, run before every host git invocation against
+ * the run workspace. Throws `WorkspaceGitScopeError` on any deviation.
+ */
+export function assertPrivateGitDirIntact(scope: PrivateGitScope): void {
+	assertCanonicalDir(scope.gitDir, "private git dir");
+	assertNoLinks(scope.gitDir);
+	const digest = createHash("sha256")
+		.update(readRegularFile(join(scope.gitDir, "config")))
+		.digest("hex");
+	if (digest !== scope.configSha256) fail(`${scope.gitDir}/config changed since materialization`);
+	const alternates = readRegularFile(join(scope.gitDir, "objects", "info", "alternates"));
+	if (alternates.toString("utf8") !== `${scope.sharedObjects}\n`) {
+		fail(`${scope.gitDir}/objects/info/alternates changed since materialization`);
 	}
-	protectedPaths.push(objectsInfo);
-	return { commonDir, gitDir, writable, protectedPaths };
+	try {
+		lstatSync(join(scope.gitDir, "commondir"));
+	} catch {
+		return;
+	}
+	fail(`${scope.gitDir}/commondir must not exist`);
+}
+
+/**
+ * Resolve and validate a run's private git scope. Called at create (before
+ * the agent runs) and when a restarted server re-pins a run from its
+ * manifest; both paths run the full intact check.
+ */
+export function resolvePrivateGitScope(input: ResolvePrivateGitScopeInput): PrivateGitScope {
+	assertCanonicalDir(input.hostGitDir, "host git dir");
+	const sharedObjects = join(input.hostGitDir, "objects");
+	assertCanonicalDir(sharedObjects, "host object store");
+	if (input.checkPointer !== false) assertGitdirPointer(input.workspacePath, input.gitDir);
+	const scope: PrivateGitScope = {
+		gitDir: input.gitDir,
+		hostGitDir: input.hostGitDir,
+		sharedObjects,
+		protectedPaths: PRIVATE_GIT_PROTECTED.map((rel) => join(input.gitDir, rel)),
+		configSha256: input.configSha256,
+	};
+	assertPrivateGitDirIntact(scope);
+	return scope;
 }

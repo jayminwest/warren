@@ -23,7 +23,7 @@ import type { WorkspaceDestroyer, WorkspaceDestroyOutcome } from "../../runs/rea
 import { removeMaterializedWorkspace } from "../../workspace/materialize.ts";
 import { unpinWorkspaceGit } from "./git-pin.ts";
 import { readLocalRunManifest, removeLocalRunManifest } from "./manifest.ts";
-import { type LocalPathsEnv, resolveLocalStateRoots } from "./paths.ts";
+import { type LocalPathsEnv, localGitDirPath, resolveLocalStateRoots } from "./paths.ts";
 
 /**
  * Build the manifest-backed workspace destroyer. Never throws: a missing
@@ -46,6 +46,7 @@ export function createLocalWorkspaceDestroyer(env: LocalPathsEnv): WorkspaceDest
 			// failure surfaces as `failed` after the fallback had its chance.
 			await rm(manifest.workspacePath, { recursive: true, force: true }).catch(() => {});
 			await rm(manifest.homePath, { recursive: true, force: true }).catch(() => {});
+			await rm(localGitDirPath(roots, sandboxId), { recursive: true, force: true }).catch(() => {});
 			await removeLocalRunManifest(roots, sandboxId).catch(() => {});
 			return { status: "failed", error: err instanceof Error ? err.message : String(err) };
 		}

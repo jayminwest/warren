@@ -1,20 +1,24 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WorkspaceGitScopeError } from "../../sandbox/git-scope.ts";
 import { workspaceGitPinFor } from "../../workspace/git/host-git.ts";
 import { fixtureGitOrThrow } from "../../workspace/git/test-fixture.ts";
 import { branchExists, listWorktrees } from "../../workspace/git/worktree.ts";
 import type { RunSpec } from "../contract.ts";
 import { LocalEngine } from "./engine.ts";
-import { localHomePath, localWorkspacePath, resolveLocalStateRoots } from "./paths.ts";
+import {
+	localGitDirPath,
+	localHomePath,
+	localWorkspacePath,
+	resolveLocalStateRoots,
+} from "./paths.ts";
 import { LocalRunStore } from "./run-store.ts";
 
 /**
- * warren-8926: the engine validates the worktree git scope after
+ * warren-8926, warren-3c1e: the engine validates the private git scope after
  * materialization and before the agent runs. A scope that fails validation
- * rejects the create and rolls the materialized worktree back.
+ * rejects the create and rolls the workspace and private git dir back.
  */
 const savedGitEnv: Record<string, string | undefined> = {};
 
@@ -47,7 +51,7 @@ describe("LocalEngine.create git scope validation (warren-8926)", () => {
 		rmSync(dataDir, { recursive: true, force: true });
 	});
 
-	test("rejects an invalid scope and removes the materialized worktree", async () => {
+	test("rejects a host object store outside the clone and rolls the run back", async () => {
 		const host = join(root, "host");
 		await fixtureGitOrThrow(root, ["init", "-q", "-b", "main", host]);
 		writeFileSync(join(host, "README.md"), "# repo\n");
@@ -62,11 +66,11 @@ describe("LocalEngine.create git scope validation (warren-8926)", () => {
 			"-m",
 			"init",
 		]);
-		// A shared store that resolves outside the clone fails validation.
-		const outside = join(root, "outside-logs");
-		mkdirSync(outside);
-		rmSync(join(host, ".git", "logs"), { recursive: true, force: true });
-		symlinkSync(outside, join(host, ".git", "logs"));
+		// A host object store that resolves outside the clone fails validation.
+		const objects = join(host, ".git", "objects");
+		const outside = join(root, "outside-objects");
+		renameSync(objects, outside);
+		symlinkSync(outside, objects);
 
 		const engine = new LocalEngine({
 			serverEnv: { WARREN_DATA_DIR: dataDir, WARREN_BIND_PORT: "8181" },
@@ -86,12 +90,13 @@ describe("LocalEngine.create git scope validation (warren-8926)", () => {
 			seedFiles: [],
 			metadata: {},
 		};
-		await expect(engine.create(spec)).rejects.toThrow(WorkspaceGitScopeError);
+		await expect(engine.create(spec)).rejects.toThrow(/objects is not a directory/);
 
 		const roots = resolveLocalStateRoots({ WARREN_DATA_DIR: dataDir });
 		const workspacePath = localWorkspacePath(roots, "local-run_gs1");
 		expect(existsSync(workspacePath)).toBe(false);
 		expect(existsSync(localHomePath(roots, "local-run_gs1"))).toBe(false);
+		expect(existsSync(localGitDirPath(roots, "local-run_gs1"))).toBe(false);
 		expect(workspaceGitPinFor(workspacePath)).toBeUndefined();
 		const worktrees = await listWorktrees(host);
 		expect(worktrees.some((e) => e.worktree.endsWith("run_gs1"))).toBe(false);

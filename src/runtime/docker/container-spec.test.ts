@@ -122,32 +122,35 @@ describe("buildDockerRunSpec", () => {
 		);
 	});
 
-	test("mounts the worktree gitdir readonly with writable carve-outs (warren-8926)", () => {
+	test("mounts the private git dir read-write over a read-only object store (warren-3c1e)", () => {
+		const gd = "/data/local/gitdirs/local-run-1";
 		const spec = buildDockerRunSpec(
 			makeProfile({
 				readOnlyMounts: ["/opt/shared"],
-				workspaceGitdir: "/repo/.git",
-				workspaceGitWritable: ["/repo/.git/worktrees/ws", "/repo/.git/objects"],
-				workspaceGitProtected: ["/repo/.git/worktrees/ws/commondir", "/repo/.git/objects/info"],
+				workspaceGit: {
+					gitDir: gd,
+					protectedPaths: [`${gd}/config`, `${gd}/objects/info/alternates`],
+					hostGitDir: "/repo/.git",
+					sharedObjects: "/repo/.git/objects",
+				},
 			}),
 			command,
 			config,
 			"/tmp/e.env",
 		);
 		expect(spec.argv).toContain("type=bind,source=/opt/shared,target=/opt/shared,readonly");
-		expect(spec.argv).toContain("type=bind,source=/repo/.git,target=/repo/.git,readonly");
-		expect(spec.argv).not.toContain("type=bind,source=/repo/.git,target=/repo/.git");
 		expect(spec.argv).toContain(
-			"type=bind,source=/repo/.git/worktrees/ws,target=/repo/.git/worktrees/ws",
+			"type=bind,source=/repo/.git/objects,target=/repo/.git/objects,readonly",
 		);
-		expect(spec.argv).toContain("type=bind,source=/repo/.git/objects,target=/repo/.git/objects");
-		expect(spec.argv).toContain(
-			"type=bind,source=/repo/.git/worktrees/ws/commondir,target=/repo/.git/worktrees/ws/commondir,readonly",
-		);
-		const info = "type=bind,source=/repo/.git/objects/info,target=/repo/.git/objects/info,readonly";
-		expect(
-			spec.argv.indexOf("type=bind,source=/repo/.git/objects,target=/repo/.git/objects"),
-		).toBeLessThan(spec.argv.indexOf(info));
+		// Nothing else of the host clone's git dir is mounted.
+		expect(spec.argv.some((a) => a.includes("source=/repo/.git,"))).toBe(false);
+		const rw = `type=bind,source=${gd},target=${gd}`;
+		const cfg = `type=bind,source=${gd}/config,target=${gd}/config,readonly`;
+		const alt = `${gd}/objects/info/alternates`;
+		const alternates = `type=bind,source=${alt},target=${alt},readonly`;
+		expect(spec.argv).toContain(rw);
+		expect(spec.argv.indexOf(rw)).toBeLessThan(spec.argv.indexOf(cfg));
+		expect(spec.argv.indexOf(rw)).toBeLessThan(spec.argv.indexOf(alternates));
 	});
 
 	test("maps network none to --network none and open to no flag", () => {

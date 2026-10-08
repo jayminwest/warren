@@ -106,7 +106,7 @@ export function chownPathRecursive(path: string, uid: number, gid: number): void
 }
 
 /**
- * Hand the bind-mounted workspace + HOME (and optional worktree gitdir) to the
+ * Hand the bind-mounted workspace + HOME (and the run's private git dir) to the
  * container uid before `docker run` (warren-3f32). Warren materializes those
  * dirs as the host process user; when that user is root the fixed agent uid
  * 1000 cannot write them, so git commits and agent config writes fail.
@@ -118,7 +118,8 @@ export function chownDockerMounts(
 ): void {
 	if (!agentUser.chownMounts) return;
 	const paths = [profile.workspace, profile.home];
-	if (profile.workspaceGitdir !== undefined) paths.push(profile.workspaceGitdir);
+	// warren-3c1e: only the run's own git dir; the host clone stays as-is.
+	if (profile.workspaceGit !== undefined) paths.push(profile.workspaceGit.gitDir);
 	for (const path of paths) {
 		chownPath(path, agentUser.uid, agentUser.gid);
 	}

@@ -13,9 +13,10 @@ import { LocalRunStore } from "./run-store.ts";
 
 /**
  * warren-326f end-to-end on the LocalProvider: an existing-branch dispatch
- * (branch === baseBranch) materializes a DETACHED worktree off the existing
- * branch, commits pushed at finalize land back on that branch, and teardown
- * keeps the branch ref (it predates the run and lives on the remote).
+ * (branch === baseBranch) materializes a private checkout at the existing
+ * branch's tip (warren-3c1e: no worktree, no host ref), commits pushed at
+ * finalize land back on that branch, and teardown keeps the host branch ref
+ * (it predates the run and lives on the remote).
  */
 const savedGitEnv: Record<string, string | undefined> = {};
 
@@ -117,7 +118,7 @@ describe("LocalEngine: existing-branch dispatch (warren-326f)", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	test("materializes detached onto the existing branch, pushes back, and keeps the branch", async () => {
+	test("checks out the existing branch tip privately, pushes back, and keeps the branch", async () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "warren-engine-existing-data-"));
 		const { host, remote, tip } = await bootstrapHostClone(root);
 		const engine = new LocalEngine({
@@ -149,13 +150,15 @@ describe("LocalEngine: existing-branch dispatch (warren-326f)", () => {
 				handle.sandboxId,
 			);
 
-			// The workspace is a detached worktree at the branch tip — not a carve.
+			// The workspace is a private checkout at the branch tip — the host
+			// clone gains no worktree and its branch ref is untouched.
 			const list = await listWorktrees(host);
-			const entry = list.find((e) => e.worktree.endsWith("run_ex1"));
-			expect(entry?.detached).toBe(true);
+			expect(list.some((e) => e.worktree.endsWith("run_ex1"))).toBe(false);
 			expect(await branchExists(host, "fix/pr-head")).toBe(true);
+			const wsHead = await fixtureGitOrThrow(workspacePath, ["rev-parse", "HEAD"]);
+			expect(wsHead.stdout.trim()).toBe(tip);
 
-			// The agent commits on the detached HEAD; finalize pushes HEAD:<branch>.
+			// The agent commits; finalize pushes HEAD:<branch>.
 			writeFileSync(join(workspacePath, "follow-up.txt"), "follow-up work\n");
 			await fixtureGitOrThrow(workspacePath, ["add", "."]);
 			await fixtureGitOrThrow(workspacePath, ["commit", "-m", "follow-up commit"]);
@@ -177,7 +180,7 @@ describe("LocalEngine: existing-branch dispatch (warren-326f)", () => {
 				(await fixtureGitOrThrow(workspacePath, ["rev-parse", "HEAD"])).stdout.trim(),
 			);
 
-			// Teardown removes the worktree but keeps the pre-existing branch ref.
+			// Teardown removes the workspace but keeps the pre-existing branch ref.
 			await engine.terminate(handle);
 			const homePath = localHomePath(
 				resolveLocalStateRoots({ WARREN_DATA_DIR: dataDir }),

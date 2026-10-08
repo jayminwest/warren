@@ -75,7 +75,14 @@ describe("chownDockerMounts", () => {
 	test("chowns workspace, home, and gitdir when chownMounts is set", () => {
 		const seen: Array<{ path: string; uid: number; gid: number }> = [];
 		chownDockerMounts(
-			makeProfile({ workspaceGitdir: "/repo/.git" }),
+			makeProfile({
+				workspaceGit: {
+					gitDir: "/data/local/gitdirs/local-run-9",
+					protectedPaths: [],
+					hostGitDir: "/repo/.git",
+					sharedObjects: "/repo/.git/objects",
+				},
+			}),
 			{ uid: 1000, gid: 1000, chownMounts: true },
 			(path, uid, gid) => {
 				seen.push({ path, uid, gid });
@@ -84,7 +91,7 @@ describe("chownDockerMounts", () => {
 		expect(seen).toEqual([
 			{ path: "/data/local/workspaces/local-run-9", uid: 1000, gid: 1000 },
 			{ path: "/data/local/homes/local-run-9", uid: 1000, gid: 1000 },
-			{ path: "/repo/.git", uid: 1000, gid: 1000 },
+			{ path: "/data/local/gitdirs/local-run-9", uid: 1000, gid: 1000 },
 		]);
 	});
 
