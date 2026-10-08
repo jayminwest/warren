@@ -41,7 +41,12 @@ interface K8sDoc {
 	metadata?: { name?: string; namespace?: string };
 }
 
-function renderComponent(): K8sDoc[] {
+/**
+ * Render a throwaway overlay that pulls in the component. `resources` adds a
+ * `resources:` list in front: `["../gke"]` is the live shape (the gke template
+ * plus the component, as the operator's gke-live overlay has it).
+ */
+function renderComponent(resources: string[] = []): K8sDoc[] {
 	const dir = mkdtempSync(join(OVERLAYS_DIR, "tmp-postgres-component-test-"));
 	try {
 		writeFileSync(
@@ -49,6 +54,7 @@ function renderComponent(): K8sDoc[] {
 			[
 				"apiVersion: kustomize.config.k8s.io/v1beta1",
 				"kind: Kustomization",
+				...(resources.length > 0 ? ["resources:", ...resources.map((r) => `  - ${r}`)] : []),
 				"components:",
 				"  - ../../components/postgres",
 				"",
@@ -187,4 +193,71 @@ describe("deploy/k8s/components/postgres", () => {
 		const fetch = job.spec?.template?.spec?.initContainers?.find((c) => c.name === "fetch");
 		expect(fetch?.env?.find((e) => e.name === "RESTORE_DUMP")?.value).toBe("20260903");
 	});
+});
+
+// Disruption protection (warren-a5d2). Autopilot scale-down evicted postgres-0
+// twice in 36 minutes; each eviction was a 20-40s API outage. The StatefulSet
+// and the control-plane Deployment carry safe-to-evict "false", and the gke
+// overlay ships a zero-budget PDB for postgres. The PDB lives in the overlay
+// rather than the component because deploy-gke.yml renders gke-live from
+// ../gke only, so only an overlay resource reaches the cluster through CI.
+const SAFE_TO_EVICT = "cluster-autoscaler.kubernetes.io/safe-to-evict";
+
+interface PodTemplateDoc extends K8sDoc {
+	spec?: {
+		maxUnavailable?: number;
+		unhealthyPodEvictionPolicy?: string;
+		selector?: { matchLabels?: Record<string, string> };
+		template?: {
+			metadata?: { labels?: Record<string, string>; annotations?: Record<string, string> };
+		};
+	};
+}
+
+function renderGkeOverlay(): PodTemplateDoc[] {
+	const out = execFileSync("kubectl", ["kustomize", join(OVERLAYS_DIR, "gke")], {
+		cwd: REPO_ROOT,
+		maxBuffer: 10 * 1024 * 1024,
+		timeout: KUBECTL_TIMEOUT_MS,
+	}).toString();
+	return loadAll(out) as PodTemplateDoc[];
+}
+
+function find(docs: PodTemplateDoc[], kind: string, name: string): PodTemplateDoc | undefined {
+	return docs.find((d) => d.kind === kind && d.metadata?.name === name);
+}
+
+describe("postgres disruption protection (warren-a5d2)", () => {
+	test.skipIf(!HAS_KUBECTL)(
+		"the CI-rendered gke overlay carries the postgres PDB and a non-evictable control plane",
+		() => {
+			const docs = renderGkeOverlay();
+			const pdb = find(docs, "PodDisruptionBudget", "postgres");
+			expect(pdb?.metadata?.namespace).toBe("warren");
+			expect(pdb?.spec?.maxUnavailable).toBe(0);
+			expect(pdb?.spec?.unhealthyPodEvictionPolicy).toBe("AlwaysAllow");
+			const warren = find(docs, "Deployment", "warren");
+			expect(warren?.spec?.template?.metadata?.annotations?.[SAFE_TO_EVICT]).toBe("false");
+		},
+		{ timeout: KUBECTL_TIMEOUT_MS + 5_000 },
+	);
+
+	test.skipIf(!HAS_KUBECTL)(
+		"in the live shape (gke + component) the PDB selects the non-evictable postgres pod",
+		() => {
+			const docs = renderComponent(["../gke"]) as PodTemplateDoc[];
+			const sts = find(docs, "StatefulSet", "postgres");
+			const template = sts?.spec?.template?.metadata;
+			expect(template?.annotations?.[SAFE_TO_EVICT]).toBe("false");
+
+			const pdbs = docs.filter((d) => d.kind === "PodDisruptionBudget");
+			expect(pdbs).toHaveLength(1);
+			const selector = pdbs[0]?.spec?.selector?.matchLabels ?? {};
+			expect(Object.keys(selector).length).toBeGreaterThan(0);
+			for (const [key, value] of Object.entries(selector)) {
+				expect(template?.labels?.[key]).toBe(value);
+			}
+		},
+		{ timeout: KUBECTL_TIMEOUT_MS + 5_000 },
+	);
 });
