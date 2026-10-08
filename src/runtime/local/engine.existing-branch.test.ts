@@ -161,7 +161,16 @@ describe("LocalEngine: existing-branch dispatch (warren-326f)", () => {
 			// The agent commits; finalize pushes HEAD:<branch>.
 			writeFileSync(join(workspacePath, "follow-up.txt"), "follow-up work\n");
 			await fixtureGitOrThrow(workspacePath, ["add", "."]);
-			await fixtureGitOrThrow(workspacePath, ["commit", "-m", "follow-up commit"]);
+			// The private git dir does not inherit the host clone's identity.
+			await fixtureGitOrThrow(workspacePath, [
+				"-c",
+				"user.name=Agent",
+				"-c",
+				"user.email=agent@example.com",
+				"commit",
+				"-m",
+				"follow-up commit",
+			]);
 
 			const result = await engine.finalize(handle, {
 				branch: "fix/pr-head",
