@@ -96,7 +96,7 @@ export function ProjectsPage() {
 				</OperatorOnly>
 			</div>
 
-			<div className="flex flex-col rounded-[4px] border border-(--color-border) bg-(--color-surface)">
+			<div className="flex flex-col rounded-[4px] border border-(--color-border) bg-(--color-danger)">
 				{projects.isLoading ? (
 					<div className="p-6">
 						<Spinner label="Loading projects" />
@@ -126,7 +126,7 @@ export function ProjectsPage() {
 						<div className="hidden md:block">
 							<table className="w-full table-fixed border-collapse">
 								<thead>
-									<tr className="h-[31px] rounded-t-[4px] bg-(--color-thead) text-left">
+									<tr className="h-[31px] rounded-t-[4px] bg-(--color-danger) text-left">
 										<Th className="w-[min(250px,35%)]">Project</Th>
 										<Th className="w-[110px]">Default branch</Th>
 										<Th className="w-[110px]">Last head</Th>
