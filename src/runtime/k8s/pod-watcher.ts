@@ -57,10 +57,20 @@ import {
 	type PodMetricsSource,
 } from "./pod-metrics.ts";
 import { INIT_CONTAINER_NAME, LABEL_PROJECT, LABEL_RUN_ID } from "./pod-spec.ts";
-import { mapPodToRunStatus } from "./status-map.ts";
+import { isPreemptedPod, mapPodToRunStatus } from "./status-map.ts";
 
 /** kubelet's `terminated.reason` for a cgroup OOM kill. */
 const OOM_KILLED_REASON = "OOMKilled";
+
+/**
+ * The node-controller's Warning event reason on each pod of a node that went
+ * NotReady (warren-a757) — the pod-level witness that the node died, readable
+ * through the events RBAC warren already holds (no `nodes` grant needed).
+ */
+export const NODE_NOT_READY_EVENT_REASON = "NodeNotReady";
+
+/** Cap on the remembered node-loss witnesses (oldest evicted first). */
+const NODE_LOSS_WITNESS_CAP = 2048;
 
 /** Minimal counter surface the watcher feeds — satisfied by `MetricsRegistry`. */
 export interface CounterSink {
@@ -155,6 +165,12 @@ export class PodWatcher
 	 * provider's `status()` can still classify the absent pod as `preempted`.
 	 */
 	private readonly vanishedPreempted = new Set<string>();
+	/**
+	 * runIds whose node went NotReady under them (warren-a757), fed by the
+	 * pod-warning events watcher via `noteNodeLost`. A non-OOM failure on such a
+	 * pod is `preempted` (infra-lost, retryable), not an anonymous `error`.
+	 */
+	private readonly nodeLost = new Set<string>();
 	/** runIds whose workspace-init terminal we have already accounted for. */
 	private readonly initAccounted = new Set<string>();
 	private lastInitDurationSeconds: number | null = null;
@@ -239,7 +255,19 @@ export class PodWatcher
 	 * the retryable `preempted` terminalReason instead of plain `lost`.
 	 */
 	wasPreempted(runId: string): boolean {
-		return this.vanishedPreempted.has(runId);
+		return this.vanishedPreempted.has(runId) || this.nodeLost.has(runId);
+	}
+
+	/**
+	 * Record that the run's node went NotReady (warren-a757). Boot wires this
+	 * from the pod-warning events watcher's `NodeNotReady` signal. Idempotent.
+	 */
+	noteNodeLost(runId: string): void {
+		if (this.nodeLost.has(runId)) return;
+		rememberBounded(this.nodeLost, runId);
+		this.deps.logger?.warn?.({ runId }, "run pod's node went NotReady (node-loss witness)");
+		const pod = this.cache.get(runId);
+		if (pod !== undefined) this.accountPreempted(runId, pod);
 	}
 
 	// --- PodMetricsSource ----------------------------------------------------
@@ -283,6 +311,10 @@ export class PodWatcher
 		const runId = runIdOf(obj);
 		if (runId === undefined) return;
 		if (phase === "DELETED") {
+			// warren-a757: the DELETED object is the pod's FINAL state — PodGC
+			// stamps `DisruptionTarget/DeletionByPodGC` on a deleted node's pods
+			// just before removing them, so fold it in before forgetting.
+			this.accountPreempted(runId, obj, true);
 			this.forget(runId);
 			return;
 		}
@@ -303,6 +335,10 @@ export class PodWatcher
 		// warren-ea4b: a pod disappearing while its Spot node is being deleted is
 		// a preemption the pod may never live long enough to report in status.
 		const nodeName = pod?.spec?.nodeName;
+		// warren-a757: a pod whose own status already witnessed the preemption
+		// (counted in `accountPreempted`) keeps that verdict once it is gone, so
+		// an absent-pod `status()` reads `preempted` instead of plain `lost`.
+		if (this.preemptedCounted.has(runId)) rememberBounded(this.vanishedPreempted, runId);
 		if (
 			pod !== undefined &&
 			nodeName !== undefined &&
@@ -310,7 +346,7 @@ export class PodWatcher
 			!this.preemptedCounted.has(runId)
 		) {
 			this.preemptedCounted.add(runId);
-			this.vanishedPreempted.add(runId);
+			rememberBounded(this.vanishedPreempted, runId);
 			this.deps.metrics.increment(METRIC_PREEMPTED_TOTAL);
 			this.deps.logger?.warn?.(
 				{ runId, nodeName },
@@ -361,9 +397,15 @@ export class PodWatcher
 	 * terminal status witnesses it (`isPreemptedPod`) or it vanished while its
 	 * spot node was deleted (recorded in `forget`, already counted there).
 	 */
-	private accountPreempted(runId: string, pod: V1Pod): void {
+	private accountPreempted(runId: string, pod: V1Pod, vanishing = false): void {
 		if (this.preemptedCounted.has(runId)) return;
-		if (mapPodToRunStatus(pod).terminalReason === "preempted") {
+		const nodeLost = this.nodeLost.has(runId);
+		// A VANISHING pod is judged on its witnesses alone, whatever its phase:
+		// a taint-manager deletion leaves the final object `Running`.
+		const witnessed = vanishing
+			? isPreemptedPod(pod) || nodeLost
+			: mapPodToRunStatus(pod, { nodeLost }).terminalReason === "preempted";
+		if (witnessed) {
 			this.preemptedCounted.add(runId);
 			this.deps.metrics.increment(METRIC_PREEMPTED_TOTAL);
 			this.deps.logger?.warn?.(
@@ -401,6 +443,30 @@ export class PodWatcher
 			// The stamp is best-effort observability; a writer fault must never
 			// tear down the watch loop.
 		}
+	}
+}
+
+/**
+ * Wrap a pod-warning sink so a `NodeNotReady` warning also lands on the
+ * watcher's node-loss witness (warren-a757). Boot composes this around the
+ * run-stream sink; every signal still reaches `next` unchanged.
+ */
+export function withNodeLossWitness<S extends { readonly runId: string; readonly reason: string }>(
+	watcher: Pick<PodWatcher, "noteNodeLost">,
+	next: (signal: S) => void,
+): (signal: S) => void {
+	return (signal) => {
+		if (signal.reason === NODE_NOT_READY_EVENT_REASON) watcher.noteNodeLost(signal.runId);
+		next(signal);
+	};
+}
+
+/** Add to a witness set, evicting the oldest entry past `NODE_LOSS_WITNESS_CAP`. */
+function rememberBounded(set: Set<string>, value: string): void {
+	set.add(value);
+	if (set.size > NODE_LOSS_WITNESS_CAP) {
+		const oldest = set.values().next().value;
+		if (oldest !== undefined) set.delete(oldest);
 	}
 }
 

@@ -123,7 +123,8 @@ export interface RuntimeProviderDeps {
 	 * OPTIONAL preemption-witness source (warren-ea4b) — only consulted for
 	 * `WARREN_RUNTIME=k8s`. Boot threads the started `PodWatcher`, whose
 	 * `wasPreempted` records pods that vanished while their (spot-labelled)
-	 * node was deleted.
+	 * node was deleted or carrying a DisruptionTarget witness, and runs whose
+	 * node went NotReady (warren-a757).
 	 */
 	readonly k8sPreemptedPods?: { wasPreempted(runId: string): boolean };
 	/**

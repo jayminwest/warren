@@ -45,7 +45,7 @@ import {
  */
 export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
-		const { echo, filter } = parseAnalyticsWindow(ctx);
+		const { echo, filter } = parseAnalyticsWindow(ctx, deps.now?.().getTime());
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const runIds = rows.map((r) => r.id);
 		const runtimeByRunId = new Map(

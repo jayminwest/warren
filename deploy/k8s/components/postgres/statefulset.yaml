@@ -11,6 +11,15 @@
 #
 # No spot selector: the DB is the one workload that must survive a node
 # preemption without a restore-from-backup dance.
+#
+# safe-to-evict "false" on the pod template (warren-a5d2): GKE Autopilot's
+# cluster autoscaler twice evicted postgres-0 for a node scale-down within 36
+# minutes, and each eviction was a 20-40s full API outage (the replacement pod
+# waits on a Multi-Attach of the RWO disk before Postgres can start). The
+# annotation takes the node out of scale-down candidacy while postgres-0 runs
+# on it. The matching PodDisruptionBudget lives in the gke overlay
+# (overlays/gke/postgres-pdb.yaml) so the deploy workflow applies it; see
+# docs/RUNBOOK-K8S.md §1.5 "Disruption protection".
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -31,6 +40,8 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
         app.kubernetes.io/component: database
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       containers:
         - name: postgres

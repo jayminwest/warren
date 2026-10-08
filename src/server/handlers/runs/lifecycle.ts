@@ -305,7 +305,7 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const projectId = ctx.url.searchParams.get("projectId") ?? undefined;
 		const from = parseAnalyticsDateBound(ctx, "from");
 		const to = parseAnalyticsDateBound(ctx, "to");
-		const window = resolveAnalyticsWindow(from, to);
+		const window = resolveAnalyticsWindow(from, to, deps.now?.().getTime());
 		const filter: { projectId?: string; from?: string; to?: string } = {
 			from: window.from,
 			to: window.to,
@@ -378,8 +378,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function resolveAnalyticsWindow(
 	from: string | undefined,
 	to: string | undefined,
+	nowMs: number = Date.now(),
 ): { from: string; to: string } {
-	const toMs = to !== undefined ? Date.parse(to) : Date.now();
+	const toMs = to !== undefined ? Date.parse(to) : nowMs;
 	let fromMs =
 		from !== undefined ? Date.parse(from) : toMs - ANALYTICS_DEFAULT_WINDOW_DAYS * DAY_MS;
 	if (toMs - fromMs > ANALYTICS_MAX_WINDOW_DAYS * DAY_MS) {

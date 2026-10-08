@@ -309,7 +309,7 @@ describe("runAgent", () => {
 		expect(captured?.stdin).toContain("PIVOT NOW");
 	});
 
-	test("maps a non-zero exit to failed and emits an oom event on 137", async () => {
+	test("maps a non-zero exit to failed and emits a neutral agent_killed witness on 137", async () => {
 		const { out, lines } = collector();
 		const result = await runAgent(parseAgentEntrypointEnv(baseEnv()), {
 			registry: stubRegistry(),
@@ -321,7 +321,9 @@ describe("runAgent", () => {
 		});
 		expect(result).toEqual({ exitCode: 137, phase: "failed", cancelledViaSignal: false });
 		const kinds = lines.map((l) => (JSON.parse(l) as { kind: string }).kind);
-		expect(kinds).toContain("oom_killed");
+		expect(kinds).toContain("agent_killed");
+		// warren-a757: a bare 137 is not proof of OOM (a node shutdown SIGKILLs too).
+		expect(kinds).not.toContain("oom_killed");
 	});
 
 	test("routes stderr lines to stderr-stream events", async () => {

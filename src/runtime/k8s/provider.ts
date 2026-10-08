@@ -160,8 +160,9 @@ export interface K8sProviderDeps {
 	 */
 	readonly allowStaticPushTokenFallback?: boolean;
 	/**
-	 * OPTIONAL preemption witness source (warren-ea4b, the pod-watcher): a pod that
-	 * vanished while its spot node was deleted maps to `preempted`, not `lost`.
+	 * OPTIONAL node-loss witness source (warren-ea4b/a757, the pod-watcher): a run
+	 * whose pod vanished as preempted, or whose node went NotReady, maps to
+	 * `preempted` — absent pod or a non-OOM `Failed` one — not `lost`/`error`.
 	 */
 	readonly preemptedPods?: { wasPreempted(runId: string): boolean };
 }
@@ -387,8 +388,11 @@ export class K8sProvider implements RuntimeProvider {
 	 * `RunStatus` mapping, surfacing OOMKilled as `oom_killed` FAST (design §3.2).
 	 */
 	async status(handle: RunHandle): Promise<RunStatus> {
+		// warren-ea4b/a757: the watcher's node-loss witness (NodeNotReady, a pod
+		// gone with its spot node, a DisruptionTarget seen before deletion).
+		const nodeLost = this.deps.preemptedPods?.wasPreempted(handle.runId) === true;
 		const cached = this.deps.podCache?.getByRunId(handle.runId);
-		if (cached !== undefined) return mapPodToRunStatus(cached);
+		if (cached !== undefined) return mapPodToRunStatus(cached, { nodeLost });
 
 		const api = this.deps.coreApi();
 		const env = this.deps.serverEnv ?? process.env;
@@ -404,14 +408,8 @@ export class K8sProvider implements RuntimeProvider {
 			throw mapApiError(err, `pod status list for run ${handle.runId}`);
 		}
 		const pod = pickPodForRun(items, handle);
-		if (pod === undefined) {
-			// warren-ea4b: vanished while its spot node was deleted ⇒ preempted.
-			if (this.deps.preemptedPods?.wasPreempted(handle.runId) === true) {
-				return runLostStatus("preempted");
-			}
-			return runLostStatus();
-		}
-		return mapPodToRunStatus(pod);
+		if (pod === undefined) return runLostStatus(nodeLost ? "preempted" : "lost");
+		return mapPodToRunStatus(pod, { nodeLost });
 	}
 
 	/**
