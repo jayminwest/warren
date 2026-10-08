@@ -16,6 +16,7 @@ import {
 	isTerminal,
 	transitionToTerminal,
 } from "./state.ts";
+import { reapStepError } from "./step-error.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
 import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
 
@@ -85,12 +86,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		return row;
 	};
 	const fail = async (step: ReapStep, err: unknown, path?: string): Promise<void> => {
-		const message = err instanceof Error ? err.message : String(err);
-		const stepError: ReapStepError =
-			path !== undefined ? { step, message, path } : { step, message };
-		errors.push(stepError);
-		await emit("reap_failed", stepError);
-		log.error({ event: "reap.step_failed", step, err: message, path }, "reap step failed");
+		const e = reapStepError(step, err, path);
+		errors.push(e);
+		await emit("reap_failed", e);
+		log.error({ event: "reap.step_failed", step, err: e.message, path }, "reap step failed");
 	};
 	// Fold a finalize failed-stage into `errors[]` WITHOUT re-emitting — the
 	// matching `reap_failed` event already rode `FinalizeResult.events` and was

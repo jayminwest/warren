@@ -5,7 +5,10 @@
  *
  * macOS — write the rendered Seatbelt profile to a `0600` temp file under
  * the system tmp dir, invoke `sandbox-exec -f`, clean up the temp dir when
- * the child exits or is cancelled.
+ * the child exits or is cancelled. The child leads its own process group,
+ * and `cancel` signals the whole group, so a background process the agent
+ * left running dies with it (warren-3c1e: nothing may write the run's git
+ * dir once warren seals it).
  * Linux — invoke `bwrap` directly. Env is delivered via Bun.spawn's `env`
  * option (which becomes bwrap's process env, then propagates to the child via
  * execve). Putting env on the bwrap argv via `--setenv` would leak secrets
@@ -21,7 +24,7 @@
 
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { buildBwrapArgv, SANDBOX_HOME_PATH } from "./bwrap.ts";
 import { prepareSandboxCgroup, resolveSandboxLimits, wrapArgvForCgroup } from "./cgroup.ts";
 import { resolveSandboxEnv } from "./env.ts";
@@ -76,6 +79,7 @@ async function spawnDarwin(
 	const proc = Bun.spawn(argv, {
 		cwd,
 		env,
+		detached: true,
 		stdin: wantsStdin ? "pipe" : "ignore",
 		stdout: "pipe",
 		stderr: "pipe",
@@ -97,6 +101,7 @@ async function spawnDarwin(
 		stderr: proc.stderr as ReadableStream<Uint8Array>,
 		exited,
 		cancel: () => {
+			killProcessGroup(proc.pid);
 			proc.kill();
 			cleanup();
 		},
@@ -164,6 +169,15 @@ async function spawnLinux(
 	};
 }
 
+/** SIGKILL every process in `pgid`'s group; a no-op once the group is empty. */
+function killProcessGroup(pgid: number): void {
+	try {
+		process.kill(-pgid, "SIGKILL");
+	} catch {
+		// ESRCH: the group already exited.
+	}
+}
+
 async function writeStringStdin(
 	proc: Bun.Subprocess,
 	stdin: SpawnCommand["stdin"],
@@ -223,12 +237,16 @@ function canonicalizeProfilePaths(profile: SandboxProfile): SandboxProfile {
 		toolchainPaths: profile.toolchainPaths.map(realpathOrSelf),
 		sshAuthSock: profile.sshAuthSock ? realpathOrSelf(profile.sshAuthSock) : profile.sshAuthSock,
 	};
-	if (profile.workspaceGitdir) out.workspaceGitdir = realpathOrSelf(profile.workspaceGitdir);
-	if (profile.workspaceGitWritable) {
-		out.workspaceGitWritable = profile.workspaceGitWritable.map(realpathOrSelf);
-	}
-	if (profile.workspaceGitProtected) {
-		out.workspaceGitProtected = profile.workspaceGitProtected.map(realpathOrSelf);
+	const git = profile.workspaceGit;
+	if (git !== undefined) {
+		out.workspaceGit = {
+			gitDir: realpathOrSelf(git.gitDir),
+			protectedPaths: git.protectedPaths.map(realpathOrSelf),
+			hostGitDir: realpathOrSelf(git.hostGitDir),
+			sharedObjects: realpathOrSelf(git.sharedObjects),
+			// A sealed root may not exist yet: canonicalize through its parent.
+			deniedRoots: git.deniedRoots.map((p) => join(realpathOrSelf(dirname(p)), basename(p))),
+		};
 	}
 	return out;
 }

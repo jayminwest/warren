@@ -9,6 +9,23 @@
 export const NETWORK_POLICIES = ["none", "restricted", "open"] as const;
 export type NetworkPolicy = (typeof NETWORK_POLICIES)[number];
 
+/** Git metadata exposure for one run (warren-3c1e). All paths canonical. */
+export interface WorkspaceGitMounts {
+	/** The run's private git dir: read-write; the root cannot be renamed. */
+	gitDir: string;
+	/** Paths inside `gitDir` kept read-only (`config`, `objects/info/alternates`). */
+	protectedPaths: string[];
+	/** The host clone's git dir: never writable, never readable (Seatbelt denies it). */
+	hostGitDir: string;
+	/** `<hostGitDir>/objects`, the alternate object store: read-only. */
+	sharedObjects: string;
+	/**
+	 * Roots holding every run's private git dir, live and sealed. Seatbelt
+	 * denies them before granting `gitDir`; bwrap and docker never mount them.
+	 */
+	deniedRoots: string[];
+}
+
 export interface SandboxProfile {
 	/** Workspace root, bound read-write inside the sandbox. */
 	workspace: string;
@@ -61,31 +78,14 @@ export interface SandboxProfile {
 	/** Linux only: gid the sandboxed process runs as. Defaults to 1000. */
 	runAsGid?: number;
 	/**
-	 * Host path of the parent clone's `.git` common dir, exposed READ-ONLY at
-	 * the same path inside the sandbox. Set when the workspace is a git
-	 * worktree.
-	 *
-	 * `git worktree add` writes the worktree's `.git` *file* with an absolute
-	 * `gitdir:` pointer at `<gitCommonDir>/worktrees/<id>`; that path lives
-	 * outside the workspace bind, so without this mount every git invocation
-	 * inside the sandbox fails with `fatal: not a git repository` (burrow-7a80).
-	 * Read-only so a run cannot rewrite the clone's config/hooks or a sibling
-	 * worktree's HEAD/index (warren-8926); `workspaceGitWritable` carves out
-	 * the paths a commit needs.
+	 * The run's git metadata mounts (warren-3c1e), set for every local run.
+	 * The workspace's `.git` file holds an absolute `gitdir:` pointer at the
+	 * run's private git dir, outside the workspace bind, so the git dir and
+	 * the object store it borrows are exposed at their host paths
+	 * (burrow-7a80). Validated host-side by `resolvePrivateGitScope`
+	 * (`src/sandbox/git-scope.ts`).
 	 */
-	workspaceGitdir?: string;
-	/**
-	 * Paths under `workspaceGitdir` exposed read-write (warren-8926): the
-	 * run's own `worktrees/<id>` admin dir plus the shared `objects/`,
-	 * `refs/`, `logs/` stores. Validated host-side by
-	 * `resolveWorkspaceGitScope` (`src/sandbox/git-scope.ts`).
-	 */
-	workspaceGitWritable?: string[];
-	/**
-	 * Files inside `workspaceGitWritable` re-protected read-only
-	 * (warren-8926): the admin dir's `commondir`, `gitdir`, `config.worktree`.
-	 */
-	workspaceGitProtected?: string[];
+	workspaceGit?: WorkspaceGitMounts;
 	/**
 	 * Workspace-relative path of the run's gitconfig (`.gitconfig.burrow`,
 	 * written at materialization). The sandbox env exports it as

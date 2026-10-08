@@ -486,12 +486,12 @@ export interface RuntimeProvider {
 
 	/**
 	 * Resolve the run's workspace path + push branch (warren-e9e1) — the neutral
-	 * replacement for reap's direct `burrows.get`. LocalProvider returns the live
-	 * burrow worktree path + branch; K8sProvider returns `{ workspacePath: null,
-	 * branch }` (the pod's `emptyDir` is host-unreachable). Throws only on a
-	 * genuine resolution failure — a `null` workspace path is a value, not a throw.
-	 * The domain gates its success pipeline on this resolving rather than on a
-	 * host path existing, so succeeded K8s runs reach `finalize`.
+	 * replacement for reap's direct `burrows.get`. Reap-time only: LocalProvider
+	 * stops the agent, seals its private git dir (warren-3c1e), and returns the
+	 * path + branch; K8sProvider returns `{ workspacePath: null, branch }` (the
+	 * pod's `emptyDir` is host-unreachable). Throws only on a genuine resolution
+	 * failure — a `null` workspace path is a value, not a throw. The domain gates
+	 * its success pipeline on this resolving, so succeeded K8s runs reach `finalize`.
 	 */
 	workspaceInfo(handle: RunHandle): Promise<WorkspaceInfo>;
 

@@ -52,7 +52,9 @@ The phase-2 adapters and parsers run unchanged host-side.
 
 The container starts without `--rm`. After exit the seam inspects the dead
 container for the OOMKilled flag, then force-removes it. `cancel` targets
-the deterministic container name with `docker rm -f`.
+the deterministic container name with `docker rm -f`. `exited` settles only
+after that removal has finished, so reap seals the run's private git dir
+with no container process left (warren-3c1e).
 
 Secrets reach the container through an `--env-file` in a private tmp dir.
 They never ride the CLI argv.
@@ -70,12 +72,12 @@ The K8s pod already runs uid 1000 with `runAsNonRoot`; docker mirrors that.
   so the just-materialized workspace and HOME stay writable without a chown.
 - `SandboxProfile.runAsUid` / `runAsGid` override both arms when set.
 - Before `docker run`, the spawn seam recursively chowns the bind-mounted
-  workspace, HOME, and optional worktree gitdir onto the agent uid whenever
+  workspace, HOME, and the run's private git dir onto the agent uid whenever
   warren created them as root. Without that step uid 1000 hits EACCES on
-  every git write and every agent config write under HOME. The shared clone
-  `.git` is included because worktree commits write objects there; under the
-  root-warren topology that chown is idempotent across concurrent runs (all
-  target uid 1000).
+  every git write and every agent config write under HOME. The host clone's
+  `.git` is never chowned: since warren-3c1e a run writes only its private
+  git dir, and the clone's object store mounts read-only (see
+  [runtime-and-supervisor.md](runtime-and-supervisor.md#run-git-metadata)).
 
 ## Networking and the callback URL
 

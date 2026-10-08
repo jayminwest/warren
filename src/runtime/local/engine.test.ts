@@ -162,7 +162,7 @@ async function awaitTerminal(
 }
 
 describe("LocalEngine.create", () => {
-	test("materializes a worktree, writes seed files, and drives the run to succeeded", async () => {
+	test("materializes a private checkout, writes seed files, and drives the run to succeeded", async () => {
 		const h = await makeHarness();
 		try {
 			const handle = await h.engine.create(makeSpec(h, "run_e1"));
@@ -177,7 +177,6 @@ describe("LocalEngine.create", () => {
 
 			const roots = resolveLocalStateRoots({ WARREN_DATA_DIR: h.dataDir });
 			const workspacePath = localWorkspacePath(roots, handle.sandboxId);
-			// the worktree exists and carries the seed drop
 			expect(readFileSync(join(workspacePath, ".warren/agent.json"), "utf8")).toBe(
 				'{"name":"fake"}',
 			);
@@ -187,11 +186,11 @@ describe("LocalEngine.create", () => {
 			expect(homePath).not.toBe(workspacePath);
 			// the manifest persists the materialization for GC
 			const manifest = await readLocalRunManifest(roots, handle.sandboxId);
-			expect(manifest?.source.kind).toBe("worktree");
+			expect(manifest?.source.kind).toBe("private");
 			expect(manifest?.branch).toBe("warren/run_e1");
-			// the profile binds the real HOME + the worktree's git common dir
+			// the profile binds the real HOME + the run's private git dir (warren-3c1e)
 			expect(h.profiles[0]?.home).toBe(homePath);
-			expect(h.profiles[0]?.workspaceGitdir).toBeDefined();
+			expect(h.profiles[0]?.workspaceGit?.gitDir).toBe(manifest?.source.gitDir);
 		} finally {
 			await h.cleanup();
 		}
