@@ -30,6 +30,15 @@ spec:
       labels:
         app.kubernetes.io/name: warren
         app.kubernetes.io/component: control-plane
+      # Keep the cluster autoscaler from evicting the control plane to scale a
+      # node down (warren-a5d2). One replica on an RWO PVC means an eviction is
+      # a full API outage until the replacement pod clears the Multi-Attach of
+      # warren-data, and it drops every live event stream and in-flight event
+      # append. Inert on clusters without an autoscaler. No PDB on purpose:
+      # rollouts are not evictions, and a zero-budget PDB would stall node
+      # upgrades for the single replica. See docs/RUNBOOK-K8S.md §1.5.
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       serviceAccountName: warren
       # The control plane DOES need its projected SA token (this is what

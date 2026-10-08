@@ -289,24 +289,24 @@ describe("runAutoMergeArm", () => {
 		await runAutoMergeArm(baseInput({ forge, exec: e.exec, emit: failingEmit }));
 	});
 
-	test.each([
-		null,
-		"/data/sandbox/ws",
-	])("fetches remote snapshots with workspace %s", async (workspacePath) => {
-		const e = fakeExec({ showStdout: BASE_CONFIG_YAML, nameOnlyDiff: "src/a.ts\0" });
-		const { forge, armCalls } = armedForge();
-		const rec = recordingEmit();
-		await runAutoMergeArm(baseInput({ workspacePath, forge, exec: e.exec, emit: rec.emit }));
-		const fetch = e.calls.filter((c) => c.args[0] === "fetch")[1];
-		expect(fetch?.args.join(" ")).toContain(
-			"refs/heads/agent/refactor-bot/run-1:refs/warren/auto-merge/head",
-		);
-		const diff = e.calls.find((c) => c.args[0] === "diff" && c.args.includes("--name-only"));
-		expect(diff?.args.join(" ")).toContain(`${FAKE_REV_PARSE_SHA}...${FAKE_REV_PARSE_SHA}`);
-		expect(fetch?.cwd).not.toBe("/data/projects/x/y");
-		expect(existsSync(fetch?.cwd ?? "")).toBe(false);
-		expect(armCalls).toHaveLength(1);
-		const ev = onlyEvent(rec.events);
-		expect(ev.kind).toBe("reap.auto_merge_armed");
-	});
+	test.each([null, "/data/sandbox/ws"])(
+		"fetches remote snapshots with workspace %s",
+		async (workspacePath) => {
+			const e = fakeExec({ showStdout: BASE_CONFIG_YAML, nameOnlyDiff: "src/a.ts\0" });
+			const { forge, armCalls } = armedForge();
+			const rec = recordingEmit();
+			await runAutoMergeArm(baseInput({ workspacePath, forge, exec: e.exec, emit: rec.emit }));
+			const fetch = e.calls.filter((c) => c.args[0] === "fetch")[1];
+			expect(fetch?.args.join(" ")).toContain(
+				"refs/heads/agent/refactor-bot/run-1:refs/warren/auto-merge/head",
+			);
+			const diff = e.calls.find((c) => c.args[0] === "diff" && c.args.includes("--name-only"));
+			expect(diff?.args.join(" ")).toContain(`${FAKE_REV_PARSE_SHA}...${FAKE_REV_PARSE_SHA}`);
+			expect(fetch?.cwd).not.toBe("/data/projects/x/y");
+			expect(existsSync(fetch?.cwd ?? "")).toBe(false);
+			expect(armCalls).toHaveLength(1);
+			const ev = onlyEvent(rec.events);
+			expect(ev.kind).toBe("reap.auto_merge_armed");
+		},
+	);
 });

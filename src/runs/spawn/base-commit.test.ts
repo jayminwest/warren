@@ -139,9 +139,9 @@ describe("spawnRun: baseCommit dispatch is detached-HEAD safe (warren-232d)", ()
 		expect(receivedRef).toBeUndefined();
 	});
 
-	test("skips the migration journal preflight (heal path would commit on the wrong base)", async () => {
+	test("skips the migration journal preflight (the clone is not checked out onto the pin)", async () => {
 		const { client } = makeSandboxClient();
-		let healCalls = 0;
+		let detectCalls = 0;
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -158,17 +158,17 @@ describe("spawnRun: baseCommit dispatch is detached-HEAD safe (warren-232d)", ()
 				});
 				return { project: updated, headSha: SHA, ref: input.ref ?? "" };
 			},
-			migrationHealFn: async () => {
-				healCalls += 1;
-				return { collisions: [], commitSha: null };
+			migrationPreflightFn: async () => {
+				detectCalls += 1;
+				return { collisions: [] };
 			},
 		});
 
 		// A SHA baseRef always differs from the default branch name, but the
 		// preflight must not fire: the host clone was never checked out onto
-		// the pin, so a heal commit would land on the wrong base.
-		expect(healCalls).toBe(0);
+		// the pin, so its working-tree journal is not the pinned base's.
+		expect(detectCalls).toBe(0);
 		const events = await repos.events.listByRun(run.id);
-		expect(events.find((e) => e.kind === "migration_journal_heal")).toBeUndefined();
+		expect(events.find((e) => e.kind === "migration_journal_collision")).toBeUndefined();
 	});
 });

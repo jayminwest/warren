@@ -64,8 +64,8 @@ function AdmissionRowView({ row }: { row: AdmissionRow }) {
 			<span className="w-[10px] shrink-0">
 				<span className={`block h-1.5 w-1.5 rounded-full ${DOT_CLASS[row.status]}`} />
 			</span>
-			<span className="flex-1 text-[10px] leading-3 text-(--color-text-2)">{row.label}</span>
-			<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">{row.value}</span>
+			<span className="flex-1 text-(--color-text-2) text-[10px] leading-3">{row.label}</span>
+			<span className="font-mono text-(--color-text-3) text-[9px] leading-3">{row.value}</span>
 		</div>
 	);
 }
@@ -81,7 +81,7 @@ function AdmissionBand({ rows }: { rows: readonly AdmissionRow[] }) {
 					allOk ? "bg-(--color-success)" : "bg-(--color-neutral)"
 				}`}
 			/>
-			<span className="font-mono text-[10px] leading-[13px] text-(--color-text-2)">
+			<span className="font-mono text-(--color-text-2) text-[10px] leading-[13px]">
 				{allOk
 					? "ADMISSION OK · policy checks pass"
 					: `ADMISSION · policy checks pending (${okCount}/${rows.length})`}
@@ -132,19 +132,19 @@ export function ResolvedManifest(props: ResolvedManifestProps) {
 
 	return (
 		<aside className="flex w-full shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-sidebar) md:bg-(--color-surface) lg:w-[350px]">
-			<div className="flex h-[39px] shrink-0 items-center border-b border-(--color-border) px-3">
-				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">
+			<div className="flex h-[39px] shrink-0 items-center border-(--color-border) border-b px-3">
+				<h2 className="font-semibold text-(--color-text) text-[11px] leading-[14px]">
 					Resolved manifest
 				</h2>
 				<div className="flex-1" />
-				<span className="font-mono text-[9px] leading-3 text-(--color-text-3) md:hidden">
+				<span className="font-mono text-(--color-text-3) text-[9px] leading-3 md:hidden">
 					READ-ONLY
 				</span>
 				<span
 					className={
 						props.valid
-							? "hidden font-mono text-[9px] leading-3 text-(--color-success) md:block"
-							: "hidden font-mono text-[9px] leading-3 text-(--color-text-3) md:block"
+							? "hidden font-mono text-(--color-success) text-[9px] leading-3 md:block"
+							: "hidden font-mono text-(--color-text-3) text-[9px] leading-3 md:block"
 					}
 				>
 					{props.valid ? "VALID" : "INCOMPLETE"}
@@ -160,7 +160,7 @@ export function ResolvedManifest(props: ResolvedManifestProps) {
 					<ManifestLineRow key={`s:${line.key}`} line={line} summary />
 				))}
 			</div>
-			<div className="flex flex-col border-t border-(--color-border) px-3 py-2">
+			<div className="flex flex-col border-(--color-border) border-t px-3 py-2">
 				<AdmissionBand rows={admission} />
 				<div className="hidden flex-col md:flex">
 					{admission.map((row) => (

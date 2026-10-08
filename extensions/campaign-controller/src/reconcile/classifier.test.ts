@@ -9,13 +9,19 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { validateBotGrammar } from "./bot-grammar.ts";
+import {
+	MAX_CLASSIFIED_BODY_LENGTH,
+	MAX_SCANNED_BODY_LENGTH,
+	validateBotGrammar,
+} from "./bot-grammar.ts";
 import {
 	type ClassifiedFeedback,
 	classifyEvent,
 	classifyEvents,
 	feedbackRowId,
+	findingSection,
 } from "./classifier.ts";
+import { CLAWSWEEPER_ACK_BODY, clawsweeperVerdictBody } from "./clawsweeper-fixtures.ts";
 
 /** The shape every extracted field carries. */
 interface TestField {
@@ -146,6 +152,46 @@ describe("classifyEvent", () => {
 		expect(finding?.file?.value).toBe("src/cron/service/failure-alerts.ts");
 		// A line range captures the first number only.
 		expect(finding?.line?.value).toBe(217);
+	});
+
+	test("finds the ClawSweeper findings list mid-body, past the 8 KiB regex bound (warren-b990)", () => {
+		const body = clawsweeperVerdictBody(9, [
+			"- [P1] Persist transport facts instead of promise settlement — `src/cron/a.ts:302-304`",
+			"- [P2] Pass the run identity when finalizing a removed job — `src/cron/b.ts:652`",
+		]);
+		expect(body.indexOf("## Findings")).toBeGreaterThan(MAX_CLASSIFIED_BODY_LENGTH);
+		const row = classifyComment("EV_CS_2", body, "clawsweeper[bot]", "NONE", PROFILE_CLAWSWEEPER);
+		expect(row?.category).toBe("review_bot_findings");
+		const findings = findingsOf(row);
+		// The history log under the later `### History` heading is excluded.
+		expect(findings.map((f) => f.title?.value)).toEqual([
+			"Persist transport facts instead of promise settlement",
+			"Pass the run identity when finalizing a removed job",
+		]);
+		expect(findings[0]?.line?.value).toBe(302);
+	});
+
+	test("the ClawSweeper acknowledgement placeholder classifies to nothing", () => {
+		const row = classifyComment(
+			"EV_CS_3",
+			CLAWSWEEPER_ACK_BODY,
+			"clawsweeper[bot]",
+			"NONE",
+			PROFILE_CLAWSWEEPER,
+		);
+		expect(row).toBeNull();
+	});
+
+	test("a CRLF bot body classifies like its LF twin", () => {
+		const lf = clawsweeperVerdictBody(1, ["- [P2] Tighten the clock seam — `src/clock.ts:4`"]);
+		const row = classifyComment(
+			"EV_CS_4",
+			lf.replaceAll("\n", "\r\n"),
+			"clawsweeper[bot]",
+			"NONE",
+			PROFILE_CLAWSWEEPER,
+		);
+		expect(findingsOf(row).map((f) => f.file?.value)).toEqual(["src/clock.ts"]);
 	});
 
 	test("classifies a plain maintainer comment as a question under both profiles", () => {
@@ -404,5 +450,31 @@ describe("classifyEvents", () => {
 				category: "failing_check",
 			}),
 		).toBe("openclaw/openclaw|check_run|x|y|failing_check");
+	});
+});
+
+describe("findingSection", () => {
+	test("returns the text under a marker that opens the body", () => {
+		expect(findingSection("## Findings\n- a\n- b", "## Findings")).toBe("\n- a\n- b");
+	});
+
+	test("finds a marker that opens a later line and stops at the next heading", () => {
+		const body = "Summary\n\n## Findings\n- a\n\n### History\n- old";
+		expect(findingSection(body, "## Findings")).toBe("\n- a\n");
+	});
+
+	test("ignores a marker that does not open a line", () => {
+		expect(findingSection("see the ## Findings below\n- a", "## Findings")).toBeNull();
+	});
+
+	test("never scans past the GitHub body ceiling", () => {
+		const body = `${"x".repeat(MAX_SCANNED_BODY_LENGTH)}\n## Findings\n- a`;
+		expect(findingSection(body, "## Findings")).toBeNull();
+	});
+
+	test("cuts the located section to the regex input bound", () => {
+		const body = `## Findings\n${"- a\n".repeat(MAX_CLASSIFIED_BODY_LENGTH)}`;
+		const section = findingSection(body, "## Findings");
+		expect(section?.length).toBeLessThanOrEqual(MAX_CLASSIFIED_BODY_LENGTH);
 	});
 });

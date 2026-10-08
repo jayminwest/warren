@@ -147,85 +147,84 @@ describe("advancePlanRun — completion phase", () => {
 		expect(h.events.some((e) => e.kind === "plan_run.failed")).toBe(true);
 	});
 
-	test.each([
-		"Not Found",
-		"Gone",
-	])("pr_open + not_found poll (%s) → plan_failed pr_closed_without_merge (warren-eccd)", async (detail) => {
-		await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
-			startedAt: NOW.toISOString(),
-		});
-		const runId = await h.makeRun("warren-a");
-		await h.repos.runs.markRunning(runId, NOW);
-		await h.repos.runs.finalize(runId, "succeeded", NOW);
-		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.seedChildState({
-			planRunId: h.planRun.id,
-			seq: 1,
-			runId,
-			state: "pr_open",
-			startedAt: NOW.toISOString(),
-		});
-		const planRun = await h.repos.planRuns.require(h.planRun.id);
-		const result = await advancePlanRun({
-			planRun,
-			repos: h.repos,
-			getIssue: h.getIssueStub("open"),
-			checkPrMerged: async () => ({ kind: "forge_error", errorKind: "not_found", detail }),
-			spawn: h.spawnStub(() => "unused"),
-			emit: h.emit,
-			now: () => NOW,
-		});
-		// not_found means the PR is genuinely gone → fail the plan.
-		expect(result.kind).toBe("plan_failed");
-		if (result.kind === "plan_failed") {
-			expect(result.reason).toBe("pr_closed_without_merge");
-			expect(result.failedSeq).toBe(1);
-		}
-		const reloaded = await h.repos.planRuns.require(h.planRun.id);
-		expect(reloaded.state).toBe("failed");
-		expect(reloaded.failureReason).toBe("pr_closed_without_merge");
-		const failedEvent = h.events.find((e) => e.kind === "plan_run.failed");
-		expect(failedEvent?.payload.reason).toBe("pr_closed_without_merge");
-	});
+	test.each(["Not Found", "Gone"])(
+		"pr_open + not_found poll (%s) → plan_failed pr_closed_without_merge (warren-eccd)",
+		async (detail) => {
+			await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
+				startedAt: NOW.toISOString(),
+			});
+			const runId = await h.makeRun("warren-a");
+			await h.repos.runs.markRunning(runId, NOW);
+			await h.repos.runs.finalize(runId, "succeeded", NOW);
+			await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
+			await h.seedChildState({
+				planRunId: h.planRun.id,
+				seq: 1,
+				runId,
+				state: "pr_open",
+				startedAt: NOW.toISOString(),
+			});
+			const planRun = await h.repos.planRuns.require(h.planRun.id);
+			const result = await advancePlanRun({
+				planRun,
+				repos: h.repos,
+				getIssue: h.getIssueStub("open"),
+				checkPrMerged: async () => ({ kind: "forge_error", errorKind: "not_found", detail }),
+				spawn: h.spawnStub(() => "unused"),
+				emit: h.emit,
+				now: () => NOW,
+			});
+			// not_found means the PR is genuinely gone → fail the plan.
+			expect(result.kind).toBe("plan_failed");
+			if (result.kind === "plan_failed") {
+				expect(result.reason).toBe("pr_closed_without_merge");
+				expect(result.failedSeq).toBe(1);
+			}
+			const reloaded = await h.repos.planRuns.require(h.planRun.id);
+			expect(reloaded.state).toBe("failed");
+			expect(reloaded.failureReason).toBe("pr_closed_without_merge");
+			const failedEvent = h.events.find((e) => e.kind === "plan_run.failed");
+			expect(failedEvent?.payload.reason).toBe("pr_closed_without_merge");
+		},
+	);
 
-	test.each([
-		"unauthorized",
-		"forbidden",
-		"rate_limited",
-	] as const)("pr_open + %s poll keeps waiting, not pr_closed_without_merge (warren-eccd)", async (errorKind) => {
-		await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
-			startedAt: NOW.toISOString(),
-		});
-		const runId = await h.makeRun("warren-a");
-		await h.repos.runs.markRunning(runId, NOW);
-		await h.repos.runs.finalize(runId, "succeeded", NOW);
-		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.seedChildState({
-			planRunId: h.planRun.id,
-			seq: 1,
-			runId,
-			state: "pr_open",
-			startedAt: NOW.toISOString(),
-		});
-		const planRun = await h.repos.planRuns.require(h.planRun.id);
-		const result = await advancePlanRun({
-			planRun,
-			repos: h.repos,
-			getIssue: h.getIssueStub("open"),
-			checkPrMerged: async () => ({ kind: "forge_error", errorKind, detail: errorKind }),
-			spawn: h.spawnStub(() => "unused"),
-			emit: h.emit,
-			now: () => NOW,
-		});
-		// unauthorized/forbidden/rate_limited are "cannot verify right now"
-		// (auth blip / rate limit) — keep waiting, bounded by the merge-wait budget
-		// (warren-3937). Do NOT fail the plan; no plan_run.failed event.
-		expect(result.kind).toBe("waiting_for_merge");
-		const reloaded = await h.repos.planRuns.require(h.planRun.id);
-		expect(reloaded.state).toBe("running");
-		expect(reloaded.failureReason).toBeNull();
-		expect(h.events.some((e) => e.kind === "plan_run.failed")).toBe(false);
-	});
+	test.each(["unauthorized", "forbidden", "rate_limited"] as const)(
+		"pr_open + %s poll keeps waiting, not pr_closed_without_merge (warren-eccd)",
+		async (errorKind) => {
+			await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
+				startedAt: NOW.toISOString(),
+			});
+			const runId = await h.makeRun("warren-a");
+			await h.repos.runs.markRunning(runId, NOW);
+			await h.repos.runs.finalize(runId, "succeeded", NOW);
+			await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
+			await h.seedChildState({
+				planRunId: h.planRun.id,
+				seq: 1,
+				runId,
+				state: "pr_open",
+				startedAt: NOW.toISOString(),
+			});
+			const planRun = await h.repos.planRuns.require(h.planRun.id);
+			const result = await advancePlanRun({
+				planRun,
+				repos: h.repos,
+				getIssue: h.getIssueStub("open"),
+				checkPrMerged: async () => ({ kind: "forge_error", errorKind, detail: errorKind }),
+				spawn: h.spawnStub(() => "unused"),
+				emit: h.emit,
+				now: () => NOW,
+			});
+			// unauthorized/forbidden/rate_limited are "cannot verify right now"
+			// (auth blip / rate limit) — keep waiting, bounded by the merge-wait budget
+			// (warren-3937). Do NOT fail the plan; no plan_run.failed event.
+			expect(result.kind).toBe("waiting_for_merge");
+			const reloaded = await h.repos.planRuns.require(h.planRun.id);
+			expect(reloaded.state).toBe("running");
+			expect(reloaded.failureReason).toBeNull();
+			expect(h.events.some((e) => e.kind === "plan_run.failed")).toBe(false);
+		},
+	);
 
 	test("child run failed → plan_failed with child_<reason>", async () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });

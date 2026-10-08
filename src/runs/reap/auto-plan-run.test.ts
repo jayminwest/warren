@@ -399,8 +399,12 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const events = await ctx.repos.events.listByRun(ctx.runId);
 			const skipped = events.find((ev) => ev.kind === "auto_plan_run_skipped");
 			expect(skipped).toBeDefined();
-			expect((skipped?.payloadJson as { reason: string }).reason).toBe("missing_child_seeds");
-			expect((skipped?.payloadJson as { missing: string[] }).missing).toEqual(["warren-gone"]);
+			expect((skipped?.payloadJson as { reason: string } | undefined)?.reason).toBe(
+				"missing_child_seeds",
+			);
+			expect((skipped?.payloadJson as { missing: string[] } | undefined)?.missing).toEqual([
+				"warren-gone",
+			]);
 		} finally {
 			await ctx.db.close();
 		}
@@ -432,7 +436,9 @@ describe("auto_plan_run (warren-a32a)", () => {
 			expect(result.autoPlanRunCreated).toBe(false);
 			const events = await ctx.repos.events.listByRun(ctx.runId);
 			const skipped = events.find((ev) => ev.kind === "auto_plan_run_skipped");
-			expect((skipped?.payloadJson as { reason: string }).reason).toBe("all_children_closed");
+			expect((skipped?.payloadJson as { reason: string } | undefined)?.reason).toBe(
+				"all_children_closed",
+			);
 		} finally {
 			await ctx.db.close();
 		}

@@ -114,7 +114,9 @@ describe("createFinalizeRecovery (warren-5202)", () => {
 		const events = await repos.events.listByRun(runId);
 		const recovery = events.find((e) => e.kind === FINALIZE_RECOVERY_KIND);
 		expect(recovery).toBeDefined();
-		expect((recovery?.payloadJson as { source?: string }).source).toBe("agent_exit_hint");
+		expect((recovery?.payloadJson as { source?: string } | undefined)?.source).toBe(
+			"agent_exit_hint",
+		);
 	});
 
 	test("invariant 2: a miss inside the grace window never fires (the healthy reap path races it)", async () => {
@@ -222,7 +224,7 @@ describe("createFinalizeRecovery (warren-5202)", () => {
 		expect(reapCalls[0]?.outcome).toBe("failed");
 		const events = await repos.events.listByRun(runId);
 		const recovery = events.find((e) => e.kind === FINALIZE_RECOVERY_KIND);
-		expect((recovery?.payloadJson as { source?: string }).source).toBe("event_log");
+		expect((recovery?.payloadJson as { source?: string } | undefined)?.source).toBe("event_log");
 	});
 
 	test("outcome provenance: no hint and no terminal envelope defaults to succeeded", async () => {
@@ -233,7 +235,7 @@ describe("createFinalizeRecovery (warren-5202)", () => {
 		expect(reapCalls[0]?.outcome).toBe("succeeded");
 		const events = await repos.events.listByRun(runId);
 		const recovery = events.find((e) => e.kind === FINALIZE_RECOVERY_KIND);
-		expect((recovery?.payloadJson as { source?: string }).source).toBe("default");
+		expect((recovery?.payloadJson as { source?: string } | undefined)?.source).toBe("default");
 	});
 
 	test("an unknown run id is a no-op (stale poll for a deleted run)", async () => {
