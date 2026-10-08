@@ -148,13 +148,18 @@ function AuthModePills({ mode }: { mode: InstanceFactsResponse["authMode"] }) {
  * a fixed 110px mono column and the value is right-aligned at full
  * strength; at md+ it reverts to the justify-between row.
  */
-function FactRow({ label, value }: { label: string; value: string }) {
+/**
+ * `mask` marks a wall-clock value (uptime) with `data-visual-mask` so the
+ * ui-visual screenshots (scripts/ui-visual) blank it out.
+ */
+function FactRow({ label, value, mask }: { label: string; value: string; mask?: boolean }) {
 	return (
 		<div className="flex items-center gap-2 px-3 py-[7px] md:gap-3 md:px-0 md:py-0">
 			<span className="w-[110px] shrink-0 font-mono text-(--color-text-3) text-[9px] leading-3 md:w-auto md:font-sans md:text-[11px] md:leading-[14px]">
 				{label}
 			</span>
 			<span
+				data-visual-mask={mask ? "" : undefined}
 				className={cn(
 					"flex min-w-0 flex-1 justify-end truncate text-right font-mono text-[10px] leading-3",
 					"md:block md:text-[11px] md:leading-[14px]",
@@ -282,7 +287,7 @@ function FactsRail({ facts }: { facts: InstanceFactsResponse | undefined }) {
 				<FactRow label="version" value={version} />
 				<FactRow label="runtime" value={runtime} />
 				<FactRow label="database" value={dbBackend} />
-				<FactRow label="uptime" value={uptime} />
+				<FactRow label="uptime" value={uptime} mask />
 				<FactRow
 					label="admission caps"
 					value={admission ? "k8s · active" : facts ? "not active" : "—"}

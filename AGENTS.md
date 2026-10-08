@@ -231,6 +231,7 @@ bun run acceptance             # end-to-end acceptance scenarios
 bun run acceptance:container   # acceptance scenarios in container mode
 bun run acceptance:public      # scenario 39, the public-instance leak guard
 bun run acceptance:nightly     # the nightly acceptance suite
+bun run check:ui-visual        # Playwright smoke over every UI screen (scripts/ui-visual/README.md)
 ```
 
 CI (`.github/workflows/ci.yml`) runs each manifest gate as its own
