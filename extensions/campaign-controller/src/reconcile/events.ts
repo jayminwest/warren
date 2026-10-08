@@ -8,6 +8,16 @@
  * the key and store exactly once; an edit changes the content digest and
  * therefore produces a *new* source fact, per plan risk 3. Body text is
  * copied verbatim as untrusted data — nothing here interprets it.
+ *
+ * Edit identity holds for every author, not only known review bots
+ * (warren-b990). ClawSweeper delivers each re-review verdict by editing
+ * one comment in place, and a maintainer who edits in a question is the
+ * same shape of fact. Attention stays one item per subject across edits
+ * (warren-b853), so the general rule costs no attention noise.
+ *
+ * The key format is frozen. `github_events.node_id` stores it, and every
+ * `review_feedback` id embeds it, so a new format would re-emit the whole
+ * durable history as new events on upgrade. `events.test.ts` pins it.
  */
 
 import { canonicalJson, sha256Hex } from "../digest.ts";
