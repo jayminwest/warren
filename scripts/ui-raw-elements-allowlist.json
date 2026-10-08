@@ -1,0 +1,137 @@
+{
+	"$comment": "Grandfathered hits for the .biome/plugins GritQL rules (warren-6772). Each entry names a tracker id and a max hit count. The list only shrinks: migrate a file to the components/ui primitives, then run `bun run check:ui-raw-elements --write` to lower or drop its entry and regenerate the biome.jsonc block. Never add an entry.",
+	"rules": {
+		"no-raw-form-elements": {
+			"src/ui/src/components/add-project-dialog.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/components/console/console-bottom-nav.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/components/console/console-sidebar.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/dispatch-plan.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/dispatch-plan/walk-form.tsx": {
+				"tracker": "warren-23b5",
+				"max": 15
+			},
+			"src/ui/src/pages/dispatch/dispatch-form.tsx": {
+				"tracker": "warren-23b5",
+				"max": 11
+			},
+			"src/ui/src/pages/event-explorer-mobile-filter-strip.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/event-explorer.tsx": {
+				"tracker": "warren-23b5",
+				"max": 3
+			},
+			"src/ui/src/pages/login.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/operations.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/plan-run-detail.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/plan-runs.tsx": {
+				"tracker": "warren-23b5",
+				"max": 4
+			},
+			"src/ui/src/pages/run-detail/event-tail.tsx": {
+				"tracker": "warren-23b5",
+				"max": 3
+			},
+			"src/ui/src/pages/run-detail/index.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/run-detail/preview-panel.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/run-detail/side-panels.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/run-detail/steering-panel.tsx": {
+				"tracker": "warren-23b5",
+				"max": 3
+			},
+			"src/ui/src/pages/runs.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/runs/runs-filter-bar.tsx": {
+				"tracker": "warren-23b5",
+				"max": 5
+			},
+			"src/ui/src/pages/runs/runs-table.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/telemetry.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			}
+		},
+		"no-inline-style": {
+			"src/ui/src/pages/login.tsx": {
+				"tracker": "warren-23b5",
+				"max": 6
+			},
+			"src/ui/src/pages/plan-run-detail.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/plan-run-detail/child-walk.tsx": {
+				"tracker": "warren-23b5",
+				"max": 2
+			},
+			"src/ui/src/pages/plan-run-detail/detail-rail.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/plan-runs/walk-cards.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/plan-runs/walk-row.tsx": {
+				"tracker": "warren-23b5",
+				"max": 3
+			},
+			"src/ui/src/pages/runs/runs-table.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/telemetry/economics-panels.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/telemetry/judge-tab.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			},
+			"src/ui/src/pages/telemetry/loop-tab.tsx": {
+				"tracker": "warren-23b5",
+				"max": 3
+			},
+			"src/ui/src/pages/telemetry/meter-bar.tsx": {
+				"tracker": "warren-23b5",
+				"max": 1
+			}
+		}
+	}
+}

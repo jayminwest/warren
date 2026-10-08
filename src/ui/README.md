@@ -62,3 +62,44 @@ should reuse instead of re-typing ad-hoc strings:
   (the 16px floor suppresses iOS Safari focus auto-zoom), compact at `sm+`.
 - `responsiveFooterActions` / `responsiveFooterButton` — footer action
   rows that stack full-width on mobile and right-align at `sm+`.
+
+## Primitives and inline styles (lint-enforced)
+
+Two Biome GritQL plugins in `.biome/plugins/` check each `.tsx` file in
+`src/ui/src/` outside `src/components/ui/` (warren-6772).
+
+A hit fails `bun run lint`.
+
+### No raw form elements
+
+`no-raw-form-elements.grit` flags a raw `<button>`, `<input>`,
+`<select>`, or `<textarea>`.
+
+Use the `components/ui` primitives (`Button`, `Input`) instead.
+
+If no primitive fits, add one under `src/components/ui/`.
+
+### No inline styles, except CSS variables
+
+`no-inline-style.grit` accepts a `style` value only in one shape.
+
+It must be a non-empty object literal where every key is a quoted CSS
+custom property (an `as CSSProperties` cast is fine).
+
+Put the data-driven value in a variable and let the class read it:
+
+```tsx
+<div className="h-(--bar-h)" style={{ "--bar-h": `${h}px` }} />
+```
+
+The plugin flags `style={{ height: h }}`, mixed objects, and spreads.
+
+### Grandfathered files
+
+`scripts/ui-raw-elements-allowlist.json` lists the older files.
+
+Each entry has a tracker id and a hit ceiling, and the list only shrinks.
+
+After you migrate a file, run `bun run check:ui-raw-elements --write`.
+
+That command lowers or removes the entry and updates `biome.jsonc`.

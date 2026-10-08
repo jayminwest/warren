@@ -1,0 +1,33 @@
+// no-inline-style (warren-6772)
+//
+// The rule: a JSX style attribute is allowed only when its value is a
+// non-empty object literal whose every key is a quoted CSS custom property,
+// optionally cast with `as CSSProperties`:
+//
+//   <div className="h-(--bar-h)" style={{ "--bar-h": `${h}px` }} />   allowed
+//   <div style={{ height: h }} />                                     flagged
+//   <div style={{ "--bar-h": h, color }} />                           flagged
+//   <div style={styles} /> and <div style={{ ...rest }} />            flagged
+//
+// Data-driven values (chart heights, meter widths, state colours) travel as
+// CSS variables and the Tailwind class reads them, so layout and colour stay
+// in classes and tokens. biome.jsonc scopes this plugin like
+// no-raw-form-elements. See src/ui/README.md.
+language js
+
+JsxAttribute(name = $attr, initializer = $init) where {
+	$attr <: "style",
+	not $init <: JsxAttributeInitializerClause(value = JsxExpressionAttributeValue(expression = $expr)) where {
+		or {
+			$expr <: JsObjectExpression(members = $members),
+			$expr <: TsAsExpression(expression = JsObjectExpression(members = $members))
+		},
+		$members <: not [],
+		$members <: every JsPropertyObjectMember(name = r"[\"']--[A-Za-z0-9_-]+[\"']")
+	},
+	register_diagnostic(
+		span = $attr,
+		message = "style={} outside components/ui: use Tailwind classes or tokens; only a CSS-variable-only object literal like style={{ '--bar-h': h }} is allowed (see src/ui/README.md)",
+		severity = "error"
+	)
+}
