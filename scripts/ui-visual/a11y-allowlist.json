@@ -1,0 +1,12 @@
+{
+	"_comment": "Grandfathered axe-core violations (warren-b629), impact serious or critical only. Each entry is keyed by manifest page id + axe rule id (optionally narrowed to a viewport or theme) and names the seed that fixes it. The list only shrinks: an entry that stops reproducing fails bun run check:ui-visual, so delete it in the PR that fixes it. New entries need a tracker id and review justification; a11y-checks.test.ts holds the entry count to a ceiling that only goes down.",
+	"allowlist": [
+		{
+			"page": "instance",
+			"rule": "scrollable-region-focusable",
+			"viewport": "phone",
+			"seed": "warren-23b5",
+			"reason": "the console shell's scrolling <main> holds no focusable element on the phone Instance page, so keyboard users cannot scroll it"
+		}
+	]
+}
