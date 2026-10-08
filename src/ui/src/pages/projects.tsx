@@ -79,7 +79,7 @@ export function ProjectsPage() {
 			    (canvas layout: 20px semibold title, quiet description). */}
 			<div className="flex flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-1.5">
-					<h1 className="font-semibold text-(--color-text) text-xl leading-6 tracking-[-0.025em]">
+					<h1 className="font-semibold text-(--color-danger) text-xl leading-6 tracking-[-0.025em]">
 						Projects
 					</h1>
 					<p className="text-(--color-text-2) text-[12px] leading-4">
