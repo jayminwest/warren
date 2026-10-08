@@ -284,6 +284,38 @@ CI would reject. `check:ci-parity` proves the local manifest and the CI
 workflow agree in both directions. Per-repo escape hatches live in
 `scripts/ci-parity-config.json`.
 
+### Validation discipline (warren-7e82)
+
+A full gate run costs minutes, and coverage is most of that time. One
+green run on your final inputs is the evidence. Do not repeat a broad
+run on inputs that did not change.
+
+- Prepare dependencies once, before the first test run. On a fresh
+  clone, run `bun install` (its `prepare` script arms the hook) and
+  `bun run ui:install`. The root suite includes the `src/ui/` tests.
+  `check:extensions` installs extension dependencies itself.
+- While you iterate, run focused tests (`bun test path/to/x.test.ts`)
+  and the cheap static gates (`bun run lint`, `bun run typecheck`).
+  For the whole suite, run `bun run check:coverage` once. Do not run a
+  bare `bun test` and then the coverage gate on the same inputs.
+- Use `bun run check:all --bail` for the final gate. `--bail` stops at
+  the first failing gate. A green run still runs every gate. This
+  repo's `.warren/config.yaml` sets it as `qualityGate`, so dispatched
+  agents get it in `$WARREN_QUALITY_GATE`.
+- The pre-commit hook runs that same gate on the working tree. If the
+  hook is active and no change stays unstaged, a successful commit of
+  your final inputs is your green gate run. Do not run `check:all`
+  again just before that commit or just to report completion. Never
+  skip the hook with `--no-verify`.
+- Capture the full output and the true exit status once:
+  `bun run check:all --bail > /tmp/gate.log 2>&1; echo "exit=$?"`.
+  Then search the log. Do not run an unchanged command again to apply a
+  different `tail` or `grep` filter. A pipe into `tail` hides the exit
+  status unless you set `set -o pipefail`.
+- Run a gate again only when its inputs changed, to confirm the fix
+  for a failure you diagnosed, or as a bounded flake test that you
+  declare. Never report success with a red gate.
+
 Twelve repo-specific guards ride inside the `lint` gate rather than
 taking a manifest slot, because the canonical gate vocabulary is
 frozen. Each also runs standalone under the matching `check:` script
