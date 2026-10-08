@@ -120,6 +120,10 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
   section and the user task. The blessed way to onboard a mirror of a
   repo you do not control — see
   [docs/onboarding-external-repos.md](docs/onboarding-external-repos.md).
+- `migrations.regenerateCommand` (warren-4371) names the command that
+  the migration-collision prompt note quotes. The agent runs it inside
+  its sandbox. Warren never runs repository scripts on the host. See
+  [docs/design/warren-config.md](docs/design/warren-config.md).
 - `preview` — per-run preview environments. The canonical home is
   `.warren/preview.yaml`. See
   [docs/design/preview-environments.md](docs/design/preview-environments.md).
@@ -284,7 +288,7 @@ CI would reject. `check:ci-parity` proves the local manifest and the CI
 workflow agree in both directions. Per-repo escape hatches live in
 `scripts/ci-parity-config.json`.
 
-Eleven repo-specific guards ride inside the `lint` gate rather than
+Twelve repo-specific guards ride inside the `lint` gate rather than
 taking a manifest slot, because the canonical gate vocabulary is
 frozen. Each also runs standalone under the matching `check:` script
 name.
@@ -318,6 +322,11 @@ name.
   any file over its count in `scripts/tailwind-arbitrary-budgets.json`.
   `--update` lowers counts and refuses to raise them. At zero, Biome's
   `noTailwindArbitraryValue` rule replaces this guard
+- `scripts/check-ui-raw-elements.ts` (warren-6772) guards the Biome
+  GritQL plugins in `.biome/plugins/` that ban raw form elements and
+  non-CSS-variable `style={}` outside `src/ui/src/components/ui/`. It
+  fails a stale or new entry in `scripts/ui-raw-elements-allowlist.json`
+  and regenerates the matching `biome.jsonc` block with `--write`
 
 `gen:cli-ref:check` rides the same gate and holds the generated CLI
 reference in place.

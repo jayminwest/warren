@@ -55,6 +55,7 @@ import {
 	type PodListFn,
 	PodWatcher,
 	type WatchFn,
+	withNodeLossWitness,
 } from "../../runtime/k8s/pod-watcher.ts";
 import type { K8sInboxStore } from "../../runtime/k8s/send-message.ts";
 import { resolveRuntimeKind, resolveRuntimeProvider } from "../../runtime/registry.ts";
@@ -195,13 +196,17 @@ export function bootK8sRuntime(input: BootK8sRuntimeInput): K8sRuntimeHandle | u
 		namespace,
 		runIdForPodName: (podName) => podWatcher.runIdForPodName(podName),
 		podPhaseForRunId: (runId) => podWatcher.getByRunId(runId)?.status?.phase,
-		onWarning:
+		// warren-a757: a NodeNotReady warning also feeds the pod-watcher's
+		// node-loss witness, so a run killed by a vanished node reads `preempted`.
+		onWarning: withNodeLossWitness<PodWarningSignal>(
+			podWatcher,
 			input.onPodWarning ??
-			((signal) =>
-				wireLogger.warn(
-					{ runId: signal.runId, reason: signal.reason, podName: signal.podName },
-					"run pod warning (no run-stream sink wired)",
-				)),
+				((signal) =>
+					wireLogger.warn(
+						{ runId: signal.runId, reason: signal.reason, podName: signal.podName },
+						"run pod warning (no run-stream sink wired)",
+					)),
+		),
 		logger: wireLogger,
 		resyncPeriodMs: resolveResyncPeriodMs(input.env),
 	});

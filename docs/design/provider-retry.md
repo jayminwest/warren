@@ -148,13 +148,30 @@ stands down where another owns the case.
 | | Cause | Bound | Where the budget lives |
 |---|---|---|---|
 | Provider retry (this record) | `provider_error`, transient | `MAX_PROVIDER_RETRIES` | `spawn.provider_retry` stamps on the lineage |
-| Infra-lost retry (`src/runs/retry/infra-lost-retry.ts`) | `sandbox_run_lost` | one | the `runs.retry_of` link itself |
+| Infra-lost retry (`src/runs/retry/infra-lost-retry.ts`) | `sandbox_run_lost`, `preempted` | one | the `runs.retry_of` link itself |
 | Plan-run child retry ([coordinator](./plan-run-coordinator.md)) | a retryable child failure cause | `MAX_CHILD_RETRIES` | `plan_run_children.retry_count` |
 
 The infra-lost retry also inherits the original run's cost cap minus what
 the first attempt spent, so the two attempts share one shrinking ceiling.
 The provider retry has no equivalent, because the failure it answers
 happens before the agent burns the budget it was given.
+
+### A killed agent is not a provider error (warren-a757)
+
+An agent that dies without its own terminal envelope gets a synthesized
+`agent_end` from the runtime, and that envelope carries an error message.
+A Spot node reclaimed under a run pod produces exactly this shape with
+exit 137. Before warren-a757 reap read it as `provider_error`, so the
+provider retry skipped it as not transient and the infra-lost retry never
+saw it.
+
+Reap now asks the runtime first, through `src/runs/reap/infra-loss.ts`.
+The check runs only for a synthesized exit, and never once commits were
+pushed. A runtime verdict of `preempted` or a lost pod lands the run on
+`preempted` or `sandbox_run_lost`, which the infra-lost retry owns. A
+real `OOMKilled` container lands on `oom_killed`. Reap records
+`reap.infra_loss` in place of `reap.provider_error`, so this retry never
+fires for these runs. Any other verdict keeps `provider_error`.
 
 ## 5. Wiring
 

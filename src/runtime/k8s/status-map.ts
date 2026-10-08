@@ -15,6 +15,7 @@
  * | Succeeded        | agent terminated exit 0                     | succeeded | completed      | 0 (or agent)  |
  * | Failed           | any container terminated `OOMKilled`        | failed    | oom_killed     | 137 (or code) |
  * | Failed           | pod `status.reason == "Evicted"`            | failed    | evicted        | 137 / null    |
+ * | Failed           | DisruptionTarget / node shutdown / nodeLost | failed    | preempted      | 137 / null    |
  * | Failed           | a container terminated exit≠0 (Init:Error)  | failed    | error          | that code     |
  * | Failed           | no failing container status                 | failed    | error          | null          |
  * | Unknown          | kubelet lost contact — NOT terminal         | running   | (none)         | null          |
@@ -80,8 +81,29 @@ const EVICTED_REASON = "Evicted";
 const PREEMPTED_POD_REASONS = new Set(["Terminated", "Shutdown"]);
 /** The kubelet node-shutdown message carried on a preempted pod. */
 const NODE_SHUTDOWN_MESSAGE = /shut(?:ting)? ?down/i;
-/** The `DisruptionTarget` condition reason the kubelet stamps on preemption. */
-const TERMINATION_BY_KUBELET = "TerminationByKubelet";
+/**
+ * `DisruptionTarget` condition reasons that mean the CLUSTER took the pod away
+ * for reasons outside the workload (warren-ea4b, widened in warren-a757):
+ *
+ *   - `TerminationByKubelet` — the kubelet terminated it (graceful node
+ *     shutdown on a Spot reclamation);
+ *   - `DeletionByTaintManager` — the node went NotReady/unreachable and the
+ *     taint manager evicted its pods;
+ *   - `DeletionByPodGC` — the node object was deleted ("does not exist in the
+ *     cloud provider") and PodGC removed the orphaned pod;
+ *   - `PreemptionByScheduler` / `EvictionByEvictionAPI` — a higher-priority pod
+ *     or a node drain (autoscaler consolidation) displaced it.
+ *
+ * A kubelet PRESSURE eviction also stamps `TerminationByKubelet`, which is why
+ * `classifyFailed` checks `status.reason == "Evicted"` first.
+ */
+const DISRUPTION_TARGET_REASONS = new Set([
+	"TerminationByKubelet",
+	"DeletionByTaintManager",
+	"DeletionByPodGC",
+	"PreemptionByScheduler",
+	"EvictionByEvictionAPI",
+]);
 /** The node label GKE stamps on Spot (preemptible) nodes. */
 export const GKE_SPOT_NODE_LABEL = "cloud.google.com/gke-spot";
 
@@ -107,9 +129,9 @@ export function runLostStatus(terminalReason: TerminalReason = "lost"): RunStatu
  * Map a present pod's phase + container states onto the seam's `RunStatus`.
  * Always `exists:true` (the pod is present); an absent pod is `runLostStatus()`.
  */
-export function mapPodToRunStatus(pod: V1Pod): RunStatus {
+export function mapPodToRunStatus(pod: V1Pod, hints: PodStatusHints = {}): RunStatus {
 	const phase = pod.status?.phase;
-	const classified = classify(pod, phase);
+	const classified = classify(pod, phase, hints);
 	const terminalDetail = classified.terminalReason !== undefined ? kubeletDetail(pod) : null;
 	return {
 		phase: classified.phase,
@@ -121,7 +143,18 @@ export function mapPodToRunStatus(pod: V1Pod): RunStatus {
 		lastEventSeq: 0,
 		lastEventTs: heartbeatAnchor(pod),
 		exists: true,
+		...(hints.nodeLost === true ? { nodeLost: true } : {}),
 	};
+}
+
+/**
+ * Cluster-side witnesses the pure map cannot read off the pod itself
+ * (warren-a757). `nodeLost` means the pod-watcher saw the pod's node go
+ * NotReady (the node-controller's `NodeNotReady` pod event) or the pod vanish
+ * with a deleted spot node — a non-OOM `Failed` pod is then `preempted`.
+ */
+export interface PodStatusHints {
+	readonly nodeLost?: boolean;
 }
 
 interface Classified {
@@ -130,12 +163,12 @@ interface Classified {
 	terminalReason?: TerminalReason;
 }
 
-function classify(pod: V1Pod, phase: string | undefined): Classified {
+function classify(pod: V1Pod, phase: string | undefined, hints: PodStatusHints): Classified {
 	switch (phase) {
 		case "Succeeded":
 			return { phase: "succeeded", exitCode: agentExitCode(pod) ?? 0, terminalReason: "completed" };
 		case "Failed":
-			return classifyFailed(pod);
+			return classifyFailed(pod, hints);
 		case "Running":
 			return { phase: "running", exitCode: null };
 		case "Unknown":
@@ -158,18 +191,21 @@ function classify(pod: V1Pod, phase: string | undefined): Classified {
  * significant, most-specific first:
  *
  *   1. an OOM kill anywhere (agent OR init `terminated.reason == "OOMKilled"`) is
- *      first-class `oom_killed`;
+ *      first-class `oom_killed` — and ONLY that reason: a bare exit 137 is a
+ *      SIGKILL from anyone (a node shutdown included), not proof of OOM;
  *   2. a kubelet EVICTION (`pod.status.reason == "Evicted"`) is first-class
  *      `evicted` — checked BEFORE the generic non-zero path because an evicted
  *      pod's container typically terminates `ContainerStatusUnknown` exit 137,
  *      which would otherwise be mis-labelled a plain `error` (warren-c0cd);
- *   3. any other non-zero container termination (incl. `ContainerStatusUnknown`
+ *   3. a node-loss / preemption witness (`isPreemptedPod`, or the `nodeLost`
+ *      hint for `Error` exit 137 on a node that went away) is `preempted`;
+ *   4. any other non-zero container termination (incl. `ContainerStatusUnknown`
  *      exit 137 on a non-evicted pod, e.g. a crash) is `error` with its exit code;
- *   4. a `Failed` pod with no failing terminated container is still `error` (null
+ *   5. a `Failed` pod with no failing terminated container is still `error` (null
  *      exit) — never a non-terminal fall-through: a `Failed` pod ALWAYS terminates
  *      the run.
  */
-function classifyFailed(pod: V1Pod): Classified {
+function classifyFailed(pod: V1Pod, hints: PodStatusHints): Classified {
 	const terminated = allContainerStatuses(pod)
 		.map((cs) => cs.state?.terminated ?? cs.lastState?.terminated)
 		.filter((t): t is NonNullable<typeof t> => t !== undefined && t !== null);
@@ -188,8 +224,9 @@ function classifyFailed(pod: V1Pod): Classified {
 	// warren-ea4b: a Spot/node-shutdown preemption is checked BEFORE the generic
 	// non-zero path — a preempted pod's container typically terminates
 	// `ContainerStatusUnknown` exit 137, which would otherwise be mis-labelled a
-	// plain `error`.
-	if (isPreemptedPod(pod)) {
+	// plain `error`. warren-a757: the `nodeLost` hint covers a container that
+	// terminated `Error` exit 137 because its node vanished under it.
+	if (isPreemptedPod(pod) || hints.nodeLost === true) {
 		const exitCode =
 			agentExitCode(pod) ?? terminated.find((t) => t.exitCode !== 0)?.exitCode ?? null;
 		return { phase: "failed", exitCode, terminalReason: "preempted" };
@@ -209,9 +246,10 @@ function classifyFailed(pod: V1Pod): Classified {
  *
  *   - `status.reason` `Terminated` or `Shutdown` with the kubelet node-shutdown
  *     message (`The node is shutting down`);
- *   - a `DisruptionTarget` condition with reason `TerminationByKubelet` — the
- *     kubelet's own disruption marker for a workload it terminated outside the
- *     workload's fault (GKE Spot reclamation rides this).
+ *   - a `DisruptionTarget=True` condition with one of
+ *     `DISRUPTION_TARGET_REASONS` — the control plane's own marker for a
+ *     workload it removed outside the workload's fault (GKE Spot reclamation,
+ *     a NotReady node's taint eviction, PodGC of a deleted node's pods).
  *
  * The third witness — the pod VANISHING while its (spot-labelled) node was
  * deleted — needs cluster state the pure map cannot see, so the pod-watcher /
@@ -227,7 +265,11 @@ export function isPreemptedPod(pod: V1Pod): boolean {
 		return true;
 	}
 	return (pod.status?.conditions ?? []).some(
-		(c) => c.type === "DisruptionTarget" && c.reason === TERMINATION_BY_KUBELET,
+		(c) =>
+			c.type === "DisruptionTarget" &&
+			c.status !== "False" &&
+			c.reason !== undefined &&
+			DISRUPTION_TARGET_REASONS.has(c.reason),
 	);
 }
 

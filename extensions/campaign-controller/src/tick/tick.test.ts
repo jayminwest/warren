@@ -25,6 +25,7 @@ import { GithubPrAlreadyExistsError, type GithubPrCreateTransport } from "../git
 import { FakeGithubPrCreator } from "../github/pr-create-fake.ts";
 import { PR_INTENT_ACTION_TYPE } from "../pr-intent/intender.ts";
 import { validateBotGrammar } from "../reconcile/bot-grammar.ts";
+import { CLAWSWEEPER_ACK_BODY, clawsweeperVerdictBody } from "../reconcile/clawsweeper-fixtures.ts";
 import { CampaignStateStore } from "../store/state-store.ts";
 import { WarrenClient } from "../warren-client.ts";
 import { FakeWarrenServer } from "../warren-fake.ts";
@@ -955,6 +956,82 @@ describe("runTick with a profile bot grammar (warren-8c83)", () => {
 		};
 		const list = Array.isArray(fields.findings) ? fields.findings : fields.findings.value;
 		expect(list[0]?.title.value).toBe("Clock not seeded");
+	});
+
+	test("a verdict delivered by editing one comment classifies once per edit (warren-b990)", async () => {
+		const h = harness({ botGrammar: validateBotGrammar(openclawBotGrammar()) });
+		await linkPrWithBotComment(h);
+		const path = "/repos/openclaw/openclaw/issues/7/comments";
+		// ClawSweeper's one review comment: the node id never changes, only
+		// updated_at and the body move as each verdict is edited in.
+		const reviewComment = (updatedAt: string, body: string): Record<string, unknown> => ({
+			node_id: "IC_clawsweeper_review",
+			id: 2,
+			user: { login: "clawsweeper[bot]" },
+			author_association: "NONE",
+			body,
+			created_at: "2026-08-26T03:00:00.000Z",
+			updated_at: updatedAt,
+			html_url: "https://github.com/openclaw/openclaw/pull/7#issuecomment-2",
+		});
+		const reconcileDetail = async (): Promise<Record<string, number>> =>
+			detailOf(requireStage(await runTick(h.deps, h.campaignId), "github_reconcile"));
+		const reviewFindingTitles = (): string[][] =>
+			h.store.events
+				.listFeedback(h.campaignId)
+				.filter(
+					(row) =>
+						row.category === "review_bot_findings" &&
+						row.sourceEventNodeId.includes("|IC_clawsweeper_review|"),
+				)
+				.map((row) => {
+					const fields = JSON.parse(row.fieldsJson) as {
+						findings: { value: { title: { value: string } }[] };
+					};
+					return fields.findings.value.map((finding) => finding.title.value);
+				});
+
+		// 1. The acknowledgement placeholder: a new fact, nothing to classify.
+		h.github.mutateResource(path, [
+			reviewComment("2026-08-26T03:00:00.000Z", CLAWSWEEPER_ACK_BODY),
+		]);
+		const placeholder = await reconcileDetail();
+		expect(placeholder.newEvents).toBeGreaterThan(0);
+		expect(placeholder.feedbackCreated).toBe(0);
+
+		// 2. The first verdict, edited into the same node.
+		h.github.mutateResource(path, [
+			reviewComment(
+				"2026-08-26T04:00:00.000Z",
+				clawsweeperVerdictBody(1, ["- [P1] Clock not seeded — `src/scheduler/clock.ts:42-44`"]),
+			),
+		]);
+		const firstVerdict = await reconcileDetail();
+		expect(firstVerdict.newEvents).toBe(1);
+		expect(firstVerdict.feedbackCreated).toBe(1);
+
+		// 3. A re-poll of the same edit is a duplicate and never re-classifies.
+		const repoll = await reconcileDetail();
+		expect(repoll.newEvents).toBe(0);
+		expect(repoll.feedbackCreated).toBe(0);
+		expect(reviewFindingTitles()).toEqual([["Clock not seeded"]]);
+
+		// 4. A re-review verdict edited into the same node classifies once more.
+		h.github.mutateResource(path, [
+			reviewComment(
+				"2026-08-26T05:41:00.000Z",
+				clawsweeperVerdictBody(2, ["- [P2] Seed the clock per test — `src/scheduler/clock.ts:50`"]),
+			),
+		]);
+		const secondVerdict = await reconcileDetail();
+		expect(secondVerdict.newEvents).toBe(1);
+		expect(secondVerdict.feedbackCreated).toBe(1);
+		expect(await reconcileDetail()).toMatchObject({ newEvents: 0, feedbackCreated: 0 });
+		// One row per edit; the fixed test clock leaves row order unspecified.
+		expect(reviewFindingTitles().sort()).toEqual([
+			["Clock not seeded"],
+			["Seed the clock per test"],
+		]);
 	});
 
 	test("without a configured grammar the tick still reconciles but classifies nothing", async () => {

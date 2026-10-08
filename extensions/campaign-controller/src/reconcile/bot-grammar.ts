@@ -31,6 +31,16 @@ const MAX_PATTERN_LENGTH = 256;
 export const MAX_CLASSIFIED_BODY_LENGTH = 8192;
 
 /**
+ * Ceiling for the fixed-string marker scan over a bot comment (warren-b990).
+ * GitHub caps a comment body at 65536 characters, and a real review bot
+ * puts its finding list deep in a long verdict body (ClawSweeper's sits
+ * past 8 KiB). The scan is a plain `indexOf`, which runs in linear time.
+ * Only the located section, cut to `MAX_CLASSIFIED_BODY_LENGTH`, ever
+ * reaches the profile regex.
+ */
+export const MAX_SCANNED_BODY_LENGTH = 65536;
+
+/**
  * The profile-declared recognition rules. `findingLinePattern` is a regex
  * *source* matched line-by-line; its named groups are the only fields ever
  * extracted: `title` (required for a finding), plus optional `file`, `line`,
@@ -39,7 +49,10 @@ export const MAX_CLASSIFIED_BODY_LENGTH = 8192;
 export interface ReviewBotGrammar {
 	/** Upstream logins whose comments are review-bot output, not human review. */
 	readonly knownBotLogins: readonly string[];
-	/** Comment-body prefix marking a structured finding list. */
+	/**
+	 * Line prefix opening a structured finding list. The line may sit
+	 * anywhere in the body; the list runs to the next markdown heading.
+	 */
 	readonly findingMarker: string;
 	/** Line-by-line regex source for one finding (named groups above). */
 	readonly findingLinePattern: string;
