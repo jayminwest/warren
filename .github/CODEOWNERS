@@ -1,0 +1,26 @@
+# Review routing for paths that need a human eye (warren-4780).
+#
+# This file requests a review from the owner on any PR that touches these
+# paths. It enforces nothing on its own: branch protection does not require
+# code-owner review, because GitHub does not let an author approve their own
+# PR and this repo has one maintainer. Enforcement lives in
+# .github/workflows/auto-merge.yml (Article IX and the UI baseline approval
+# check). See docs/design/ui-visual-gate.md.
+
+# Golden screenshot baselines and the files that compare against them.
+# Auto-merge needs the ui-baseline-approved label from a human approver.
+/scripts/ui-visual/__golden__/           @jayminwest
+/scripts/ui-visual/golden-cases.ts       @jayminwest
+/scripts/ui-visual/golden-manifest.ts    @jayminwest
+/scripts/ui-visual/golden.pw.ts          @jayminwest
+/scripts/ui-visual/goldens.ts            @jayminwest
+/scripts/ui-visual/playwright.config.ts  @jayminwest
+/scripts/ui-visual/baseline-approval.ts  @jayminwest
+/.github/workflows/ui-visual.yml         @jayminwest
+
+# docs/CONSTITUTION.md Article IX paths: always a human merge.
+/docs/CONSTITUTION.md                    @jayminwest
+/.warren/triggers.yaml                   @jayminwest
+/src/registry/builtins/                  @jayminwest
+/.github/workflows/auto-merge.yml        @jayminwest
+/.github/CODEOWNERS                      @jayminwest

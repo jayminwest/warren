@@ -213,7 +213,11 @@ describe("the gate fails closed", () => {
 		const merge = steps().find((s) => s.name?.startsWith("Enable auto-merge"));
 		// `== 'false'` and not `!= 'true'`: a step that dies before writing an
 		// output leaves the value empty, which must not read as a pass.
-		expect(merge?.if).toBe("steps.protected.outputs.hit == 'false'");
+		// warren-4780 adds the UI baseline approval check as a second gate with
+		// the same contract (scripts/ui-visual/baseline-approval.test.ts).
+		expect(merge?.if).toBe(
+			"steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false'",
+		);
 	});
 });
 

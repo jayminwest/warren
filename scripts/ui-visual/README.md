@@ -127,6 +127,33 @@ The dispatch deletes the old PNGs, renders the whole set with
 version, the image and digest, the commit it rendered, the run URL, and the
 sha256, size, and dimensions of every PNG.
 
+### Approve the baselines
+
+A PR that changes `__golden__/`, or the files that decide how a render
+compares (`golden-cases.ts`, `golden.pw.ts`, `golden-manifest.ts`,
+`goldens.ts`, `playwright.config.ts`, and `ui-visual.yml`), never auto-merges
+on its own. A human approver reviews the new baselines and applies the
+`ui-baseline-approved` label:
+
+1. Read the diff: GitHub's rich diff of each PNG, the `golden-diff/` images in
+   the `ui-screenshots-<sha>` artifact, and the PR comment crops once
+   warren-70d9 lands.
+2. Apply `ui-baseline-approved`. The label event re-runs `auto-merge.yml`,
+   which checks the approval and arms auto-merge.
+3. If a later push changes the baselines again, the workflow refuses and
+   disarms. Review again, then remove and re-apply the label.
+
+The `UI baseline approval check` step in `.github/workflows/auto-merge.yml`
+runs `baseline-approval.ts` from the base branch. It reads the labeler from
+the issue events API, so a label that a bot applies never counts. It reads the
+head the approver saw from the repository activity API, and it refuses when
+the baselines differ from that head. Approvers are the repository variable
+`UI_BASELINE_APPROVERS`, or the repository owner when it is unset. The policy,
+the threat model, and the fail-closed rules are in
+[docs/design/ui-visual-gate.md](../../docs/design/ui-visual-gate.md).
+
+A change to `baseline-approval.ts` itself always needs a human merge.
+
 ### The guard
 
 `bun run check:ui-goldens` (`goldens.ts check`, rules in `golden-manifest.ts`)
@@ -176,6 +203,8 @@ delete its entry in the PR that fixes it.
 - `golden.pw.ts`: the golden comparison. `golden-cases.ts` holds the golden
   matrix and the container gate. `golden-manifest.ts` and `goldens.ts` hold
   the generator manifest and its guard.
+- `baseline-approval.ts`: the auto-merge gate for baseline changes. It imports only
+  `node:` modules, because `auto-merge.yml` runs the base branch's copy alone.
 - `__golden__/`: the committed baselines and `manifest.json`. CI writes them,
   never a laptop.
 - `fixture-env.ts`: parses the fixture hand-off from `run.ts`.

@@ -41,6 +41,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [Agent composition and Pi runtime](./agent-composition.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
 | [Automatic run admission](./automatic-run-admission.md) | `contract` | `proposed` | `unscheduled` | 2026-10-02 |
 | [UI design review rubric](./ui-design-review.md) | `contract` | `approved` | `mixed` | 2026-10-08 |
+| [UI visual gate and baseline approval](./ui-visual-gate.md) | `contract` | `approved` | `mixed` | 2026-10-08 |
 | [Forge contract](./forge-contract.md) | `contract` | `approved` | `shipped` | 2026-08-11 |
 | [IssueTracker contract](./issue-tracker.md) | `contract` | `approved` | `shipped` | 2026-08-20 |
 | [PlanRun coordinator](./plan-run-coordinator.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
@@ -89,7 +90,7 @@ A shipped record preserves rationale and contract history. Its `Current truth` f
 | 2026-08-26 | MCP server |
 | 2026-09-17 | Warren-armed auto-merge |
 | 2026-09-24 | Team identity, grants, and brokered credentials |
-| 2026-10-08 | Judge on-demand evaluation; UI design review rubric |
+| 2026-10-08 | Judge on-demand evaluation; UI design review rubric; UI visual gate and baseline approval |
 
 ## Adding or changing a record
 

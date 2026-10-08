@@ -171,6 +171,16 @@
   description: "Larger contributor-ready project: scoped, self-contained, gate-verified"
 
 # ---------------------------------------------------------------------------
+# Merge gates -- labels the auto-merge workflow reads
+# ---------------------------------------------------------------------------
+# Only a listed human approver's label counts. The auto-merge workflow checks
+# the labeler and the baselines through the API, never label presence alone
+# (warren-4780, docs/design/ui-visual-gate.md).
+- name: "ui-baseline-approved"
+  color: "5319e7"
+  description: "Human approval of the golden screenshot changes in this PR (approver-only)"
+
+# ---------------------------------------------------------------------------
 # Legacy GitHub defaults -- preserved for backward compatibility.
 # New issues should prefer the namespaced equivalents above.
 # ---------------------------------------------------------------------------

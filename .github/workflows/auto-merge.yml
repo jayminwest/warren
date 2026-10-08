@@ -21,10 +21,18 @@ name: auto-merge
 # per run from AUTO_MERGE_APP_ID (repo variable) + AUTO_MERGE_APP_PRIVATE_KEY
 # (secret), so there is no expiring PAT to rotate — the static
 # AUTO_MERGE_PAT that silently died on 2026-08-07 is retired (warren-2565).
+#
+# Two gates run before the arm, and both fail closed: the Article IX check
+# (constitution-protected paths) and the UI baseline approval check
+# (warren-4780, docs/design/ui-visual-gate.md). The second refuses a PR that
+# changes scripts/ui-visual/__golden__/ or the comparison machinery unless a
+# human approver applied `ui-baseline-approved` to that exact baseline
+# content, and disarms auto-merge when it refuses. `labeled`/`unlabeled` are
+# triggers so that applying or removing the label re-judges the PR at once.
 
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened, synchronize]
+    types: [opened, ready_for_review, reopened, synchronize, labeled, unlabeled]
 
 permissions:
   contents: write
@@ -39,7 +47,9 @@ jobs:
        (vars.AUTO_MERGE_BOT_LOGIN != '' &&
         contains(format(',{0},', vars.AUTO_MERGE_BOT_LOGIN),
                  format(',{0},', github.event.pull_request.user.login)))) &&
-      !contains(github.event.pull_request.labels.*.name, 'no-automerge')
+      !contains(github.event.pull_request.labels.*.name, 'no-automerge') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+       github.event.label.name == 'ui-baseline-approved')
     steps:
       # Pin to the PR head SHA, not the default `refs/pull/N/merge` ref.
       # GitHub computes the merge ref asynchronously after a PR is opened,
@@ -101,8 +111,69 @@ jobs:
             echo "Article IX: no protected paths in the diff — auto-merge may be enabled."
           fi
 
+      # warren-4780 (docs/design/ui-visual-gate.md): a PR that changes the
+      # golden baselines or the files that compare against them may arm only
+      # when a human approver applied `ui-baseline-approved` to the exact
+      # baseline content the head now carries. The rules live in
+      # scripts/ui-visual/baseline-approval.ts, unit-tested, and this step
+      # runs the BASE BRANCH TIP's copy of it, never the PR's, so a PR cannot
+      # rewrite the gate that judges it. Same fail-closed shape as Article IX:
+      # only an explicit `hit=false` from a gate that exited 0 permits arming.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: UI baseline approval check
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          # Who may approve: the repo variable, else the repository owner.
+          # Never a bot login; the gate refuses a list that names one.
+          APPROVERS: ${{ vars.UI_BASELINE_APPROVERS || github.repository_owner }}
+          BOT_LOGINS: ${{ vars.AUTO_MERGE_BOT_LOGIN }}
+        run: |
+          set -uo pipefail
+          GATE="$RUNNER_TEMP/baseline-approval.ts"
+          export DECISION_FILE="$RUNNER_TEMP/baseline-decision"
+          : > "$DECISION_FILE"
+          if ! git show "origin/${BASE_REF}:scripts/ui-visual/baseline-approval.ts" > "$GATE"; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "UI baselines: origin/${BASE_REF} has no gate script — refusing auto-merge (fail closed)."
+            exit 0
+          fi
+          if bun "$GATE" gate && grep -qx 'hit=false' "$DECISION_FILE"; then
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A refusal must also undo an earlier arm: a PR armed before it gained a
+      # baseline change, or before its approval was removed, would otherwise
+      # merge on green CI. Uses the workflow token; a failure here is loud.
+      - name: Disarm auto-merge on an unapproved baseline change
+        if: steps.baseline.outputs.hit != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          armed="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json autoMergeRequest --jq '.autoMergeRequest.enabledAt // empty')"
+          if [ -z "$armed" ]; then
+            echo "auto-merge is not armed — nothing to disarm."
+            exit 0
+          fi
+          gh pr merge --disable-auto "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+          echo "auto-merge disarmed: the baseline change has no valid human approval."
+
       - name: Mint app installation token
-        if: steps.protected.outputs.hit == 'false'
+        if: steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false'
         id: app-token
         uses: actions/create-github-app-token@v3.2.0
         with:
@@ -118,11 +189,12 @@ jobs:
       # (the seeds-merge-autoheal repair push will re-trigger us), and retry
       # the arm itself.
       - name: Enable auto-merge (squash)
-        if: steps.protected.outputs.hit == 'false'
+        if: steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -uo pipefail
 
@@ -151,8 +223,18 @@ jobs:
             exit 0
           fi
 
+          # The gates above judged HEAD_SHA. If the head moved since, the run
+          # for the newer push judges it; arming here would arm unjudged code
+          # (warren-4780). --match-head-commit closes the same window at the
+          # API for the arm itself.
+          current="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)"
+          if [ "$current" != "$HEAD_SHA" ]; then
+            echo "head moved to ${current} since this run's event (${HEAD_SHA}) — the newer run decides."
+            exit 0
+          fi
+
           for attempt in 1 2 3 4 5 6; do
-            if gh pr merge --auto --squash "$PR_URL"; then
+            if gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_URL"; then
               echo "auto-merge armed (attempt $attempt)."
               exit 0
             fi

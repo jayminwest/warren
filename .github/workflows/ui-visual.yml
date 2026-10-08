@@ -45,8 +45,10 @@ name: UI visual
 #     (`gh workflow run ui-visual.yml --ref <branch> -f update_goldens=true`).
 #     The run deletes the old PNGs, renders the set with
 #     `--update-snapshots=all`, writes `manifest.json`, and uploads
-#     `__golden__/` as `ui-goldens-<sha>`. It never commits; a human
-#     downloads the artifact and commits it (warren-4780 adds the approval).
+#     `__golden__/` as `ui-goldens-<sha>`. It never commits; someone
+#     downloads the artifact and commits it. The PR then cannot auto-merge
+#     until a human approver applies `ui-baseline-approved` (warren-4780,
+#     docs/design/ui-visual-gate.md). This file is itself a baseline path.
 
 on:
   pull_request:
