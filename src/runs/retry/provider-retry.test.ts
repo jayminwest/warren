@@ -75,13 +75,15 @@ describe("createProviderRetryLifecycleExtension", () => {
 		const newEvents = await fixture.repos.events.listByRun(spawn.newRunId);
 		const marker = newEvents.find((e) => e.kind === PROVIDER_RETRY_EVENTS.spawnRetry);
 		expect(marker).toBeDefined();
-		expect((marker?.payloadJson as { retriedFromRunId?: string }).retriedFromRunId).toBe(
-			fixture.runId,
-		);
+		expect(
+			(marker?.payloadJson as { retriedFromRunId?: string } | undefined)?.retriedFromRunId,
+		).toBe(fixture.runId);
 		// The origin names its successor.
 		const oldEvents = await fixture.repos.events.listByRun(fixture.runId);
 		const dispatched = oldEvents.find((e) => e.kind === PROVIDER_RETRY_EVENTS.retryDispatched);
-		expect((dispatched?.payloadJson as { newRunId?: string }).newRunId).toBe(spawn.newRunId);
+		expect((dispatched?.payloadJson as { newRunId?: string } | undefined)?.newRunId).toBe(
+			spawn.newRunId,
+		);
 	});
 
 	test("carries the provider, model and cap the failed run resolved (warren-0d80)", async () => {

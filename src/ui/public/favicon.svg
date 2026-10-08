@@ -8,6 +8,7 @@
   with a prefers-color-scheme tweak for finer contrast where supported.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+	<title>Warren</title>
 	<style>
 		.edge { stroke: #8b8d94; stroke-width: 2.2; stroke-linecap: round; fill: none; opacity: 0.55; }
 		.spoke { stroke: #a0a2a8; stroke-width: 2.2; stroke-linecap: round; fill: none; }

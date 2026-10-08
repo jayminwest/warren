@@ -60,7 +60,7 @@ describe("collectMulchUsageEvent", () => {
 		});
 		expect(seen).toEqual([join("/ws", MULCH_USAGE_REL)]);
 		expect(ev?.kind).toBe(MULCH_USAGE_EVENT);
-		expect((ev?.payload as { injections: number }).injections).toBe(3);
+		expect((ev?.payload as { injections: number } | undefined)?.injections).toBe(3);
 	});
 
 	test("fails open: absent, empty, or unreadable logs yield no event", async () => {

@@ -21,7 +21,7 @@ import { Field, hintClass, labelClass, MobileCard, Section } from "./walk-sectio
 
 const controlClass = cn(
 	responsiveFormControl,
-	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 leading-[17px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-60 sm:h-8 sm:text-[11px] sm:leading-[14px]",
+	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 text-(--color-text) leading-[17px] placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-(--color-primary) focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-8 sm:text-[11px] sm:leading-[14px]",
 );
 
 function ModeButton({
@@ -37,7 +37,7 @@ function ModeButton({
 		<button
 			type="button"
 			onClick={onClick}
-			className={`h-7 rounded-(--radius-sm) border px-[10px] text-[10px] font-medium leading-[14px] ${
+			className={`h-7 rounded-(--radius-sm) border px-[10px] font-medium text-[10px] leading-[14px] ${
 				active
 					? "border-(--color-border-strong) bg-(--color-surface-raised) text-(--color-text)"
 					: "border-(--color-border) bg-(--color-surface) text-(--color-text-3)"
@@ -335,7 +335,7 @@ function ChildrenTable({ p }: { p: SectionProps }) {
 	if (d.sourceMode === "issues") {
 		if (p.issueStatuses.length === 0) {
 			return (
-				<div className="px-[14px] py-[9px] font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<div className="px-[14px] py-[9px] font-mono text-(--color-text-3) text-[10px] leading-3">
 					ENTER ORDERED ISSUE IDS ABOVE — ONE PER LINE
 				</div>
 			);
@@ -344,16 +344,16 @@ function ChildrenTable({ p }: { p: SectionProps }) {
 			<>
 				{p.issueStatuses.map((issue, i) => (
 					<div key={issue.id} className={childRowClass}>
-						<span className="w-5 shrink-0 font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+						<span className="w-5 shrink-0 font-mono text-(--color-text-3) text-[11px] leading-[14px]">
 							{String(i + 1).padStart(2, "0")}
 						</span>
-						<span className="w-24 shrink-0 font-mono text-[12px] leading-4 text-(--color-primary)">
+						<span className="w-24 shrink-0 font-mono text-(--color-primary) text-[12px] leading-4">
 							{issue.id}
 						</span>
-						<span className="min-w-0 flex-1 truncate text-[13px] leading-4 text-(--color-text-2)">
+						<span className="min-w-0 flex-1 truncate text-(--color-text-2) text-[13px] leading-4">
 							Walk order {i + 1} of {p.issueStatuses.length}
 						</span>
-						<span className="shrink-0 font-mono text-[10px] leading-3 tracking-[0.06em] text-(--color-text-3)">
+						<span className="shrink-0 font-mono text-(--color-text-3) text-[10px] leading-3 tracking-[0.06em]">
 							{issue.status !== null ? issue.status.toUpperCase() : "LISTED"}
 						</span>
 					</div>
@@ -362,7 +362,7 @@ function ChildrenTable({ p }: { p: SectionProps }) {
 		);
 	}
 	return (
-		<div className="px-[14px] py-[9px] font-mono text-[10px] leading-3 text-(--color-text-3)">
+		<div className="px-[14px] py-[9px] font-mono text-(--color-text-3) text-[10px] leading-3">
 			{planChildrenSummary(d, p)}
 		</div>
 	);
@@ -436,7 +436,7 @@ function IntentSection(p: SectionProps) {
 
 const footerButtonClass = cn(
 	responsiveFooterButton,
-	"flex h-11 items-center justify-center rounded-(--radius-sm) px-[11px] text-[11px] font-medium leading-[14px] disabled:opacity-50 sm:h-[31px] sm:justify-start",
+	"flex h-11 items-center justify-center rounded-(--radius-sm) px-[11px] font-medium text-[11px] leading-[14px] disabled:opacity-50 sm:h-[31px] sm:justify-start",
 );
 
 function Footer(p: SectionProps) {
@@ -466,7 +466,7 @@ function Footer(p: SectionProps) {
 				</button>
 			</div>
 			{p.submitError ? (
-				<p className="px-3.5 py-2 font-mono text-[10px] leading-3 text-(--color-danger) md:border-t md:border-(--color-border) md:px-[15px]">
+				<p className="px-3.5 py-2 font-mono text-(--color-danger) text-[10px] leading-3 md:border-(--color-border) md:border-t md:px-[15px]">
 					{p.submitError}
 				</p>
 			) : null}

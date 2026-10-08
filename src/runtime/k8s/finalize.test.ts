@@ -150,7 +150,9 @@ describe("finalizeK8sRun", () => {
 		expect(res.pushed).toBe(false);
 		expect(res.stages.every((s) => s.status === "failed")).toBe(true);
 		expect(res.events[0]?.kind).toBe("reap_failed");
-		expect((res.events[0]?.payload as { message: string }).message).toContain("timed out");
+		expect((res.events[0]?.payload as { message: string } | undefined)?.message).toContain(
+			"timed out",
+		);
 		expect(coordinator.pendingCount).toBe(0);
 	});
 
@@ -164,7 +166,9 @@ describe("finalizeK8sRun", () => {
 			setTimer: firingTimer(1_000),
 		});
 		expect(res.pushed).toBe(false);
-		expect((res.events[0]?.payload as { message: string }).message).toContain("pod is gone");
+		expect((res.events[0]?.payload as { message: string } | undefined)?.message).toContain(
+			"pod is gone",
+		);
 		expect(coordinator.pendingCount).toBe(0);
 	});
 
@@ -182,7 +186,9 @@ describe("finalizeK8sRun", () => {
 		});
 		expect(res.pushed).toBe(false);
 		expect(res.stages.every((s) => s.status === "failed")).toBe(true);
-		expect((res.events[0]?.payload as { message: string }).message).toContain("terminal phase");
+		expect((res.events[0]?.payload as { message: string } | undefined)?.message).toContain(
+			"terminal phase",
+		);
 		expect(coordinator.pendingCount).toBe(0);
 	});
 
@@ -198,7 +204,7 @@ describe("finalizeK8sRun", () => {
 			timeoutMs: 999_999,
 			setTimer: firingTimer(1_000),
 		});
-		const message = (res.events[0]?.payload as { message: string }).message;
+		const message = (res.events[0]?.payload as { message: string } | undefined)?.message;
 		expect(message).toContain("failed; oom_killed");
 		expect(message).toContain("without posting a finalize result");
 	});
@@ -219,7 +225,7 @@ describe("finalizeK8sRun", () => {
 			timeoutMs: 999_999,
 			setTimer: firingTimer(1_000),
 		});
-		const message = (res.events[0]?.payload as { message: string }).message;
+		const message = (res.events[0]?.payload as { message: string } | undefined)?.message;
 		expect(message).toContain("failed; evicted");
 		expect(message).toContain(detail);
 	});

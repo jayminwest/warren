@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils.ts";
  */
 
 const alertVariants = cva(
-	"relative w-full rounded-md border p-3 text-sm flex items-start gap-2.5",
+	"relative flex w-full items-start gap-2.5 rounded-md border p-3 text-sm",
 	{
 		variants: {
 			variant: {

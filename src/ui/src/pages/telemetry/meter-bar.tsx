@@ -42,7 +42,7 @@ export function MeterBar({
 			</div>
 			{value === undefined ? null : (
 				<span
-					className={cn("font-mono text-[11px] leading-[14px] text-(--color-text-3)", valueClass)}
+					className={cn("font-mono text-(--color-text-3) text-[11px] leading-[14px]", valueClass)}
 				>
 					{value}
 				</span>
