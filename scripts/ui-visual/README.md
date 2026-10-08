@@ -31,6 +31,21 @@ Output lands in `scripts/ui-visual/out/`, which git ignores. Screenshots go to
 `check:ui-visual` is not part of `check:all`, because the gate manifest is
 frozen. CI runs it from its own workflow.
 
+## CI
+
+`.github/workflows/ui-visual.yml` runs the harness on every PR and main push
+that touches `src/ui/`, this directory, the SPA server, or the dependency
+manifests. It reports a status check named `ui-visual`. The job runs inside
+the official `mcr.microsoft.com/playwright` image, pinned by tag and digest
+to the `@playwright/test` version in `package.json`, so fonts and
+rasterization match from run to run. `ci-workflow.test.ts` fails when the
+image tag and the devDependency drift apart; bump both together and refresh
+the digest (the workflow header shows how).
+
+Each run uploads `out/` as the artifact `ui-screenshots-<head sha>`, kept for
+14 days, pass or fail. It also writes `out/ci-meta.json` with the PR number,
+head sha, and outcome for follow-up workflows.
+
 ## What the smoke spec asserts
 
 `smoke.pw.ts` runs every page at desktop (1440x900) and phone (393x852) in the
