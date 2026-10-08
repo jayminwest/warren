@@ -102,7 +102,7 @@
 		"prepare": "[ -e .git ] && git config core.hooksPath scripts/hooks && git config merge.seeds-jsonl.driver 'bun scripts/merge-seeds-jsonl.ts %O %A %B' || true"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.10",
+		"@biomejs/biome": "^2.5.15",
 		"@types/bun": "latest",
 		"@types/pg": "^8.11.10",
 		"drizzle-kit": "^0.31.10",

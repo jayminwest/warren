@@ -27,47 +27,46 @@ function inputFor(exec: ReapExec): RunAutoMergeArmInput {
 }
 
 describe("auto-merge remote snapshot", () => {
-	test.each([
-		"base",
-		"head",
-		"sha",
-	])("refuses arming after failed %s resolution and removes the snapshot", async (failure) => {
-		const fake = fakeExec({
-			showStdout: "pr:\n  autoMerge:\n    method: squash\n",
-			nameOnlyDiff: "safe.ts\0",
-		});
-		let snapshot = "";
-		const exec: ReapExec = {
-			run: async (cmd, args, opts) => {
-				snapshot = opts.cwd;
-				if (args[0] === "fetch" && args.at(-1)?.endsWith(`/${failure}`)) {
-					throw new Error("fetch error containing secret credential");
-				}
-				if (failure === "sha" && args[0] === "rev-parse") return { stdout: "main", stderr: "" };
-				return fake.exec.run(cmd, args, opts);
-			},
-		};
-		const input = inputFor(exec);
-		(input.forge as ReturnType<typeof fakeForge>).setAutoMergeArmCapability(true);
-		const events: unknown[] = [];
-		input.forge.armAutoMerge = async () => {
-			throw new Error("must not arm");
-		};
-		await runAutoMergeArm({
-			...input,
-			emit: async (kind, payload) => {
-				events.push({ kind, payload });
-			},
-		});
-		expect(events).toEqual([
-			{
-				kind: "reap.auto_merge_skipped",
-				payload: { reason: failure === "head" ? "diff_unreadable" : "off" },
-			},
-		]);
-		expect(fake.calls.some((call) => call.args[0] === "diff")).toBe(false);
-		expect(existsSync(snapshot)).toBe(false);
-	});
+	test.each(["base", "head", "sha"])(
+		"refuses arming after failed %s resolution and removes the snapshot",
+		async (failure) => {
+			const fake = fakeExec({
+				showStdout: "pr:\n  autoMerge:\n    method: squash\n",
+				nameOnlyDiff: "safe.ts\0",
+			});
+			let snapshot = "";
+			const exec: ReapExec = {
+				run: async (cmd, args, opts) => {
+					snapshot = opts.cwd;
+					if (args[0] === "fetch" && args.at(-1)?.endsWith(`/${failure}`)) {
+						throw new Error("fetch error containing secret credential");
+					}
+					if (failure === "sha" && args[0] === "rev-parse") return { stdout: "main", stderr: "" };
+					return fake.exec.run(cmd, args, opts);
+				},
+			};
+			const input = inputFor(exec);
+			(input.forge as ReturnType<typeof fakeForge>).setAutoMergeArmCapability(true);
+			const events: unknown[] = [];
+			input.forge.armAutoMerge = async () => {
+				throw new Error("must not arm");
+			};
+			await runAutoMergeArm({
+				...input,
+				emit: async (kind, payload) => {
+					events.push({ kind, payload });
+				},
+			});
+			expect(events).toEqual([
+				{
+					kind: "reap.auto_merge_skipped",
+					payload: { reason: failure === "head" ? "diff_unreadable" : "off" },
+				},
+			]);
+			expect(fake.calls.some((call) => call.args[0] === "diff")).toBe(false);
+			expect(existsSync(snapshot)).toBe(false);
+		},
+	);
 
 	test("ignores rewritten shared base, head, remote-tracking refs, and Git config", async () => {
 		const root = mkdtempOutsideRepo("auto-merge-security-");

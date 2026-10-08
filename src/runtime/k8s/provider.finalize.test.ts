@@ -81,7 +81,9 @@ describe("K8sProvider.finalize — pod-memory sample (warren-fe11)", () => {
 		}));
 		const samples = result.events.filter((e) => e.kind === "run_pod_memory_sample");
 		expect(samples).toHaveLength(1);
-		expect((samples[0]?.payload as { agentMemoryMiB: number }).agentMemoryMiB).toBe(1494);
+		expect((samples[0]?.payload as { agentMemoryMiB: number } | undefined)?.agentMemoryMiB).toBe(
+			1494,
+		);
 	});
 
 	test("returns the result untouched when the sampler yields undefined (warren-fe11)", async () => {
@@ -225,7 +227,9 @@ describe("K8sProvider.finalize — wiring", () => {
 			finalizeSetTimer: firingTimer(4321),
 		});
 		const res = await provider.finalize(handle, intent());
-		expect((res.events[0]?.payload as { message: string }).message).toContain("4321ms");
+		expect((res.events[0]?.payload as { message: string } | undefined)?.message).toContain(
+			"4321ms",
+		);
 	});
 
 	test("an explicit finalizeTimeoutMs dep wins over the env knob", async () => {
@@ -239,7 +243,7 @@ describe("K8sProvider.finalize — wiring", () => {
 			finalizeSetTimer: firingTimer(777),
 		});
 		const res = await provider.finalize(handle, intent());
-		expect((res.events[0]?.payload as { message: string }).message).toContain("777ms");
+		expect((res.events[0]?.payload as { message: string } | undefined)?.message).toContain("777ms");
 	});
 
 	test("degrades to a failed result when the pod is gone (status lists no pod)", async () => {
@@ -255,6 +259,8 @@ describe("K8sProvider.finalize — wiring", () => {
 		});
 		const res = await provider.finalize(handle, intent());
 		expect(res.pushed).toBe(false);
-		expect((res.events[0]?.payload as { message: string }).message).toContain("pod is gone");
+		expect((res.events[0]?.payload as { message: string } | undefined)?.message).toContain(
+			"pod is gone",
+		);
 	});
 });

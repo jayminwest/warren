@@ -160,9 +160,10 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 		const body = (await res.json()) as { run: { prompt: string } };
 		expect(body.run.prompt).toBe("fresh prompt");
 		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_xxxxxxxxxxxx/runs");
-		const meta = (dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } }).metadata
-			.frontmatter;
-		expect(meta.maxCostUsd).toBe(9);
+		const meta = (
+			dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } } | undefined
+		)?.metadata.frontmatter;
+		expect(meta?.maxCostUsd).toBe(9);
 	});
 
 	test("404 when the trigger id is not in .warren/triggers.yaml", async () => {

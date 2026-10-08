@@ -139,7 +139,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		// The burrow workspace branch is the PR head (parent's branch), not a
 		// fresh `burrow/<fixerRunId>` — so reap pushes back onto the open PR.
 		const up = calls.find((c) => c.method === "POST" && c.path === "/sandboxes");
-		expect((up?.body as { branch?: string }).branch).toBe(`burrow/${parentId}`);
+		expect((up?.body as { branch?: string } | undefined)?.branch).toBe(`burrow/${parentId}`);
 	});
 
 	test("rejects a parent run from a different project", async () => {
@@ -221,8 +221,10 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		// `warren/<parentId>` run branch (which is what failed to land).
 		expect(refreshRef).toBe(`warren/rescue/${parentId}`);
 		const up = calls.find((c) => c.method === "POST" && c.path === "/sandboxes");
-		expect((up?.body as { branch?: string }).branch).toBe(`warren/rescue/${parentId}`);
-		expect((up?.body as { baseBranch?: string }).baseBranch).toBe(`warren/rescue/${parentId}`);
+		expect((up?.body as { branch?: string } | undefined)?.branch).toBe(`warren/rescue/${parentId}`);
+		expect((up?.body as { baseBranch?: string } | undefined)?.baseBranch).toBe(
+			`warren/rescue/${parentId}`,
+		);
 		// The lineage link is recorded with the rescue discriminator.
 		expect(run.parentRunId).toBe(parentId);
 		expect(run.cloneKind).toBe("rescue");

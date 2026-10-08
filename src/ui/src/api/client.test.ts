@@ -326,7 +326,9 @@ describe("wire paths", () => {
 			expect(call.init?.method).toBe(row.method ?? "GET");
 			// warren-e1b0: the bearer belongs in the header on every route.
 			expect(call.url).not.toContain(TOKEN);
-			expect((call.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
+			expect((call.init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+				`Bearer ${TOKEN}`,
+			);
 		});
 	}
 });

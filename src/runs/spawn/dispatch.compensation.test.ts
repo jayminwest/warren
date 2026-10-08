@@ -63,7 +63,7 @@ describe("spawnRun: post-create compensation (warren-c2c8)", () => {
 		expect(run.failureReason).toBe("never_started");
 		const events = await repos.events.listByRun(run.id);
 		const failed = events.find((e) => e.kind === "spawn_failed");
-		expect((failed?.payloadJson as { sandboxId?: string }).sandboxId).toBe(sandboxId);
+		expect((failed?.payloadJson as { sandboxId?: string } | undefined)?.sandboxId).toBe(sandboxId);
 	});
 
 	test("still terminates and surfaces the original error when cancel throws", async () => {

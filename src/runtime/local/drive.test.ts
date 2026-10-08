@@ -262,7 +262,7 @@ describe("driveLocalRun", () => {
 		await driveWith(store, record, makeSpec(), fake, makeAdapter());
 		const stderr = record.events.find((e) => e.kind === "stderr");
 		expect(stderr?.stream).toBe("stderr");
-		expect((stderr?.payload as { line: string }).line).toBe("warn: something");
+		expect((stderr?.payload as { line: string } | undefined)?.line).toBe("warn: something");
 	});
 
 	test("an unregistered runtime terminalizes failed with a witness event", async () => {
