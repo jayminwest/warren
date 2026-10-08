@@ -166,7 +166,8 @@ posts with the auto-merge GitHub App token. Re-post for any run with
 `gh workflow run ui-visual-comment.yml -f run_id=<ui-visual run id>`.
 
 `sticky-comment.ts` is the reusable part: any other bot comment (the
-design-review findings, warren-a694) passes its own `stickyMarker(name)`.
+design-review findings from `.github/workflows/ui-design-review.yml`,
+warren-a694) passes its own `stickyMarker(name)`.
 
 ### Masks
 

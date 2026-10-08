@@ -32,8 +32,9 @@ export class GhApiError extends Error {
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 
-function runGh(args: string[], input?: string): string {
-	const result = spawnSync("gh", args, { encoding: "utf8", input, maxBuffer: MAX_BUFFER });
+function runGh(args: string[], input?: string, token?: string): string {
+	const env = token === undefined ? process.env : { ...process.env, GH_TOKEN: token };
+	const result = spawnSync("gh", args, { encoding: "utf8", input, env, maxBuffer: MAX_BUFFER });
 	if (result.error !== undefined) throw result.error;
 	if (result.status !== 0) {
 		const stderr = result.stderr.trim();
@@ -50,17 +51,20 @@ function parse(text: string): unknown {
 	return text.trim() === "" ? null : JSON.parse(text);
 }
 
-/** The `gh api` transport. Needs `GH_TOKEN` (or a `gh auth login`) in the env. */
-export function ghCliApi(): GhApi {
+/**
+ * The `gh api` transport. Needs `GH_TOKEN` (or a `gh auth login`) in the
+ * env, or an explicit `token` for a job that holds two (warren-a694).
+ */
+export function ghCliApi(token?: string): GhApi {
 	return {
 		request(method, path, body) {
 			const args = ["api", "--method", method, path];
 			if (body !== undefined) args.push("--input", "-");
 			const input = body === undefined ? undefined : JSON.stringify(body);
-			return Promise.resolve(parse(runGh(args, input)));
+			return Promise.resolve(parse(runGh(args, input, token)));
 		},
 		paginate(path) {
-			const pages = parse(runGh(["api", "--paginate", "--slurp", path]));
+			const pages = parse(runGh(["api", "--paginate", "--slurp", path], undefined, token));
 			if (!Array.isArray(pages)) return Promise.resolve([]);
 			return Promise.resolve(pages.flatMap((page) => (Array.isArray(page) ? page : [page])));
 		},
