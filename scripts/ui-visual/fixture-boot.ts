@@ -145,6 +145,10 @@ function fixtureEnv(sdStubPath: string, judgeUrl: string, uiDistDir: string | nu
 		WARREN_WORKSPACE_GC_DISABLED: "1",
 		WARREN_PREVIEW_EVICTION_DISABLED: "1",
 		WARREN_FORGE_HEARTBEAT_DISABLED: "1",
+		// Parallel Playwright workers share one token, and each page holds
+		// the lifecycle stream (plus a run's event stream on run detail): the
+		// default per-client cap of 5 would 503 them (warren-99e1).
+		WARREN_MAX_EVENT_STREAMS_PER_CLIENT: "200",
 		WARREN_JUDGE_BASE_URL: judgeUrl,
 		WARREN_JUDGE_EXPORT_TOKEN: JUDGE_TOKEN,
 		TZ: "UTC",

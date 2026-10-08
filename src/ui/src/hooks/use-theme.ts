@@ -62,7 +62,7 @@ export function useTheme(): {
 	const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme());
 
 	// Apply on mount and whenever theme or the resolved system preference
-	// changes. The FOUC-prevention script in index.html sets data-theme
+	// changes. The FOUC-prevention script (public/theme-init.js) sets data-theme
 	// synchronously before React paints; this keeps the attribute in sync
 	// afterwards (including when the OS preference flips while theme ===
 	// "system").

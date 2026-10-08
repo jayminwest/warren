@@ -7,6 +7,7 @@
 			"drizzle.config.ts",
 			"!**/node_modules",
 			"!src/ui/dist",
+			"!scripts/ui-visual/out",
 			"!**/__golden__",
 			"!.claude",
 			"!extensions"
