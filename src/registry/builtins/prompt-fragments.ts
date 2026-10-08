@@ -27,7 +27,7 @@ export const QUALITY_GATE_CHAIN =
  * operating contract and is unchanged.
  */
 export const GATE_FINAL_RUN_RULE =
-	"Run the complete gate on your final inputs before your final commit. One green run on those inputs is the completion evidence: committing or reporting completion does not by itself require another run. Rerun it only when relevant inputs changed since the last green run, to confirm the fix for a diagnosed failure, or as a bounded flake experiment you name as one.";
+	"Run the complete gate once on your final inputs, before or as part of your final commit (a project pre-commit hook that runs that same complete gate on those inputs counts as that run). One green run on those inputs is the completion evidence: committing or reporting completion does not by itself require another run. Rerun it only when relevant inputs changed since the last green run, to confirm the fix for a diagnosed failure, or as a bounded flake experiment you name as one.";
 
 /**
  * Validation-discipline bullets shared by every source-editing builtin
