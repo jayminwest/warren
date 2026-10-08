@@ -23,7 +23,7 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { SandboxProfile, SpawnCommand } from "./types.ts";
 
 export const SYSTEM_READ_SUBPATHS: readonly string[] = [
@@ -165,7 +165,9 @@ function renderWorkspaceGitRules(profile: SandboxProfile): string[] {
 	const rw = "file-read-data file-read-metadata file-write*";
 	const out = [
 		`(deny file-read-data file-write* (subpath ${sbString(git.hostGitDir)}))`,
-		`(deny file-read-data file-write* (subpath ${sbString(dirname(git.gitDir))}))`,
+		...git.deniedRoots.map(
+			(root) => `(deny file-read-data file-write* (subpath ${sbString(root)}))`,
+		),
 		`(allow file-read-data file-read-metadata (subpath ${sbString(git.sharedObjects)}))`,
 		`(allow ${rw} (subpath ${sbString(git.gitDir)}))`,
 		`(deny file-write-unlink (literal ${sbString(git.gitDir)}))`,

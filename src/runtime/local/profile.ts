@@ -38,6 +38,7 @@ import type { SandboxProfile } from "../../sandbox/types.ts";
 import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
 import type { RunSpec } from "../contract.ts";
+import { privateGitDenyRoots } from "./paths.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Env passthrough (warren-owned allowlist; warren-fb8d formalizes)            */
@@ -324,6 +325,7 @@ function workspaceGitFields(
 			protectedPaths: [...scope.protectedPaths],
 			hostGitDir: scope.hostGitDir,
 			sharedObjects: scope.sharedObjects,
+			deniedRoots: privateGitDenyRoots(scope.gitDir),
 		},
 	};
 }

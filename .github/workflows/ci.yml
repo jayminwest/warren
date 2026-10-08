@@ -18,6 +18,17 @@ jobs:
 
       - run: bun install
       - run: bun run ext:install
+
+      # warren-3c1e: the bwrap-gated sandbox tests (private git dir scope,
+      # git preflight) skip when bubblewrap is missing. Ubuntu 24.04 blocks
+      # unprivileged user namespaces through AppArmor, so lift that on the
+      # runner, then prove bwrap can start before the suite relies on it.
+      - name: Install bubblewrap for the sandbox tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --unshare-all --die-with-parent --ro-bind / / true
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run check:agents

@@ -10,7 +10,7 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	FIXTURE_GIT_ENV,
 	fixtureGitCmd,
@@ -188,6 +188,7 @@ describe("private git dir inside the real sandbox (warren-3c1e)", () => {
 				protectedPaths: scope.protectedPaths,
 				hostGitDir: scope.hostGitDir,
 				sharedObjects: scope.sharedObjects,
+				deniedRoots: [dirname(scope.gitDir)],
 			},
 		};
 		const proc = await runSandboxed(profile, {
@@ -215,7 +216,7 @@ describe("private git dir inside the real sandbox (warren-3c1e)", () => {
 			// config is read-only, so git warns and still deletes the ref. That
 			// warning is the only stderr allowed: no ref or lock errors.
 			const noise =
-				/^(Deleted (branch|tag) .*|error: could not write config file .*|warning: update of config-file failed)\n/gm;
+				/^(Deleted (branch|tag) .*|error: could not write config file .*|warning: update of config-file failed)\n/gim;
 			expect(res.err.replace(noise, "")).toBe("");
 			expect(res.exit).toBe(0);
 			expect(fixtureGitCmd(fx.ws, "log", "-1", "--format=%s")).toBe("agent");
@@ -249,9 +250,22 @@ describe("private git dir inside the real sandbox (warren-3c1e)", () => {
 				`echo x > ${join(fx.siblingGitDir, "HEAD")}`,
 				`git --git-dir=${fx.siblingGitDir} update-ref refs/heads/main HEAD`,
 			];
+			const watched = [
+				join(fx.hostGitDir, "refs", "heads", "main"),
+				join(fx.hostGitDir, "packed-refs"),
+				join(fx.hostGitDir, "config"),
+				join(fx.siblingGitDir, "HEAD"),
+			];
+			const snapshot = () => watched.map((p) => (existsSync(p) ? readFileSync(p, "utf8") : null));
+			const before = snapshot();
 			for (const probe of probes) {
-				expect((await sh(probe)).exit).not.toBe(0);
+				const { exit } = await sh(probe);
+				// Seatbelt denies the write. bwrap never mounts these paths, so a
+				// write lands in the sandbox's own scratch tree; the host files
+				// below are what must not change.
+				if (isDarwin) expect(exit).not.toBe(0);
 			}
+			expect(snapshot()).toEqual(before);
 			expect(fixtureGitCmd(fx.clone, "rev-parse", "main")).toBe(baseBefore);
 			expect(fixtureGitCmd(fx.clone, "for-each-ref")).toBe(hostRefs);
 			expect(fixtureGitCmd(fx.sibling, "rev-parse", "main")).toBe(baseBefore);

@@ -189,10 +189,10 @@ describe("buildSeatbeltProfile", () => {
 		expect(out).toContain('(allow file-write* (literal "/dev/null"))');
 	});
 
-	test("private git dir is writable, host git dir and siblings denied, in order (burrow-7a80, warren-3c1e)", () => {
+	test("private git dir is writable, host git dir and gitdir roots denied, in order (burrow-7a80, warren-3c1e)", () => {
 		// The workspace `.git` file points at the run's private git dir, outside
 		// the workspace subpath. The host clone's git dir and the gitdirs root
-		// (sibling runs) are denied; the host objects/ is readable; the run's
+		// (sibling runs) and the sealed root are denied; the host objects/ is readable; the run's
 		// own dir is read-write, its root cannot be renamed away, and its
 		// config/alternates are denied again. SBPL applies the last matching
 		// rule, so order matters.
@@ -204,6 +204,7 @@ describe("buildSeatbeltProfile", () => {
 					protectedPaths: [`${gd}/config`, `${gd}/objects/info/alternates`],
 					hostGitDir: "/Users/u/clone/.git",
 					sharedObjects: "/Users/u/clone/.git/objects",
+					deniedRoots: ["/Users/u/data/local/gitdirs", "/Users/u/data/local/gitdirs-sealed"],
 				},
 			}),
 		);
@@ -211,6 +212,7 @@ describe("buildSeatbeltProfile", () => {
 		const rules = [
 			'(deny file-read-data file-write* (subpath "/Users/u/clone/.git"))',
 			'(deny file-read-data file-write* (subpath "/Users/u/data/local/gitdirs"))',
+			'(deny file-read-data file-write* (subpath "/Users/u/data/local/gitdirs-sealed"))',
 			'(allow file-read-data file-read-metadata (subpath "/Users/u/clone/.git/objects"))',
 			`(allow ${rw} (subpath "${gd}"))`,
 			// The private dir root itself cannot be renamed or removed.

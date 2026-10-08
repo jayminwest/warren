@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureGitCmd } from "../../sandbox/git-scope.test-helpers.ts";
 import type { SpawnResult } from "../../sandbox/types.ts";
 import { assertFixtureHermetic, fixtureGitOrThrow } from "../../workspace/git/test-fixture.ts";
 import { branchExists, listWorktrees } from "../../workspace/git/worktree.ts";
@@ -155,22 +156,13 @@ describe("LocalEngine: existing-branch dispatch (warren-326f)", () => {
 			const list = await listWorktrees(host);
 			expect(list.some((e) => e.worktree.endsWith("run_ex1"))).toBe(false);
 			expect(await branchExists(host, "fix/pr-head")).toBe(true);
-			const wsHead = await fixtureGitOrThrow(workspacePath, ["rev-parse", "HEAD"]);
-			expect(wsHead.stdout.trim()).toBe(tip);
+			// Host git is refused until the seal, so play the agent with raw git.
+			expect(fixtureGitCmd(workspacePath, "rev-parse", "HEAD")).toBe(tip);
 
 			// The agent commits; finalize pushes HEAD:<branch>.
 			writeFileSync(join(workspacePath, "follow-up.txt"), "follow-up work\n");
-			await fixtureGitOrThrow(workspacePath, ["add", "."]);
-			// The private git dir does not inherit the host clone's identity.
-			await fixtureGitOrThrow(workspacePath, [
-				"-c",
-				"user.name=Agent",
-				"-c",
-				"user.email=agent@example.com",
-				"commit",
-				"-m",
-				"follow-up commit",
-			]);
+			fixtureGitCmd(workspacePath, "add", ".");
+			fixtureGitCmd(workspacePath, "commit", "-m", "follow-up commit");
 
 			const result = await engine.finalize(handle, {
 				branch: "fix/pr-head",

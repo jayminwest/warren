@@ -18,6 +18,7 @@ import { LocalEngine } from "./engine.ts";
 import {
 	localGitDirPath,
 	localHomePath,
+	localSealedGitDirPath,
 	localWorkspacePath,
 	resolveLocalStateRoots,
 } from "./paths.ts";
@@ -27,8 +28,8 @@ import { LocalRunStore } from "./run-store.ts";
  * warren-3c1e end-to-end through the REAL platform sandbox: the agent is a
  * shell script run by `runSandboxed` against the profile the engine built.
  * It commits, creates and deletes refs, and tries to write the host clone's
- * git metadata. Then host-side finalize pushes — or refuses to, when the run
- * planted a symlink in its private git dir.
+ * git metadata. Then host-side finalize seals the dir and pushes: a planted
+ * symlink is sanitized away, a planted `commondir` is refused.
  */
 const isDarwin = process.platform === "darwin";
 const canSandbox = isDarwin || (process.platform === "linux" && Bun.which("bwrap") !== null);
@@ -166,7 +167,14 @@ describe("LocalEngine: private git metadata in the real sandbox (warren-3c1e)", 
 			const { host, remote } = await bootstrap(root);
 			const hostGit = join(host, ".git");
 			const baseBefore = await gitOut(host, "rev-parse", "main");
-			const hostRefsBefore = await gitOut(host, "for-each-ref");
+			const hostFiles = () =>
+				[join(hostGit, "packed-refs"), join(hostGit, "refs", "heads", "main")].map((p) =>
+					existsSync(p) ? readFileSync(p, "utf8") : null,
+				);
+			const hostFilesBefore = hostFiles();
+			const hostRefs = () =>
+				gitOut(host, "for-each-ref", "refs/heads", "refs/remotes", "refs/tags");
+			const hostRefsBefore = await hostRefs();
 			const engine = engineRunning(
 				[
 					"git -c user.name=a -c user.email=a@example.invalid commit -q --allow-empty -m agent",
@@ -185,12 +193,22 @@ describe("LocalEngine: private git metadata in the real sandbox (warren-3c1e)", 
 			for (const ok of ["commit", "loose_delete", "tag_delete", "packed_delete"]) {
 				expect(log).toContain(`${ok}=0`);
 			}
-			for (const denied of ["host_update_ref", "host_ref_write", "host_packed_write"]) {
-				expect(log).not.toContain(`${denied}=0`);
+			// Seatbelt denies these writes; bwrap never mounts the host .git, so
+			// a write lands in the sandbox's scratch tree. Either way the host
+			// refs below must not change.
+			expect(log).not.toContain("host_update_ref=0");
+			if (isDarwin) {
+				for (const denied of ["host_ref_write", "host_packed_write"]) {
+					expect(log).not.toContain(`${denied}=0`);
+				}
 			}
-			// The host clone's refs never moved and never saw the run branch.
+			expect(hostFiles()).toEqual(hostFilesBefore);
+			// The host clone's refs never moved and never saw the run branch; it
+			// holds only the GC keep-ref at the base commit.
 			expect(await gitOut(host, "rev-parse", "main")).toBe(baseBefore);
-			expect(await gitOut(host, "for-each-ref")).toBe(hostRefsBefore);
+			expect(await hostRefs()).toBe(hostRefsBefore);
+			const keepRef = `refs/warren/runs/${handle.sandboxId}`;
+			expect(await gitOut(host, "rev-parse", keepRef)).toBe(baseBefore);
 
 			const result = await engine.finalize(handle, {
 				branch: "warren/pg1",
@@ -205,18 +223,21 @@ describe("LocalEngine: private git metadata in the real sandbox (warren-3c1e)", 
 			expect(await gitOut(remote, "rev-parse", "warren/pg1")).toBe(
 				await gitOut(ws, "rev-parse", "HEAD"),
 			);
-			// Teardown reclaims the private git dir with the workspace.
-			const gitDir = localGitDirPath(roots, handle.sandboxId);
-			expect(existsSync(gitDir)).toBe(true);
+			// Finalize sealed the dir out of sandbox reach; teardown reclaims it,
+			// the workspace, and the keep-ref.
+			const sealed = localSealedGitDirPath(roots, handle.sandboxId);
+			expect(existsSync(localGitDirPath(roots, handle.sandboxId))).toBe(false);
+			expect(existsSync(sealed)).toBe(true);
 			await engine.terminate(handle);
-			expect(existsSync(gitDir)).toBe(false);
+			expect(existsSync(sealed)).toBe(false);
 			expect(existsSync(ws)).toBe(false);
+			expect(await gitOut(host, "for-each-ref", "refs/warren")).toBe("");
 		},
 		60_000,
 	);
 
 	test.skipIf(!canSandbox)(
-		"refuses host-side finalize when the run planted a symlink in its git dir",
+		"sanitizes a symlink the run planted in its git dir, then pushes",
 		async () => {
 			const { host, remote } = await bootstrap(root);
 			const secret = join(root, "secret");
@@ -240,11 +261,37 @@ describe("LocalEngine: private git metadata in the real sandbox (warren-3c1e)", 
 				push: true,
 				artifacts: [],
 			});
-			expect(result.pushed).toBe(false);
-			// The pre-call boundary check refused the push; it never ran.
-			expect(JSON.stringify(result.stages)).toMatch(/branch_push.*is a symlink/);
+			// The seal unlinked the symlink before any host git ran.
+			expect(result.pushed).toBe(true);
 			expect(readFileSync(secret, "utf8")).toBe("untouched\n");
-			expect(await gitOut(remote, "branch", "--list", "warren/pg2")).toBe("");
+			expect(await gitOut(remote, "branch", "--list", "warren/pg2")).toContain("warren/pg2");
+			await engine.terminate(handle);
+		},
+		60_000,
+	);
+
+	test.skipIf(!canSandbox)(
+		"refuses host-side finalize when the run planted a commondir",
+		async () => {
+			const { host, remote } = await bootstrap(root);
+			const engine = engineRunning(
+				[
+					"git -c user.name=a -c user.email=a@example.invalid commit -q --allow-empty -m agent",
+					'echo "$PWD/nowhere" > "$(git rev-parse --absolute-git-dir)/commondir"; echo plant=$?',
+				].join("\n"),
+			);
+			const handle = await engine.create(spec("pg3", host, remote));
+			await awaitTerminal(engine, "pg3");
+			expect(probeLog(handle.sandboxId)).toContain("plant=0");
+			await expect(
+				engine.finalize(handle, {
+					branch: "warren/pg3",
+					baseBranch: "main",
+					push: true,
+					artifacts: [],
+				}),
+			).rejects.toThrow(/commondir must not exist/);
+			expect(await gitOut(remote, "branch", "--list", "warren/pg3")).toBe("");
 			await engine.terminate(handle);
 		},
 		60_000,

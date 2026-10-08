@@ -101,29 +101,58 @@ Each run gets a private git dir at `<dataDir>/local/gitdirs/<sandboxId>`
 clone's object store with other runs.
 
 - **Materialization.** `git init --separate-git-dir` makes the dir and
-  the workspace `.git` pointer. `objects/info/alternates` names the host
-  clone's `objects/`. A `packed-refs` snapshot copies the host's
+  the workspace `.git` pointer. The init pins the host clone's object
+  format and the `files` ref backend (`--object-format`,
+  `--ref-format=files` on git 2.45+, and `GIT_DEFAULT_REF_FORMAT=files`),
+  so a user or system `init.defaultRefFormat=reftable` cannot change the
+  layout the sandbox mounts and the seal check walks.
+  `objects/info/alternates` names the host clone's `objects/`.
+  `git update-ref --stdin` plus `pack-refs` snapshots the host's
   branches, remote-tracking refs, and tags. The run branch exists only
-  in the private dir. The config copies the host's `remote.*` entries
-  and `core.hooksPath`, and warren records its sha256. No objects are
-  copied, so a materialization costs a few small files.
+  in the private dir. No objects are copied, so a materialization costs
+  a few small files.
+- **Config.** The private config carries only the host clone's
+  `remote.*` entries and `core.hooksPath`, and warren records its
+  sha256. Local `http.*`, `credential.*`, `url.<base>.insteadOf`, and
+  `lfs.*` settings in the host clone's `.git/config` are not carried
+  over, and LFS objects are not shared. A project that needs them sets
+  them globally or in the run environment.
+- **GC keep-ref.** The host clone gains one ref per run,
+  `refs/warren/runs/<sandboxId>`, at the base commit. It stops a host
+  `git gc` from pruning objects the private dir borrows. The run's own
+  commits live only in the private dir, so the keep-ref never points at
+  them. Teardown and the workspace GC delete it.
 - **Sandbox.** The private dir is read-write, so ref updates, ref
   deletions, and `packed-refs.lock` work the same under bwrap, Seatbelt,
   and docker. Its `config` and `objects/info/alternates` stay
   read-only. The host clone's `objects/` is read-only. Nothing else of
   the host clone's `.git` is reachable: bwrap and docker do not mount
-  it, and Seatbelt denies it together with the sibling gitdirs. A run
-  can thus never move the host's base branch or another run's refs.
-- **Host-side git.** Finalize, reap, and salvage pin git to the private
-  dir (`src/runtime/local/git-pin.ts`), with hooks and fsmonitor off.
-  Before each host git call, `assertPrivateGitDirIntact`
-  (`src/sandbox/git-scope.ts`) refuses the dir if it holds a symlink, a
-  special file, or a hard link. It also refuses a changed config, a
-  changed alternates file, or a `commondir` file. Host git thus never
-  follows a path the run planted or honors config the run wrote.
-- **Teardown.** `terminate` and the workspace GC remove the private
-  dir with the workspace. The host clone keeps no per-run branch or
-  worktree.
+  it, and Seatbelt denies it together with the `gitdirs/` and
+  `gitdirs-sealed/` roots. A run can thus never move the host's base
+  branch or another run's refs. The read-only mounts are defense in
+  depth. The boundary that host git relies on is the seal check below,
+  which also covers the alternates file.
+- **Seal.** At create, host git is pinned to the private dir but every
+  call is refused. Reap calls `workspaceInfo` first, and for a local run
+  that seals the dir (`src/runtime/local/git-pin.ts`):
+  1. It stops every agent process and waits for the exit. On macOS the
+     agent leads its own process group and cancel kills the group. Under
+     bwrap the pid namespace dies with the agent. Under docker the
+     container is force-removed before `exited` settles.
+  2. It moves the dir to `<dataDir>/local/gitdirs-sealed/<sandboxId>`,
+     which no sandbox grant reaches.
+  3. It checks the dir once, asynchronously, with entry and depth caps
+     (`src/sandbox/git-seal.ts`). Symlinks and special files are
+     unlinked, and hard links are copied to fresh inodes. A changed
+     config, a changed alternates file, or a `commondir` file refuses the
+     run, and so does a walk past its caps.
+  4. It re-pins host git to the sealed dir with no per-call check.
+     Finalize, reap, and salvage then run with hooks and fsmonitor off.
+  The seal is single-flight and idempotent, and a restarted server
+  re-runs it from the run manifest.
+- **Teardown.** `terminate` and the workspace GC remove the live and
+  sealed dirs with the workspace, and delete the keep-ref. The host clone
+  keeps no per-run branch or worktree.
 
 Known limits:
 
@@ -134,12 +163,18 @@ Known limits:
   from the run's private snapshot. A run that moves its copy of the
   base can only skew its own outcome. It cannot affect the host or
   other runs.
-- On macOS, cancel signals only the direct child of `sandbox-exec`. A
-  background process the run left alive could race the host-side
-  check. Linux bwrap kills the whole namespace.
-- A manifest from before warren-3c1e (a shared-clone worktree) is not
-  re-pinned after a restart, so host git refuses it and the run fails
-  closed.
+- bwrap bind mounts follow the moved dir. The seal relies on the agent's
+  pid namespace being gone before the move, which the stop step waits
+  for.
+- On macOS a process that calls `setsid` leaves the agent's process
+  group and survives cancel. Seatbelt still denies it the sealed root.
+  After a warren restart the old process group is not known, so only
+  that deny applies.
+- A manifest from before warren-3c1e (a shared-clone worktree) fails
+  reap with the `legacy_worktree_workspace` code in the `reap_failed`
+  event. The workspace is preserved, and the recovery hint names the
+  branch to push by hand from the host clone. Automatic salvage of
+  those runs is not carried over.
 
 ## Event durability rationale
 

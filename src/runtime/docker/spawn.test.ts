@@ -81,6 +81,7 @@ describe("chownDockerMounts", () => {
 					protectedPaths: [],
 					hostGitDir: "/repo/.git",
 					sharedObjects: "/repo/.git/objects",
+					deniedRoots: [],
 				},
 			}),
 			{ uid: 1000, gid: 1000, chownMounts: true },
@@ -262,5 +263,44 @@ describe("makeDockerSpawn", () => {
 		result.cancel();
 		expect(procs[0]?.killed).toBe(true);
 		expect(calls.some((a) => a[1] === "rm" && a[2] === "-f")).toBe(true);
+	});
+
+	test("cancel's exited settles only after the container removal finishes", async () => {
+		const procs: FakeProc[] = [];
+		const rmCalls: string[][] = [];
+		let finishRm: () => void = () => {};
+		const rmDone = new Promise<void>((resolve) => {
+			finishRm = resolve;
+		});
+		const spawn = makeDockerSpawn({
+			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 501, gid: 20 },
+			chownPath: () => {},
+			spawn: (argv) => {
+				const proc = makeFakeProc(argv);
+				procs.push(proc);
+				return proc.subprocess;
+			},
+			runDocker: async (argv) => {
+				if (argv[1] === "rm") {
+					rmCalls.push(argv);
+					await rmDone;
+				}
+				return { exitCode: 0, stdout: "" };
+			},
+		});
+		const result = await spawn(makeProfile(), { argv: ["claude"] });
+		let settled = false;
+		const exited = result.exited.then(() => {
+			settled = true;
+		});
+		result.cancel();
+		procs[0]?.resolveExit(137);
+		await Bun.sleep(20);
+		expect(settled).toBe(false);
+		finishRm();
+		await exited;
+		expect(settled).toBe(true);
+		expect(rmCalls).toHaveLength(1);
 	});
 });

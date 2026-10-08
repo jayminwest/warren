@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runGit } from "./git/exec.ts";
 import { fixtureGitOrThrow } from "./git/test-fixture.ts";
 import { branchExists, initRepo, listWorktrees } from "./git/worktree.ts";
 import { materializeProjectWorkspace, removeMaterializedWorkspace } from "./materialize.ts";
@@ -25,6 +26,11 @@ afterAll(() => {
 		if (value !== undefined) process.env[key] = value;
 	}
 });
+
+async function hostRef(repo: string, ref: string): Promise<string | null> {
+	const res = await runGit(["rev-parse", "--verify", "--quiet", ref], { cwd: repo });
+	return res.exitCode === 0 ? res.stdout.trim() : null;
+}
 
 describe("materializeProjectWorkspace with a private git dir (warren-3c1e)", () => {
 	let root: string;
@@ -77,13 +83,41 @@ describe("materializeProjectWorkspace with a private git dir (warren-3c1e)", () 
 		const staged = await fixtureGitOrThrow(ws, ["diff", "--cached", "--name-only"]);
 		expect(staged.stdout.trim()).toBe("work.txt");
 
-		// The host clone gained no branch and no worktree.
+		// The host clone gained no branch and no worktree, only the GC keep-ref.
 		expect(await branchExists(repo, "run/p")).toBe(false);
 		const worktrees = await listWorktrees(repo);
 		expect(worktrees.some((e) => e.worktree.endsWith("/ws"))).toBe(false);
+		expect(result.source.hostKeepRef).toBe("refs/warren/runs/p");
+		expect(await hostRef(repo, "refs/warren/runs/p")).toBe(await hostRef(repo, "main"));
 
 		await removeMaterializedWorkspace({ workspacePath: ws, source: result.source });
 		expect(existsSync(ws)).toBe(false);
 		expect(existsSync(gitDir)).toBe(false);
+		expect(await hostRef(repo, "refs/warren/runs/p")).toBeNull();
+	});
+
+	test("pins the files ref backend even when the environment defaults to reftable", async () => {
+		const ws = join(root, "ws");
+		const gitDir = join(root, "gitdirs", "r");
+		process.env.GIT_DEFAULT_REF_FORMAT = "reftable";
+		try {
+			await materializeProjectWorkspace({
+				workspacePath: ws,
+				branch: "run/r",
+				baseBranch: "main",
+				projectRoot: repo,
+				hostEnv: { GIT_CONFIG_NOSYSTEM: "1", HOME: root, PATH: process.env.PATH },
+				privateGitDir: gitDir,
+			});
+		} finally {
+			delete process.env.GIT_DEFAULT_REF_FORMAT;
+		}
+		expect(existsSync(join(gitDir, "reftable"))).toBe(false);
+		expect(existsSync(join(gitDir, "packed-refs"))).toBe(true);
+		expect(existsSync(join(gitDir, "refs", "heads", "run", "r"))).toBe(true);
+		const format = await fixtureGitOrThrow(ws, ["rev-parse", "--show-object-format"]);
+		expect(format.stdout.trim()).toBe("sha1");
+		const main = await fixtureGitOrThrow(ws, ["rev-parse", "main"]);
+		expect<string | null>(main.stdout.trim()).toBe(await hostRef(repo, "main"));
 	});
 });

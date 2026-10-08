@@ -14,7 +14,9 @@
  *     the OOMKilled flag and force-removes it (no `--rm` — the flag would
  *     be uninspectable).
  *   - `cancel()` force-removes the container (`docker rm -f` kills it) and
- *     kills the CLI child. Idempotent.
+ *     kills the CLI child. Idempotent. `exited` settles only after that
+ *     removal has finished, so a caller awaiting it knows no container
+ *     process is left (warren-3c1e seals the run's git dir after that).
  *   - `oomKilled()` reports the daemon's cgroup OOM verdict, the docker
  *     counterpart of the bwrap cgroup probe (burrow-2083 parity).
  *
@@ -151,13 +153,22 @@ async function spawnInContainer(
 	await writeStringStdin(proc, command.stdin, command.holdStdin ?? false);
 
 	let oom = false;
-	let cleanedUp = false;
-	const cleanup = async (): Promise<void> => {
-		if (cleanedUp) return;
-		cleanedUp = true;
-		oom = await probeOomKilled(runDocker, config.bin, spec.containerName);
-		await runDocker([config.bin, "rm", "-f", spec.containerName]).catch(() => {});
-		rmSync(tmpDir, { recursive: true, force: true });
+	let removal: Promise<void> | undefined;
+	const forceRemove = (): Promise<void> => {
+		removal ??= runDocker([config.bin, "rm", "-f", spec.containerName]).then(
+			() => {},
+			() => {},
+		);
+		return removal;
+	};
+	let cleaning: Promise<void> | undefined;
+	const cleanup = (): Promise<void> => {
+		cleaning ??= (async () => {
+			oom = await probeOomKilled(runDocker, config.bin, spec.containerName);
+			await forceRemove();
+			rmSync(tmpDir, { recursive: true, force: true });
+		})();
+		return cleaning;
 	};
 	const exited = proc.exited.then(async (code) => {
 		await cleanup();
@@ -170,8 +181,8 @@ async function spawnInContainer(
 		stderr: proc.stderr as ReadableStream<Uint8Array>,
 		exited,
 		cancel: () => {
+			void forceRemove();
 			proc.kill();
-			void runDocker([config.bin, "rm", "-f", spec.containerName]).catch(() => {});
 			void cleanup();
 		},
 		closeStdin: makeCloseStdin(proc),

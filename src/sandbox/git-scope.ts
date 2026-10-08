@@ -16,17 +16,17 @@
  *     sibling metadata) is not exposed at all: bwrap and docker never mount
  *     it, and Seatbelt denies it.
  *
- * Host-side git (finalize, reap push, salvage) is pinned to the private dir
- * with `--git-dir`/`--work-tree`/`GIT_COMMON_DIR` and runs
- * `assertPrivateGitDirIntact` before EVERY invocation
- * (`src/workspace/git/host-git.ts`). That check is the boundary; the sandbox
- * protections are defense in depth. It refuses the run's git dir when:
+ * Host-side git (finalize, reap push, salvage) never runs while the agent
+ * can still write the dir. Once the agent has exited, the local engine
+ * SEALS the dir: it stops every agent process, moves the dir where no
+ * sandbox grant reaches, and checks it once (`./git-seal.ts`). Only then
+ * is host git pinned to it with `--git-dir`/`--work-tree`/`GIT_COMMON_DIR`
+ * (`src/workspace/git/host-git.ts`). That host-side content check is the
+ * boundary, including for `objects/info/alternates`; the sandbox
+ * protections (read-only binds, Seatbelt denies) are defense in depth.
  *
- *   - any entry under it is a symlink, a special file, or a hard link
- *     (git never creates these in its own dir; a planted one would make
- *     host-side git read or append outside the run),
- *   - `config` or `objects/info/alternates` differ from what warren wrote,
- *   - a `commondir` file appeared (it would redirect git to another repo).
+ * `assertPrivateGitDirIntact` below is the create-time form of the same
+ * rules, run once on the fresh dir before the agent starts.
  *
  * The run cannot touch any ref another run or base-branch resolution reads:
  * the host clone's refs are not mounted, and every run's refs are its own.
@@ -130,8 +130,9 @@ function assertNoLinks(dir: string): void {
 }
 
 /**
- * The host-side boundary check, run before every host git invocation against
- * the run workspace. Throws `WorkspaceGitScopeError` on any deviation.
+ * Create-time check of a fresh private git dir. Throws
+ * `WorkspaceGitScopeError` on any deviation. The post-run check is
+ * `sealCheckPrivateGitDir` (`./git-seal.ts`).
  */
 export function assertPrivateGitDirIntact(scope: PrivateGitScope): void {
 	assertCanonicalDir(scope.gitDir, "private git dir");
@@ -153,22 +154,30 @@ export function assertPrivateGitDirIntact(scope: PrivateGitScope): void {
 }
 
 /**
- * Resolve and validate a run's private git scope. Called at create (before
- * the agent runs) and when a restarted server re-pins a run from its
- * manifest; both paths run the full intact check.
+ * Resolve and validate a run's private git scope at create, before the
+ * agent runs: the fresh dir is a handful of files, so a full walk is cheap.
  */
 export function resolvePrivateGitScope(input: ResolvePrivateGitScopeInput): PrivateGitScope {
+	const scope = privateGitScopeFor(input);
+	if (input.checkPointer !== false) assertGitdirPointer(input.workspacePath, input.gitDir);
+	assertPrivateGitDirIntact(scope);
+	return scope;
+}
+
+/** Build a scope after checking only the host dirs (no walk of `gitDir`). */
+export function privateGitScopeFor(
+	input: Omit<ResolvePrivateGitScopeInput, "workspacePath" | "checkPointer">,
+): PrivateGitScope {
 	assertCanonicalDir(input.hostGitDir, "host git dir");
 	const sharedObjects = join(input.hostGitDir, "objects");
 	assertCanonicalDir(sharedObjects, "host object store");
-	if (input.checkPointer !== false) assertGitdirPointer(input.workspacePath, input.gitDir);
-	const scope: PrivateGitScope = {
+	return {
 		gitDir: input.gitDir,
 		hostGitDir: input.hostGitDir,
 		sharedObjects,
 		protectedPaths: PRIVATE_GIT_PROTECTED.map((rel) => join(input.gitDir, rel)),
 		configSha256: input.configSha256,
 	};
-	assertPrivateGitDirIntact(scope);
-	return scope;
 }
+
+export { assertCanonicalDir, fail as failGitScope };

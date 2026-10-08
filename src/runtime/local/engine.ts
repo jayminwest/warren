@@ -53,7 +53,7 @@ import type {
 import { RuntimeProviderError, RuntimeRunNotFoundError } from "../errors.ts";
 import { type DriveDeps, driveLocalRun } from "./drive.ts";
 import { finalizeLocalWorkspace } from "./finalize.ts";
-import { ensureWorkspaceGitPin, pinWorkspaceGit, unpinWorkspaceGit } from "./git-pin.ts";
+import { pinWorkspaceGit, removeRunGitDirs, sealLocalRun, unpinWorkspaceGit } from "./git-pin.ts";
 import {
 	type LocalRunManifest,
 	readLocalRunManifest,
@@ -370,14 +370,14 @@ export class LocalEngine {
 	 */
 	async workspaceInfo(handle: RunHandle): Promise<WorkspaceInfo> {
 		const record = this.store.getBySandboxId(handle.sandboxId);
+		const manifest = await readLocalRunManifest(this.roots, handle.sandboxId);
+		// warren-3c1e: reap's host git runs only against the SEALED git dir. Also
+		// the post-restart re-pin (warren-8926).
+		if (manifest !== null) await sealLocalRun(this.roots, handle.sandboxId, manifest, record?.proc);
 		if (record !== undefined) {
 			return { workspacePath: record.workspacePath, branch: record.branch };
 		}
-		const manifest = await readLocalRunManifest(this.roots, handle.sandboxId);
 		if (manifest !== null) {
-			// Post-restart: re-pin from the manifest (re-validated) before reap's
-			// host-side git touches the workspace (warren-8926).
-			ensureWorkspaceGitPin(manifest.workspacePath, manifest.source);
 			return { workspacePath: manifest.workspacePath, branch: manifest.branch };
 		}
 		throw new RuntimeProviderError(
@@ -439,11 +439,8 @@ export class LocalEngine {
 			await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
 			unpinWorkspaceGit(workspacePath);
 		}
-		// The private git dir path is deterministic from the sandbox id, so it is
-		// reclaimed even when the manifest is already gone (warren-3c1e).
-		await rm(localGitDirPath(this.roots, handle.sandboxId), { recursive: true, force: true }).catch(
-			() => {},
-		);
+		// Deterministic from the sandbox id: reclaimed even without a manifest.
+		await removeRunGitDirs(this.roots, handle.sandboxId);
 		if (homePath !== null) {
 			await rm(homePath, { recursive: true, force: true }).catch(() => {});
 		}

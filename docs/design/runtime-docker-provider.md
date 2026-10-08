@@ -52,7 +52,9 @@ The phase-2 adapters and parsers run unchanged host-side.
 
 The container starts without `--rm`. After exit the seam inspects the dead
 container for the OOMKilled flag, then force-removes it. `cancel` targets
-the deterministic container name with `docker rm -f`.
+the deterministic container name with `docker rm -f`. `exited` settles only
+after that removal has finished, so reap seals the run's private git dir
+with no container process left (warren-3c1e).
 
 Secrets reach the container through an `--env-file` in a private tmp dir.
 They never ride the CLI argv.

@@ -21,9 +21,9 @@
 import { rm } from "node:fs/promises";
 import type { WorkspaceDestroyer, WorkspaceDestroyOutcome } from "../../runs/reap/gc.ts";
 import { removeMaterializedWorkspace } from "../../workspace/materialize.ts";
-import { unpinWorkspaceGit } from "./git-pin.ts";
+import { removeRunGitDirs, unpinWorkspaceGit } from "./git-pin.ts";
 import { readLocalRunManifest, removeLocalRunManifest } from "./manifest.ts";
-import { type LocalPathsEnv, localGitDirPath, resolveLocalStateRoots } from "./paths.ts";
+import { type LocalPathsEnv, resolveLocalStateRoots } from "./paths.ts";
 
 /**
  * Build the manifest-backed workspace destroyer. Never throws: a missing
@@ -46,11 +46,12 @@ export function createLocalWorkspaceDestroyer(env: LocalPathsEnv): WorkspaceDest
 			// failure surfaces as `failed` after the fallback had its chance.
 			await rm(manifest.workspacePath, { recursive: true, force: true }).catch(() => {});
 			await rm(manifest.homePath, { recursive: true, force: true }).catch(() => {});
-			await rm(localGitDirPath(roots, sandboxId), { recursive: true, force: true }).catch(() => {});
+			await removeRunGitDirs(roots, sandboxId);
 			await removeLocalRunManifest(roots, sandboxId).catch(() => {});
 			return { status: "failed", error: err instanceof Error ? err.message : String(err) };
 		}
 		await rm(manifest.homePath, { recursive: true, force: true }).catch(() => {});
+		await removeRunGitDirs(roots, sandboxId);
 		await removeLocalRunManifest(roots, sandboxId).catch(() => {});
 		// No archive + no ephemeral-store rows: the durable event copy lives in
 		// warren's own events table (written by the domain bridge), so the

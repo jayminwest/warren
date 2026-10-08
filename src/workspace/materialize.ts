@@ -32,7 +32,7 @@
 
 import { realpathSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import { WorkspaceMaterializationError } from "./errors.ts";
 import { installWorkspaceExcludes } from "./git/exclude.ts";
 import { runGit } from "./git/exec.ts";
@@ -42,7 +42,11 @@ import {
 	resolveWorkspaceIdentity,
 	writeWorkspaceGitconfig,
 } from "./git/identity.ts";
-import { materializePrivateGitDir, type PrivateGitDirResult } from "./git/private-gitdir.ts";
+import {
+	hostKeepRefFor,
+	materializePrivateGitDir,
+	type PrivateGitDirResult,
+} from "./git/private-gitdir.ts";
 import {
 	addWorktree,
 	addWorktreeDetached,
@@ -67,6 +71,8 @@ export interface MaterializedWorkspaceSource {
 	gitDir?: string;
 	/** `private` only: sha256 of the warren-written private `config`. */
 	gitConfigSha256?: string;
+	/** `private` only: host-only GC keep-ref (`refs/warren/runs/<id>`), deleted at teardown. */
+	hostKeepRef?: string;
 	/** Branch checked out in the workspace. */
 	branch: string;
 	/**
@@ -241,7 +247,8 @@ export interface RemoveWorkspaceOptions {
 
 export async function removeMaterializedWorkspace(opts: RemoveWorkspaceOptions): Promise<void> {
 	if (opts.source.kind === "private") {
-		// Nothing in the host clone belongs to the run: drop both dirs.
+		// The host clone holds only the run's GC keep-ref: drop it and both dirs.
+		await dropHostKeepRef(opts.source);
 		await rm(opts.workspacePath, { recursive: true, force: true });
 		if (opts.source.gitDir) await rm(opts.source.gitDir, { recursive: true, force: true });
 		return;
@@ -349,6 +356,7 @@ async function materializeViaPrivateGitDir(
 			{ recoveryHint: "Thread the project's default branch (RunSpec.baseBranch)." },
 		);
 	}
+	const hostKeepRef = hostKeepRefFor(basename(gitDir));
 	let result: PrivateGitDirResult;
 	try {
 		result = await materializePrivateGitDir({
@@ -357,8 +365,10 @@ async function materializeViaPrivateGitDir(
 			gitDir,
 			branch: options.branch,
 			startPoint,
+			hostKeepRef,
 		});
 	} catch (err) {
+		await dropHostKeepRef({ hostClonePath: hostClone.topLevel, hostKeepRef });
 		await rm(gitDir, { recursive: true, force: true }).catch(() => {});
 		throw wrapMaterializationError(`failed to materialize ${options.workspacePath}`, err);
 	}
@@ -369,7 +379,19 @@ async function materializeViaPrivateGitDir(
 		gitCommonDir: result.hostGitDir,
 		gitDir: result.gitDir,
 		gitConfigSha256: result.configSha256,
+		hostKeepRef,
 	};
+}
+
+/** Best-effort delete of a run's host keep-ref (warren-3c1e). */
+async function dropHostKeepRef(source: {
+	hostClonePath?: string;
+	hostKeepRef?: string;
+}): Promise<void> {
+	if (source.hostClonePath === undefined || source.hostKeepRef === undefined) return;
+	await runGit(["update-ref", "-d", source.hostKeepRef], { cwd: source.hostClonePath }).catch(
+		() => undefined,
+	);
 }
 
 async function materializeViaClone(

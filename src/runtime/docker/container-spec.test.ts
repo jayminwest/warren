@@ -132,6 +132,7 @@ describe("buildDockerRunSpec", () => {
 					protectedPaths: [`${gd}/config`, `${gd}/objects/info/alternates`],
 					hostGitDir: "/repo/.git",
 					sharedObjects: "/repo/.git/objects",
+					deniedRoots: ["/data/local/gitdirs", "/data/local/gitdirs-sealed"],
 				},
 			}),
 			command,

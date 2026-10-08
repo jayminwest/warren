@@ -164,6 +164,7 @@ describe("buildBwrapArgv", () => {
 					protectedPaths: [`${gd}/config`, alternates],
 					hostGitDir: "/host/clone/.git",
 					sharedObjects: objects,
+					deniedRoots: ["/data/local/gitdirs", "/data/local/gitdirs-sealed"],
 				},
 			}),
 			cmd(),

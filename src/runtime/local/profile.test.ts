@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
 import { makePrivateGitFixture } from "../../sandbox/git-scope.test-helpers.ts";
 import { resolvePrivateGitScope } from "../../sandbox/git-scope.ts";
@@ -275,6 +275,7 @@ describe("buildLocalSandboxProfile", () => {
 				],
 				hostGitDir: fx.hostGitDir,
 				sharedObjects: join(fx.hostGitDir, "objects"),
+				deniedRoots: [dirname(fx.gitDir), join(dirname(dirname(fx.gitDir)), "gitdirs-sealed")],
 			});
 		} finally {
 			rmSync(fx.root, { recursive: true, force: true });

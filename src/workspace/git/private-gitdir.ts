@@ -6,23 +6,30 @@
  * module materializes the run's checkout against a PRIVATE git dir instead:
  *
  *   - `git init --separate-git-dir=<gitDir> <workspace>` writes the
- *     workspace's `.git` file and a fresh, hook-free git dir.
+ *     workspace's `.git` file and a fresh, hook-free git dir. The init pins
+ *     the host's object format and the `files` ref backend, so a user or
+ *     system default (`init.defaultRefFormat=reftable`) cannot change the
+ *     on-disk layout the sandbox mounts and the host check walk.
  *   - `objects/info/alternates` names the host clone's `objects/`, so every
  *     existing object is borrowed read-only and nothing is copied. Objects
  *     the run creates land in `<gitDir>/objects`.
  *   - The host clone's branches, remote-tracking refs, and tags are
- *     snapshotted into `<gitDir>/packed-refs` (one `for-each-ref`), so
+ *     snapshotted through `git update-ref --stdin` and packed, so
  *     `git log origin/main` and `git diff main` keep working in the sandbox.
- *   - The run branch is a loose ref in the private dir only. The host clone
- *     never gains a per-run branch, and a run moving any ref moves only its
- *     own copy.
+ *   - The run branch is a loose ref in the private dir only. A run moving
+ *     any ref moves only its own copy.
+ *   - The host clone gains exactly one ref, `refs/warren/runs/<id>`, at the
+ *     base commit. It keeps host `gc --auto` from pruning the objects the
+ *     private dir borrows. Teardown deletes it.
  *   - `config` carries only what warren copies in: the clone's `remote.*`
  *     entries (fetch/push) and its `core.hooksPath` (the warren-8f4c
- *     pre-commit gate). The sandbox keeps it read-only, and host-side git
- *     refuses to run if its digest changed (`src/sandbox/git-scope.ts`).
+ *     pre-commit gate). Local `http.*`, `credential.*`, `url.*.insteadOf`,
+ *     and `lfs.*` settings are not carried over, and LFS objects are not
+ *     shared. The sandbox keeps `config` read-only, and host-side git
+ *     refuses to run if its digest changed (`src/sandbox/git-seal.ts`).
  *
- * Cost: one `git init`, one `for-each-ref`, a few `git config` writes, and
- * the checkout itself, which `git worktree add` paid too.
+ * Cost: one `git init`, one `for-each-ref`, one `update-ref --stdin`, one
+ * `pack-refs`, a few `git config` writes, and the checkout itself.
  */
 
 import { createHash } from "node:crypto";
@@ -42,6 +49,8 @@ export interface MaterializePrivateGitDirOptions {
 	readonly branch: string;
 	/** Host-clone ref the branch starts at (the base branch, or the branch itself). */
 	readonly startPoint: string;
+	/** Host-only ref pinned at the base commit for GC safety (`refs/warren/runs/<id>`). */
+	readonly hostKeepRef?: string;
 }
 
 export interface PrivateGitDirResult {
@@ -62,6 +71,11 @@ export function privateAlternatesBody(hostGitDir: string): string {
 
 export function sha256File(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+/** `refs/warren/runs/<id>`: the host-only GC keep-ref for one run. */
+export function hostKeepRefFor(runKey: string): string {
+	return `refs/warren/runs/${runKey}`;
 }
 
 function fail(message: string): never {
@@ -89,9 +103,23 @@ async function hostObjectFormat(hostTop: string): Promise<string> {
 	return res.exitCode === 0 && format !== "" ? format : "sha1";
 }
 
+let refFormatFlag: Promise<boolean> | undefined;
+
+/** `git init --ref-format` exists from git 2.45; older git only has the files backend. */
+function supportsRefFormatFlag(): Promise<boolean> {
+	refFormatFlag ??= runGit(["version"]).then((res) => {
+		const m = /git version (\d+)\.(\d+)/.exec(res.stdout);
+		const major = Number(m?.[1] ?? 0);
+		const minor = Number(m?.[2] ?? 0);
+		return major > 2 || (major === 2 && minor >= 45);
+	});
+	return refFormatFlag;
+}
+
 /**
- * The host clone's branches, remote-tracking refs, and tags as packed-refs
- * lines. Symbolic refs (`origin/HEAD`) and the run branch itself are skipped.
+ * The host clone's branches, remote-tracking refs, and tags as
+ * `update-ref --stdin` commands. Symbolic refs (`origin/HEAD`) and the run
+ * branch itself are skipped.
  */
 async function snapshotHostRefs(hostTop: string, branch: string): Promise<string> {
 	const res = await runGitOrThrow(
@@ -110,7 +138,7 @@ async function snapshotHostRefs(hostTop: string, branch: string): Promise<string
 		const [sha, ref, symref] = raw.split(" ");
 		if (sha === undefined || ref === undefined || sha === "" || ref === own) continue;
 		if (symref !== undefined && symref !== "") continue;
-		lines.push(`${sha} ${ref}`);
+		lines.push(`create ${ref} ${sha}`);
 	}
 	return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }
@@ -156,6 +184,30 @@ function canonicalNewPath(path: string): string {
 	return join(realpathSync(dirname(path)), basename(path));
 }
 
+/** `git init` the private dir with a pinned object format and the files ref backend. */
+async function initPrivateDir(
+	gitDir: string,
+	workspacePath: string,
+	branch: string,
+	format: string,
+): Promise<void> {
+	const refFormat = (await supportsRefFormatFlag()) ? ["--ref-format=files"] : [];
+	await runGitOrThrow(
+		[
+			"init",
+			"--quiet",
+			"--template=",
+			`--object-format=${format}`,
+			...refFormat,
+			"--initial-branch",
+			branch,
+			`--separate-git-dir=${gitDir}`,
+			workspacePath,
+		],
+		{ cwd: dirname(gitDir), env: { ...process.env, GIT_DEFAULT_REF_FORMAT: "files" } },
+	);
+}
+
 export async function materializePrivateGitDir(
 	options: MaterializePrivateGitDirOptions,
 ): Promise<PrivateGitDirResult> {
@@ -171,27 +223,25 @@ export async function materializePrivateGitDir(
 	const gitDir = canonicalNewPath(options.gitDir);
 	const workspacePath = options.workspacePath;
 
-	await runGitOrThrow(
-		[
-			"init",
-			"--quiet",
-			"--template=",
-			...(format !== "sha1" ? [`--object-format=${format}`] : []),
-			"--initial-branch",
-			options.branch,
-			`--separate-git-dir=${gitDir}`,
-			workspacePath,
-		],
-		{ cwd: dirname(gitDir) },
-	);
+	await initPrivateDir(gitDir, workspacePath, options.branch, format);
 	mkdirSync(join(gitDir, "objects", "info"), { recursive: true });
 	writeFileSync(join(gitDir, "objects", "info", "alternates"), privateAlternatesBody(hostGitDir));
-	writeFileSync(join(gitDir, "packed-refs"), await snapshotHostRefs(hostTop, options.branch));
 	copyHostExclude(hostGitDir, gitDir);
 	const configPath = join(gitDir, "config");
 	await copyHostConfig(hostTop, configPath);
 
+	if (options.hostKeepRef !== undefined) {
+		await runGitOrThrow(["update-ref", options.hostKeepRef, baseSha], { cwd: hostTop });
+	}
 	const pinned = [`--git-dir=${gitDir}`, `--work-tree=${workspacePath}`];
+	const snapshot = await snapshotHostRefs(hostTop, options.branch);
+	if (snapshot !== "") {
+		await runGitOrThrow([...pinned, "update-ref", "--stdin"], {
+			cwd: workspacePath,
+			stdin: snapshot,
+		});
+		await runGitOrThrow([...pinned, "pack-refs", "--all"], { cwd: workspacePath });
+	}
 	await runGitOrThrow([...pinned, "update-ref", `refs/heads/${options.branch}`, baseSha], {
 		cwd: workspacePath,
 	});

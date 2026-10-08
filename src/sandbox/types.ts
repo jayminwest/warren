@@ -19,6 +19,11 @@ export interface WorkspaceGitMounts {
 	hostGitDir: string;
 	/** `<hostGitDir>/objects`, the alternate object store: read-only. */
 	sharedObjects: string;
+	/**
+	 * Roots holding every run's private git dir, live and sealed. Seatbelt
+	 * denies them before granting `gitDir`; bwrap and docker never mount them.
+	 */
+	deniedRoots: string[];
 }
 
 export interface SandboxProfile {

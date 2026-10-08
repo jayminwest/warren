@@ -16,8 +16,8 @@
  *     --work-tree=<workspace>` plus `GIT_COMMON_DIR=<common dir>` in the
  *     environment, so neither the `.git` file nor a `commondir` file decides
  *     which repository (and config) host git uses. For a local run both are
- *     the run's private git dir (warren-3c1e), and the pin's `verify` hook
- *     re-checks that dir before every invocation.
+ *     the run's private git dir (warren-3c1e). Until the dir is sealed the
+ *     pin's `verify` hook refuses every call; after the seal there is none.
  *   - `requirePin` (reap/finalize) refuses an unregistered linked worktree
  *     — including a subdirectory of one — instead of falling back to
  *     `<cwd>/.git`.
@@ -44,8 +44,8 @@ export interface WorkspaceGitPin {
 	/** Validated common dir (the git dir itself for a private git dir). */
 	readonly commonDir: string;
 	/**
-	 * Boundary check run before EVERY pinned host git invocation; throws to
-	 * refuse it (warren-3c1e: no planted symlinks, untouched config).
+	 * Runs before EVERY pinned host git invocation; throws to refuse it
+	 * (warren-3c1e: refuses all calls until the run's git dir is sealed).
 	 */
 	readonly verify?: () => void;
 }
