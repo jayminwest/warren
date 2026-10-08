@@ -18,6 +18,9 @@ export default defineConfig({
 	// Golden baselines (warren-a132) live beside the harness, one file per
 	// manifest case: `toHaveScreenshot(\`${c.name}.png\`)`.
 	snapshotPathTemplate: "{testDir}/__golden__/{arg}{ext}",
+	// A missing baseline fails instead of being written: only the CI
+	// container regenerates goldens, with `--update-snapshots=all`.
+	updateSnapshots: "none",
 	fullyParallel: true,
 	forbidOnly: isCi,
 	retries: 0,

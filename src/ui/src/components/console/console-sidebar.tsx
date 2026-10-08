@@ -149,7 +149,9 @@ function BrandRow({ onNavigate }: { onNavigate?: () => void }) {
 			</Link>
 			<span className="flex-1" />
 			{version.data ? (
-				<span className="font-mono text-(--color-text-3) text-[10px] leading-3">
+				// data-visual-mask: every release changes it, so the ui-visual
+				// goldens blank it (scripts/ui-visual).
+				<span data-visual-mask="" className="font-mono text-(--color-text-3) text-[10px] leading-3">
 					v{version.data.version}
 				</span>
 			) : null}

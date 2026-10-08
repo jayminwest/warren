@@ -1,0 +1,338 @@
+{
+	"schema": 1,
+	"generator": ".github/workflows/ui-visual.yml",
+	"playwright": "1.64.0",
+	"image": "mcr.microsoft.com/playwright:v1.64.0-noble",
+	"digest": "sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f",
+	"sha": "7a3b18c201753bc36504837d70809d28c709618a",
+	"run": {
+		"id": "37803800953",
+		"url": "https://github.com/jayminwest/warren/actions/runs/37803800953"
+	},
+	"files": {
+		"agents-desktop-dark.png": {
+			"sha256": "52724e8db9f8b079630dfefead898791030f592ac4c2aed52c5374c1bb4460c1",
+			"bytes": 73411,
+			"width": 1440,
+			"height": 900
+		},
+		"agents-desktop-light.png": {
+			"sha256": "03d6706360462e275fc7ea846716b7f8ae1d413462472f770c314fccb0ba10b0",
+			"bytes": 73095,
+			"width": 1440,
+			"height": 900
+		},
+		"agents-phone-light.png": {
+			"sha256": "f09fc24a0ae272391826a817c088cbc3ffc370b33542f2d21700c18ef9b02768",
+			"bytes": 51331,
+			"width": 393,
+			"height": 852
+		},
+		"dispatch-desktop-dark.png": {
+			"sha256": "1638ae185a8ac23ebe3a962ee9fb01bbd2f37d8f71cc4aa5e93c6d5da4ff1d90",
+			"bytes": 91657,
+			"width": 1440,
+			"height": 990
+		},
+		"dispatch-desktop-light.png": {
+			"sha256": "e0b78ccba3136879c3c531260c65f4e2427ef3d73044a0e5786ac1b533db0375",
+			"bytes": 92160,
+			"width": 1440,
+			"height": 990
+		},
+		"dispatch-phone-light.png": {
+			"sha256": "31e6fa275c8e94f7433e93bc344311bd4db6414e1cbb41662442b78a6148a58a",
+			"bytes": 66908,
+			"width": 393,
+			"height": 1467
+		},
+		"dispatch-plan-desktop-dark.png": {
+			"sha256": "fc28acfcd1b48b5698d5e83c513e78851c086f5b0ca2d54eb88aba8d398e658e",
+			"bytes": 110079,
+			"width": 1440,
+			"height": 1115
+		},
+		"dispatch-plan-desktop-light.png": {
+			"sha256": "f86452806aba0bcd557d7936a3c68cd80eed1a09434e551c7d0bbbc323ed7e7d",
+			"bytes": 110607,
+			"width": 1440,
+			"height": 1115
+		},
+		"dispatch-plan-phone-light.png": {
+			"sha256": "f6a8b3818cdbcf9baba918948a2f8fb4492a4e73d54c7d6308b2572f54fd4d22",
+			"bytes": 76259,
+			"width": 393,
+			"height": 1708
+		},
+		"events-desktop-dark.png": {
+			"sha256": "6cad8ebe355f815c781915e7c0492c903092b689405519516fdef12d4f7013d2",
+			"bytes": 337997,
+			"width": 1440,
+			"height": 2186
+		},
+		"events-desktop-light.png": {
+			"sha256": "ac25d25f7e5e9b07b5d446fc2c2f7c74cc8f04673b95febe25ea89e1dbb9a86b",
+			"bytes": 336484,
+			"width": 1440,
+			"height": 2186
+		},
+		"events-phone-light.png": {
+			"sha256": "eb09f7ef374bd2efb8235975cc4e171f8d0e12e46d563be1d9d2a5aa23eb7769",
+			"bytes": 285931,
+			"width": 393,
+			"height": 3234
+		},
+		"instance-desktop-dark.png": {
+			"sha256": "4c86f64abdded999dfbed718fa4de98a1a7d049371a7a3baa597b406f2dcc4bc",
+			"bytes": 76441,
+			"width": 1440,
+			"height": 900
+		},
+		"instance-desktop-light.png": {
+			"sha256": "bcd1fab5fba4f5da1d71ad5cdfd1b1f6953c21ebd3250a44fb4d8dbc1bf54e34",
+			"bytes": 76095,
+			"width": 1440,
+			"height": 900
+		},
+		"instance-phone-light.png": {
+			"sha256": "6b5a851a75f3f02b80f9e2dce8e423383b1bf9eda9ba0d9d7cc04d5e38622362",
+			"bytes": 48913,
+			"width": 393,
+			"height": 1006
+		},
+		"login-desktop-dark.png": {
+			"sha256": "02d01e6555bb61c2190ec79040d05291ddd88e0009a909664297804008cd36ee",
+			"bytes": 16224,
+			"width": 1440,
+			"height": 900
+		},
+		"login-desktop-light.png": {
+			"sha256": "1b5256711c5e4a92a45e6cd4461ac6ada573318e284b6a1e7eb6874cd461f63a",
+			"bytes": 16280,
+			"width": 1440,
+			"height": 900
+		},
+		"login-phone-light.png": {
+			"sha256": "1862fee4ffe8daec7769c6aee77bb82ab30a9bd5d3a30d45d5f719144a381670",
+			"bytes": 12889,
+			"width": 393,
+			"height": 852
+		},
+		"operations-desktop-dark.png": {
+			"sha256": "28ba880ad01e0d04dc4c59b4df643ee49ea61cc432680229ce170b5e364f705f",
+			"bytes": 124418,
+			"width": 1440,
+			"height": 922
+		},
+		"operations-desktop-light.png": {
+			"sha256": "ee3d8ccbf2d6f3c08d3a1a8bc8d4d4bddb697298bb57c8250316a0453020f143",
+			"bytes": 124248,
+			"width": 1440,
+			"height": 922
+		},
+		"operations-phone-light.png": {
+			"sha256": "afaf480deb2a1f15add0f25df421e7cb7977222383f6a2a58f53e0fc022ff48c",
+			"bytes": 66258,
+			"width": 393,
+			"height": 1089
+		},
+		"plan-run-detail-desktop-dark.png": {
+			"sha256": "90671f6577d8071da919691d36e5988e75e0ee9bd8b2dcbd072982b1992ba2e9",
+			"bytes": 96038,
+			"width": 1440,
+			"height": 900
+		},
+		"plan-run-detail-desktop-light.png": {
+			"sha256": "8c39607f4d1fc10e7e039239c715a1650175c3d9eed0841c2314291587097580",
+			"bytes": 96349,
+			"width": 1440,
+			"height": 900
+		},
+		"plan-run-detail-phone-light.png": {
+			"sha256": "db9584c48b2f359dce730dba295be280f426f992bace6a44ab14927cd66c11a0",
+			"bytes": 70185,
+			"width": 393,
+			"height": 1408
+		},
+		"plan-runs-desktop-dark.png": {
+			"sha256": "f97de557c3dcc0d6492a3df5ac73ab5fc8781b58c83f339fe5cf4c9d4d927f74",
+			"bytes": 49731,
+			"width": 1440,
+			"height": 900
+		},
+		"plan-runs-desktop-light.png": {
+			"sha256": "e60f29f1118c36a1da63990158504d04218fc4247e64df35c9dfcc842a96b418",
+			"bytes": 49652,
+			"width": 1440,
+			"height": 900
+		},
+		"plan-runs-phone-light.png": {
+			"sha256": "dc09e1afd476551afdb938c7b7c44c119d1d93c7822c4d138a419791245fb7b3",
+			"bytes": 25399,
+			"width": 393,
+			"height": 852
+		},
+		"project-detail-desktop-dark.png": {
+			"sha256": "dda2a2f9e8f0c45d096b568382b7b8c226996b5af542589968b597cf40c8c759",
+			"bytes": 84987,
+			"width": 1440,
+			"height": 900
+		},
+		"project-detail-desktop-light.png": {
+			"sha256": "ffdb5f2814095c789adf7ff232dc17503fd59e4d1debff963c4e621a2c1c2d3a",
+			"bytes": 85112,
+			"width": 1440,
+			"height": 900
+		},
+		"project-detail-phone-light.png": {
+			"sha256": "780807d29595112fbbae9bb368acfd1699c377e34faec89d12de741f17ca191b",
+			"bytes": 56682,
+			"width": 393,
+			"height": 1230
+		},
+		"projects-desktop-dark.png": {
+			"sha256": "3f961b05b48e10d0a354f9e6cb515e96003830a656420c257b6b4a0f5d5c703d",
+			"bytes": 55144,
+			"width": 1440,
+			"height": 900
+		},
+		"projects-desktop-light.png": {
+			"sha256": "3afe53dde1b0f9d4a17a0e7aa4fac088b7f5636562ba126813b0e7bfdf87723b",
+			"bytes": 54881,
+			"width": 1440,
+			"height": 900
+		},
+		"projects-phone-light.png": {
+			"sha256": "b0abeedd31577dee936f76248656487afccf565a8284f29a0a160a6dd695a7d2",
+			"bytes": 32432,
+			"width": 393,
+			"height": 852
+		},
+		"run-detail-desktop-dark.png": {
+			"sha256": "b2c34770725d7879aaddc6fe8158a721dd5a0867875324ffcb4cf099b370f317",
+			"bytes": 151354,
+			"width": 1440,
+			"height": 900
+		},
+		"run-detail-desktop-light.png": {
+			"sha256": "42ffbc7665a8899c47b0fc6bddaa07c55180beee69e27e1b9af86ab1663f38e9",
+			"bytes": 151013,
+			"width": 1440,
+			"height": 900
+		},
+		"run-detail-phone-light.png": {
+			"sha256": "1e0d309229b44f609c549b3ed21d0fff26305f679043656c6cae75e393327788",
+			"bytes": 159044,
+			"width": 393,
+			"height": 2708
+		},
+		"runs-desktop-dark.png": {
+			"sha256": "c4684f426ff65da06526ca0eb0a2b48265aaf202aaf8ff374d30ff6df7154081",
+			"bytes": 281707,
+			"width": 1440,
+			"height": 1489
+		},
+		"runs-desktop-light.png": {
+			"sha256": "ca304463beefa752850412fe1924f65d2b0982c6a639aff9919df702362782c2",
+			"bytes": 282655,
+			"width": 1440,
+			"height": 1489
+		},
+		"runs-phone-light.png": {
+			"sha256": "6b29b4b6fc5d1920f4b7d774874e5a2360137c290503e2d8b941d494addbf804",
+			"bytes": 48106,
+			"width": 393,
+			"height": 852
+		},
+		"setup-desktop-dark.png": {
+			"sha256": "9145365a91694a2b46d5b72d4fa4c9147c7bc6fd4d662682a2bb83a7ff6f7afa",
+			"bytes": 67302,
+			"width": 1440,
+			"height": 900
+		},
+		"setup-desktop-light.png": {
+			"sha256": "007b63c5f3255f2f318806d24e13ea89648a19f126e4768019f8e8f23d062556",
+			"bytes": 67078,
+			"width": 1440,
+			"height": 900
+		},
+		"setup-phone-light.png": {
+			"sha256": "ccf52bbc12ad36dbcad9be3831708b5769f747817b845757507c32e6d5bf2c39",
+			"bytes": 45041,
+			"width": 393,
+			"height": 852
+		},
+		"telemetry-behavior-desktop-dark.png": {
+			"sha256": "f61c343cbc45d4059b79a4ae806fdc6aad942b55e8702f42ffff17d5179d3fd8",
+			"bytes": 74356,
+			"width": 1440,
+			"height": 900
+		},
+		"telemetry-behavior-desktop-light.png": {
+			"sha256": "78c27d38ff53c2178802bc14e97727ba83bc562b21e6d9f9700e9973995a1c00",
+			"bytes": 74345,
+			"width": 1440,
+			"height": 900
+		},
+		"telemetry-behavior-phone-light.png": {
+			"sha256": "51d7b6866ffee9008c1de838a039ba760f801b072157d664173072d427be4972",
+			"bytes": 177116,
+			"width": 393,
+			"height": 3852
+		},
+		"telemetry-economics-desktop-dark.png": {
+			"sha256": "57e69bea8f224bee0a6cf8556d775437d307efab195985761ceca41bcb7098a1",
+			"bytes": 193198,
+			"width": 1440,
+			"height": 2758
+		},
+		"telemetry-economics-desktop-light.png": {
+			"sha256": "c3746049cecb7bec101a206f8bcae9e906a56c0bc6e8cf4b5a7cdea93e8c6e5e",
+			"bytes": 193650,
+			"width": 1440,
+			"height": 2758
+		},
+		"telemetry-economics-phone-light.png": {
+			"sha256": "51d7b6866ffee9008c1de838a039ba760f801b072157d664173072d427be4972",
+			"bytes": 177116,
+			"width": 393,
+			"height": 3852
+		},
+		"telemetry-judge-desktop-dark.png": {
+			"sha256": "240d0f213d3ba8a45bf97f0c130e217a775f0fafd792358ecdb9991beb026e24",
+			"bytes": 103292,
+			"width": 1440,
+			"height": 1042
+		},
+		"telemetry-judge-desktop-light.png": {
+			"sha256": "c8e2be313e1ff93da144fda2133f63c0c463c978a5c33b71acb3f0efdd7c52cf",
+			"bytes": 102875,
+			"width": 1440,
+			"height": 1042
+		},
+		"telemetry-judge-phone-light.png": {
+			"sha256": "bf01d38d189baf152e825efd6480c71bf95bacf790c7fcd0e76ae0853577dce4",
+			"bytes": 177120,
+			"width": 393,
+			"height": 3852
+		},
+		"telemetry-loop-desktop-dark.png": {
+			"sha256": "798ca573d2e0ad6846a458c2962565f3add5ea0143249f708117c101d5631fdf",
+			"bytes": 69431,
+			"width": 1440,
+			"height": 900
+		},
+		"telemetry-loop-desktop-light.png": {
+			"sha256": "d6aee1172c8ba275a3d4fbb316b6de380f0296d767c9b07a80da94c66b694a2e",
+			"bytes": 69318,
+			"width": 1440,
+			"height": 900
+		},
+		"telemetry-loop-phone-light.png": {
+			"sha256": "51d7b6866ffee9008c1de838a039ba760f801b072157d664173072d427be4972",
+			"bytes": 177116,
+			"width": 393,
+			"height": 3852
+		}
+	}
+}

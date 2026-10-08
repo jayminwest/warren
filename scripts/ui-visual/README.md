@@ -81,6 +81,71 @@ count to a ceiling that only goes down.
 Filtering, allowlist matching, and the report format live in
 `a11y-checks.ts` and run under `bun test` with no browser.
 
+## Golden screenshots
+
+`golden.pw.ts` compares each page against a committed baseline in
+`__golden__/<page>-<viewport>-<theme>.png` with `toHaveScreenshot` (full page,
+animations off, masks applied, up to 1% of pixels may differ). Phone x dark has
+no golden: desktop x dark pins the dark palette, phone x light pins the phone
+layout, and the smaller set stays well under the 8 MB budget. Smoke and a11y
+still cover every pair.
+
+Fonts and rasterization differ between hosts, so the golden spec runs only in
+the ui-visual workflow's pinned Playwright container: linux/x64 with
+`WARREN_UI_VISUAL_GOLDEN=1`, which only the workflow sets. Anywhere else
+`check:ui-visual` prints why it skipped `golden.pw.ts` and runs the smoke spec
+as usual. A missing baseline fails the comparison
+(`updateSnapshots: "none"`); Playwright never writes one silently.
+
+On a mismatch the spec copies Playwright's images to a fixed layout inside the
+`ui-screenshots-<sha>` artifact:
+
+```
+out/golden-diff/<page>.<viewport>.<theme>/expected.png
+out/golden-diff/<page>.<viewport>.<theme>/actual.png
+out/golden-diff/<page>.<viewport>.<theme>/diff.png
+out/golden-diff/<page>.<viewport>.<theme>/result.json
+```
+
+`result.json` names the case, page, viewport, theme, URL, golden path, and the
+error text.
+
+### Regenerate the baselines
+
+Never generate baselines on a laptop. Dispatch the workflow on your pushed
+branch, then commit what it uploads:
+
+```bash
+gh workflow run ui-visual.yml --ref <branch> -f update_goldens=true
+gh run list --workflow ui-visual.yml --branch <branch> --limit 1   # find the run id
+gh run download <run id> -n ui-goldens-<head sha> -D scripts/ui-visual/__golden__
+git add scripts/ui-visual/__golden__
+```
+
+The dispatch deletes the old PNGs, renders the whole set with
+`--update-snapshots=all`, and writes `__golden__/manifest.json`: the Playwright
+version, the image and digest, the commit it rendered, the run URL, and the
+sha256, size, and dimensions of every PNG.
+
+### The guard
+
+`bun run check:ui-goldens` (`goldens.ts check`, rules in `golden-manifest.ts`)
+runs in the workflow before every comparison. It fails when:
+
+- a PNG's sha256 is not the one `manifest.json` records (a laptop render), or
+  a PNG is missing from it
+- the manifest names another Playwright version or container image than
+  `package.json` and the workflow pin (regenerate after a bump)
+- a page manifest case has no baseline, or a baseline has no case
+- the set is over 8 MB, or a stray file sits in `__golden__/`
+
+### Masks
+
+Mark anything that changes per release, per host, or per wall-clock second
+with `data-visual-mask`: the version string, uptime, and the project's local
+clone path carry it today. A mask paints a solid box over the element, so
+give the element a stable box (a full-width row or field) where you can.
+
 ## Add a page
 
 Add a `PageSpec` to `PAGES` in `pages.ts`. Give it a kebab-case `id`, the
@@ -107,7 +172,12 @@ delete its entry in the PR that fixes it.
 - `a11y-checks.ts`: the pure axe filtering and allowlist reconciliation;
   `a11y-allowlist.json` holds the grandfathered violations.
 - `harness.ts`: browser helpers every spec shares (`openCase`,
-  `screenshotCase`, `observe`).
+  `atContentHeight`, `screenshotCase`, `observe`).
+- `golden.pw.ts`: the golden comparison. `golden-cases.ts` holds the golden
+  matrix and the container gate. `golden-manifest.ts` and `goldens.ts` hold
+  the generator manifest and its guard.
+- `__golden__/`: the committed baselines and `manifest.json`. CI writes them,
+  never a laptop.
 - `fixture-env.ts`: parses the fixture hand-off from `run.ts`.
 - `run.ts`: the `check:ui-visual` entry point.
 - `playwright.config.ts`: Chromium only. `snapshotPathTemplate` points at

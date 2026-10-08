@@ -27,7 +27,14 @@ const HEAD_NOTE = "font-mono text-[9px] leading-3 tracking-[0.05em] text-(--colo
 /* --------------------------------------------------------------------- */
 
 export function ProjectFactsPanel({ project }: { project: ProjectRow }) {
-	const rows: Array<{ label: string; value: React.ReactNode; muted?: boolean; title?: string }> = [
+	const rows: Array<{
+		label: string;
+		value: React.ReactNode;
+		muted?: boolean;
+		title?: string;
+		/** Host-dependent value: blanked in the ui-visual screenshots. */
+		mask?: boolean;
+	}> = [
 		{ label: "id", value: project.id },
 		{ label: "git url", value: project.gitUrl },
 		{ label: "default branch", value: project.defaultBranch },
@@ -54,7 +61,7 @@ export function ProjectFactsPanel({ project }: { project: ProjectRow }) {
 	// Host-layout disclosure — absent from a spectator's row (warren-4f6c),
 	// so render on presence (warren-f53e).
 	if (project.localPath !== undefined) {
-		rows.push({ label: "local path", value: project.localPath, muted: true });
+		rows.push({ label: "local path", value: project.localPath, muted: true, mask: true });
 	}
 
 	return (
@@ -72,6 +79,7 @@ export function ProjectFactsPanel({ project }: { project: ProjectRow }) {
 						</dt>
 						<dd
 							title={row.title}
+							data-visual-mask={row.mask ? "" : undefined}
 							className={`min-w-0 truncate font-mono text-[10px] leading-3 max-md:flex-1 max-md:text-right ${
 								row.muted ? "text-(--color-text-3)" : "text-(--color-text-2)"
 							}`}

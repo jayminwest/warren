@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import { bootFixture } from "./fixture-boot.ts";
 import { FIXTURE_ENV } from "./fixture-env.ts";
+import { goldenGate } from "./golden-cases.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const CONFIG = join(import.meta.dir, "playwright.config.ts");
@@ -80,6 +81,8 @@ async function main(argv: readonly string[]): Promise<number> {
 		console.error("ui-visual: src/ui/dist is missing; run `bun run build:ui` or pass --build");
 		return 1;
 	}
+	const gate = goldenGate(process.env, process.platform, process.arch);
+	if (!gate.enabled) console.error(`ui-visual: skipping golden.pw.ts: ${gate.reason}`);
 	const handle = await bootFixture(args.port !== undefined ? { port: args.port } : {});
 	try {
 		console.error(`ui-visual: fixture at ${handle.output.baseUrl}`);

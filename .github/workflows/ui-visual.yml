@@ -34,6 +34,19 @@ name: UI visual
 #     `out/ci-meta.json` naming the PR, head sha, and outcome, so a
 #     `workflow_run` follow-up (warren-70d9's PR comment) can find the
 #     artifact without the PR's write permissions.
+#   - Golden screenshots (warren-a132): `golden.pw.ts` compares every
+#     golden case against `scripts/ui-visual/__golden__/`. It runs only
+#     here: the job sets WARREN_UI_VISUAL_GOLDEN=1, and the spec also
+#     requires linux/x64. A mismatch writes
+#     `out/golden-diff/<case>/{expected,actual,diff}.png` + `result.json`.
+#     Before comparing, `check:ui-goldens` rejects a baseline set whose
+#     `manifest.json` does not match the PNGs, this image, or Playwright.
+#   - Regenerating baselines: dispatch with `update_goldens: true`
+#     (`gh workflow run ui-visual.yml --ref <branch> -f update_goldens=true`).
+#     The run deletes the old PNGs, renders the set with
+#     `--update-snapshots=all`, writes `manifest.json`, and uploads
+#     `__golden__/` as `ui-goldens-<sha>`. It never commits; a human
+#     downloads the artifact and commits it (warren-4780 adds the approval).
 
 on:
   pull_request:
@@ -63,6 +76,11 @@ on:
       - "bun.lock"
       - ".bun-version"
   workflow_dispatch:
+    inputs:
+      update_goldens:
+        description: Regenerate the golden baselines and upload them as ui-goldens-<sha>
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -82,6 +100,8 @@ jobs:
       options: --ipc=host
     env:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Arms golden.pw.ts (scripts/ui-visual/golden-cases.ts goldenGate).
+      WARREN_UI_VISUAL_GOLDEN: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -93,7 +113,20 @@ jobs:
       - run: bun install --frozen-lockfile
       # build:ui runs the src/ui frozen-lockfile install itself (ui:install).
       - run: bun run build:ui
-      - run: bun run check:ui-visual
+
+      - name: Check the golden baselines are CI-generated
+        if: ${{ !inputs.update_goldens }}
+        run: bun run check:ui-goldens
+      # Runs even when the guard fails, so smoke still reports and uploads.
+      - name: Compare against the golden baselines
+        if: ${{ !inputs.update_goldens && !cancelled() }}
+        run: bun run check:ui-visual
+
+      - name: Regenerate the golden baselines
+        if: ${{ inputs.update_goldens }}
+        run: |
+          rm -f scripts/ui-visual/__golden__/*.png scripts/ui-visual/__golden__/manifest.json
+          bun run check:ui-visual --update-snapshots=all
 
       - name: Record run metadata for follow-up workflows
         if: always()
@@ -115,3 +148,15 @@ jobs:
           path: scripts/ui-visual/out/
           retention-days: 14
           if-no-files-found: warn
+
+      - name: Write the golden generator manifest
+        if: ${{ inputs.update_goldens && !cancelled() }}
+        run: bun run scripts/ui-visual/goldens.ts write
+      - name: Upload the regenerated baselines
+        if: ${{ inputs.update_goldens && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-goldens-${{ env.HEAD_SHA }}
+          path: scripts/ui-visual/__golden__/
+          retention-days: 14
+          if-no-files-found: error

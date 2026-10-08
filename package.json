@@ -98,6 +98,7 @@
 		"ui:dev": "cd src/ui && bun run dev",
 		"build:ui": "cd src/ui && bun install --frozen-lockfile && bun run build",
 		"check:ui-visual": "bun run scripts/ui-visual/run.ts",
+		"check:ui-goldens": "bun run scripts/ui-visual/goldens.ts check",
 		"test:ui-visual": "bun run check:ui-visual",
 		"acceptance": "bun run scripts/acceptance/run.ts",
 		"acceptance:container": "bun run scripts/acceptance/run.ts --mode container",
