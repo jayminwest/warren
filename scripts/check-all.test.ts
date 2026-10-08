@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	CANONICAL_GATES,
 	extractFailureSignatures,
 	formatGateLine,
 	GATES,
+	gateLogName,
 	loadScripts,
 	resolveGates,
+	resolveLogDir,
 } from "./check-all.ts";
 
 const CANONICAL_ORDER = CANONICAL_GATES.map((g) => g.name);
@@ -87,5 +91,82 @@ describe("check-all", () => {
 		const sig = extractFailureSignatures(output);
 		expect(sig.length).toBeGreaterThan(0);
 		expect(sig).not.toContain("");
+	});
+
+	// warren-7e82: replayed shape of an observed check:coverage failure.
+	// Every test passed, but a passing test's NAME matched the budget
+	// pattern and the generic script-exit trailer matched `^Error: `, so the
+	// tail fallback never ran and the real below-floor lines were dropped.
+	test("extractFailureSignatures reports coverage below-floor lines, not passing test names", () => {
+		const output = [
+			"$ bun run scripts/check-coverage.ts --fail-when-exceeds-budget",
+			"bun test v1.2.0",
+			"(pass) check-file-sizes > fails when a file exceeds its frozen budget [0.31ms]",
+			"(pass) check-debt > errors when the marker budget is exceeded [0.12ms]",
+			"(skip) slow suite > exceeds budget under load",
+			" 412 pass",
+			" 0 fail",
+			"All files                 |   61.58 |   66.47 |",
+			"Coverage — functions 61.58% (floor 97.00%), lines 66.47% (floor 97.00%)",
+			"check-coverage: [aggregate] functions coverage 61.58% is below floor 97.00%. Add tests to lift it.",
+			"check-coverage: [aggregate] lines coverage 66.47% is below floor 97.00%. Add tests to lift it.",
+			'error: script "check:coverage" exited with code 1',
+		].join("\n");
+		const sig = extractFailureSignatures(output);
+		expect(sig).toEqual([
+			"check-coverage: [aggregate] functions coverage 61.58% is below floor 97.00%. Add tests to lift it.",
+			"check-coverage: [aggregate] lines coverage 66.47% is below floor 97.00%. Add tests to lift it.",
+		]);
+	});
+
+	test("extractFailureSignatures still reports a failing test named after a budget", () => {
+		const output = [
+			"(pass) sizes > passes a file under its frozen budget [0.10ms]",
+			"(fail) sizes > fails when a file exceeds its frozen budget [0.20ms]",
+			'error: script "check:coverage" exited with code 1',
+		].join("\n");
+		expect(extractFailureSignatures(output)).toEqual([
+			"(fail) sizes > fails when a file exceeds its frozen budget [0.20ms]",
+		]);
+	});
+
+	test("extractFailureSignatures ignores the script-exit trailer and falls back to the tail", () => {
+		const output = [
+			"src/huge.ts: 612 lines (ceiling 500)",
+			'error: script "check:size" exited with code 1',
+		].join("\n");
+		const sig = extractFailureSignatures(output);
+		expect(sig).toContain("src/huge.ts: 612 lines (ceiling 500)");
+	});
+
+	test("extractFailureSignatures reports a coverage run that never printed a totals row", () => {
+		const output = [
+			"(pass) a > b [0.1ms]",
+			"check-coverage: could not find 'All files' row in test output — did the test run finish?",
+			'error: script "check:coverage" exited with code 1',
+		].join("\n");
+		expect(extractFailureSignatures(output)).toEqual([
+			"check-coverage: could not find 'All files' row in test output — did the test run finish?",
+		]);
+	});
+
+	test("resolveLogDir honors CHECK_ALL_LOG_DIR", () => {
+		expect(resolveLogDir("/repo/x", { CHECK_ALL_LOG_DIR: "/var/tmp/gate-logs" })).toBe(
+			"/var/tmp/gate-logs",
+		);
+	});
+
+	test("resolveLogDir defaults to a stable per-checkout dir under the OS temp dir", () => {
+		const a = resolveLogDir("/work/repo", {});
+		expect(a.startsWith(join(tmpdir(), "check-all"))).toBe(true);
+		expect(a).toContain("repo-");
+		expect(resolveLogDir("/work/repo", {})).toBe(a);
+		expect(resolveLogDir("/other/repo", {})).not.toBe(a);
+	});
+
+	test("gateLogName makes a gate name file-safe", () => {
+		expect(gateLogName("check:coverage")).toBe("check-coverage.log");
+		expect(gateLogName("gen:openapi:check")).toBe("gen-openapi-check.log");
+		expect(gateLogName("lint")).toBe("lint.log");
 	});
 });
