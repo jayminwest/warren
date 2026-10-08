@@ -62,17 +62,17 @@ export const SETUP_NAV_ITEM: ConsoleNavItem = {
 export const DOCUMENTATION_URL = "https://github.com/jayminwest/warren#readme";
 
 /**
- * Mobile bottom tab bar entries (warren-4d4a, pl-4ab6). The artboards
- * give the bottom nav its own index set — Dispatch is "03" here even
- * though the sidebar gives 03 to Plan runs (mobile/*.jsx bottom bars).
- * The fifth tab ("·· More") is the drawer trigger, not a route, so it
+ * Mobile bottom tab bar entries (warren-4d4a, pl-4ab6). The bottom nav
+ * numbers its own five tabs 01-05 (warren-c023): Dispatch is "03" and
+ * Telemetry "04" here even though the sidebar gives them other indices.
+ * The fifth tab ("05 More") is the drawer trigger, not a route, so it
  * lives in the component rather than this list.
  */
 export const MOBILE_BOTTOM_NAV_ITEMS: readonly ConsoleNavItem[] = [
 	{ index: "01", label: "Operations", to: "/operations" },
 	{ index: "02", label: "Runs", to: "/runs" },
 	{ index: "03", label: "Dispatch", to: "/dispatch" },
-	{ index: "06", label: "Telemetry", to: "/telemetry" },
+	{ index: "04", label: "Telemetry", to: "/telemetry" },
 ];
 
 /** All nav entries, footer included — used by the mobile drawer. */

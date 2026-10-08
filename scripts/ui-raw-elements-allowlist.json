@@ -20,11 +20,11 @@
 			},
 			"src/ui/src/pages/dispatch-plan/walk-form.tsx": {
 				"tracker": "warren-23b5",
-				"max": 15
+				"max": 14
 			},
 			"src/ui/src/pages/dispatch/dispatch-form.tsx": {
 				"tracker": "warren-23b5",
-				"max": 11
+				"max": 10
 			},
 			"src/ui/src/pages/event-explorer-mobile-filter-strip.tsx": {
 				"tracker": "warren-23b5",

@@ -378,8 +378,6 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 		<section className={PANEL} aria-label="Ready plans">
 			<div className={PANEL_HEAD}>
 				<h2 className={PANEL_TITLE}>Ready plans</h2>
-				<div className="min-w-0 flex-1" />
-				<span className={HEAD_NOTE}>UNBLOCKED ONLY</span>
 			</div>
 			{readyPlans.isLoading ? (
 				<div className="px-3.5 py-3">

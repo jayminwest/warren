@@ -90,7 +90,7 @@ export function EventsPanel() {
 				)}
 				<div className="flex h-[30px] shrink-0 items-center gap-3 border-(--color-border) border-t px-3">
 					<span className="font-mono text-(--color-text-3) text-[9px] leading-3">
-						{seqRange ?? "NEWEST FIRST · BOUNDED POLL"}
+						{seqRange ?? "NEWEST FIRST"}
 					</span>
 					<span className="flex-1" />
 					<Link

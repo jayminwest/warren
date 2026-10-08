@@ -122,7 +122,9 @@ export function PlanRunDetailPage() {
 				</Alert>
 			) : null}
 
-			<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+			{/* items-start: the child walk sizes to its rows rather than
+			    stretching to the rail's height (warren-dac1). */}
+			<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:items-start">
 				<ChildWalkPanel planRun={planRun} childRows={children} runs={runs} />
 				<DetailRail detail={detail.data} projectLabel={projectLabel} cost={cost} />
 			</div>

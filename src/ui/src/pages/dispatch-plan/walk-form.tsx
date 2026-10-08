@@ -286,7 +286,7 @@ function RuntimeSection(p: SectionProps) {
 function defaultKindHint(kind: "project" | "agent" | null): string {
 	if (kind === "project") return "PROJECT DEFAULT";
 	if (kind === "agent") return "AGENT DEFAULT";
-	return "OVERRIDE · FREE TEXT";
+	return "OPTIONAL";
 }
 
 const childRowClass =
@@ -375,9 +375,9 @@ function ChildrenTable({ p }: { p: SectionProps }) {
 function planChildrenSummary(d: WalkDraft, p: SectionProps): string {
 	if (d.planId.trim().length === 0) return "PICK A SOURCE PLAN";
 	if (p.openChildCount !== null) {
-		return `${p.openChildCount} OPEN CHILDREN · SERVER WALKS THE PLAN'S CHILD ORDER`;
+		return `${p.openChildCount} OPEN CHILDREN · RUN IN PLAN ORDER`;
 	}
-	return "SERVER WALKS THE PLAN'S CHILD ORDER";
+	return "CHILDREN RUN IN PLAN ORDER";
 }
 
 function GuardrailsSection(p: SectionProps) {
@@ -385,10 +385,10 @@ function GuardrailsSection(p: SectionProps) {
 	return (
 		<MobileCard title="Guardrails">
 			<Section title="Guardrails" description="Optional limits, applied per child run.">
-				<div className="flex gap-[12px]">
+				<div className="grid gap-[12px] sm:grid-cols-2">
 					<Field
 						label="Cost cap per child (USD)"
-						hint={p.costCapError ?? "ENFORCED FROM LIVE USAGE EVENTS"}
+						hint={p.costCapError ?? "EACH CHILD RUN STOPS AT THIS SPEND"}
 					>
 						<input
 							className={`${controlClass} ${p.costCapError ? "border-(--color-danger)" : ""} font-mono`}
@@ -399,11 +399,6 @@ function GuardrailsSection(p: SectionProps) {
 							autoComplete="off"
 							spellCheck={false}
 						/>
-					</Field>
-					<Field label="Timeout per child" htmlFor="walk-timeout" hint="NO PER-RUN TIMEOUT API YET">
-						<select id="walk-timeout" className={`${controlClass} opacity-60`} disabled value="">
-							<option value="">—</option>
-						</select>
 					</Field>
 				</div>
 			</Section>
@@ -429,9 +424,7 @@ function IntentSection(p: SectionProps) {
 						placeholder="work on sd {seed_id}"
 						disabled={!p.hasSeeds}
 					/>
-					<p className={hintClass}>
-						{"{seed_id}"} IS SUBSTITUTED PER CHILD · PROJECT CONTEXT APPENDED AT DISPATCH
-					</p>
+					<p className={hintClass}>{"{seed_id}"} IS SUBSTITUTED PER CHILD</p>
 				</div>
 			</Section>
 		</MobileCard>

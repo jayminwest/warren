@@ -117,8 +117,9 @@ export function OperationsPage() {
 
 			<CapacityStrip overview={overview.data} runs={runs.data?.runs} now={now} window={window} />
 
-			{/** md+ only per the mobile artboard — services/lifecycle are dropped at 375px. */}
-			<div className="hidden gap-3 pt-1 md:flex md:flex-wrap">
+			{/** md+ only per the mobile artboard — services/lifecycle are dropped at 375px.
+			 * items-start: each card is as tall as its rows (warren-dac1). */}
+			<div className="hidden gap-3 pt-1 md:flex md:flex-wrap md:items-start">
 				<ServicesPanel overview={overview.data} health={stats.health} />
 				<LifecycleTable overview={overview.data} runs={runs.data?.runs} now={now} />
 			</div>

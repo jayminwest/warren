@@ -135,32 +135,37 @@ function HeaderRow({ project, loading }: { project?: ProjectRow; loading: boolea
 					.seeds
 				</span>
 			) : null}
-			<span className="truncate font-mono text-(--color-text-3) text-[10px] leading-3">
+			{/* Below sm the URL takes its own row and truncates, so the two
+			    actions below it stay together (warren-3de0). */}
+			<span className="w-full min-w-0 truncate font-mono text-(--color-text-3) text-[10px] leading-3 sm:w-auto">
 				{project.gitUrl}
 			</span>
 			<div className="min-w-0 flex-1" />
 			{/* Refresh / delete are `admin` routes (warren-b875): the row
-			    actions disappear, not disable, for a spectator. */}
+			    actions disappear, not disable, for a spectator. One group,
+			    so they wrap together and stay right-aligned. */}
 			<OperatorOnly capability="admin">
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-[31px] text-[11px]"
-					onClick={() => refresh.mutate(project.id)}
-					disabled={refresh.isPending}
-					title="git fetch + reset --hard origin/<branch>"
-				>
-					{refresh.isPending ? "Refreshing…" : "Refresh clone"}
-				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-[31px] text-(--color-danger) text-[11px]"
-					onClick={() => setConfirmDelete(true)}
-				>
-					<Trash2 className="h-3 w-3" />
-					Delete
-				</Button>
+				<div className="ml-auto flex shrink-0 items-center gap-3">
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-[31px] text-[11px]"
+						onClick={() => refresh.mutate(project.id)}
+						disabled={refresh.isPending}
+						title="git fetch + reset --hard origin/<branch>"
+					>
+						{refresh.isPending ? "Refreshing…" : "Refresh clone"}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-[31px] text-(--color-danger) text-[11px]"
+						onClick={() => setConfirmDelete(true)}
+					>
+						<Trash2 className="h-3 w-3" />
+						Delete
+					</Button>
+				</div>
 			</OperatorOnly>
 
 			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

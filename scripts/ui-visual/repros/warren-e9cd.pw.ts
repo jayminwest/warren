@@ -43,9 +43,9 @@ interface ChartFacts {
 }
 
 /**
- * Columns carry a "<day>: N succeeded · N cancelled · N failed" title. The
- * page mounts the tab twice (stacked below md, routed above it) and hides
- * one copy, so count only the rendered columns.
+ * Columns carry a "<day>: N succeeded · N cancelled · N failed" title.
+ * Count only the rendered columns: before warren-6bca the page mounted the
+ * tab twice (stacked below md, routed above it) and hid one copy.
  */
 function readChart(page: Page): Promise<ChartFacts> {
 	return page.evaluate(() => {
