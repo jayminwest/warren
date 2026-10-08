@@ -158,6 +158,37 @@ Mark a wall-clock value in the UI with a `data-visual-mask` attribute so
 screenshots blank it. Use the per-page `mask` selectors only when the markup
 cannot carry the attribute.
 
+## Reproductions
+
+A UI bug fix starts with a failing reproduction (warren-9fd7). The spec
+lives in `repros/<seed-id>.pw.ts`, one per bug, and stays after the fix as
+a regression guard. Playwright's `testMatch` already covers the directory,
+so `check:ui-visual` runs every repro with the other specs. The workflow:
+
+1. Write the spec. Load the page with `openCase` from `harness.ts`, then
+   assert on what the bug breaks: element counts, bounding boxes,
+   overflow, or text. A targeted `toHaveScreenshot` is the last resort,
+   because screenshots only match inside the CI container and a repro must
+   hold on a laptop too.
+2. Run it and watch it fail for the reported reason, then commit it alone:
+
+   ```bash
+   bun run check:ui-visual --build repros/<seed-id>.pw.ts
+   ```
+
+3. Fix the bug, run the same command until it passes, and commit the fix.
+4. Link both commits in the PR body, with the failing assertion text.
+
+When the seeded fixture cannot show the bug, reshape the API response in
+the spec with `page.route`, as `repros/warren-e9cd.pw.ts` does to send the
+sparse daily series production returned. Filter cases from
+`harnessCases()` down to the pages, viewports, and themes the bug touches.
+
+Name repros `<seed-id>.pw.ts`, never `<seed-id>.spec.ts`: `bun test` would
+load a spec file and fail the root suite. `repros.test.ts` enforces the
+name and checks that `.github/ISSUE_TEMPLATE/ui-bug.yml` keeps asking for
+the page, viewport, theme, and a screenshot.
+
 ## Known failures
 
 `KNOWN_FAILURES` in `smoke-checks.ts` lists the smoke failures the harness
@@ -178,6 +209,8 @@ delete its entry in the PR that fixes it.
   the generator manifest and its guard.
 - `__golden__/`: the committed baselines and `manifest.json`. CI writes them,
   never a laptop.
+- `repros/`: one `<seed-id>.pw.ts` reproduction per UI bug;
+  `repros.test.ts` guards the names and the UI bug issue template.
 - `fixture-env.ts`: parses the fixture hand-off from `run.ts`.
 - `run.ts`: the `check:ui-visual` entry point.
 - `playwright.config.ts`: Chromium only. `snapshotPathTemplate` points at

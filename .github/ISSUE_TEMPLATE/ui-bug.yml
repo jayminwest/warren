@@ -1,0 +1,92 @@
+name: UI Bug
+description: Something in the web UI renders, lays out, or reads wrong
+labels: ["type/bug", "area/ui", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Reproduction first.** No change to non-test code lands for a UI bug
+        until a failing reproduction exists. The fix PR first commits
+        `scripts/ui-visual/repros/<seed-id>.pw.ts`, a spec that fails before the fix
+        against the ui-visual fixture boot, then the fix that turns it green.
+        The PR body links both commits. Prefer assertions on layout, overflow,
+        and text over screenshots. See `scripts/ui-visual/README.md`
+        ("Reproductions") and the "UI bugs: reproduction first" section of
+        `AGENTS.md`.
+
+        The details below are what that spec needs: which page, at what size,
+        in which theme, and what you saw.
+
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: |
+        The URL path, or the ui-visual page id from
+        `scripts/ui-visual/pages.ts` if you know it.
+      placeholder: "/telemetry/loop (telemetry-loop)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: viewport
+    attributes:
+      label: Viewport
+      description: The ui-visual harness renders desktop at 1440x900 and phone at 393x852.
+      multiple: true
+      options:
+        - "desktop (1440x900)"
+        - "phone (393x852)"
+        - "other width (say which below)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Theme
+      multiple: true
+      options:
+        - "light"
+        - "dark"
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Paste or drag a screenshot of the bug. Mark the wrong part if it is not obvious.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: |
+        What should render instead? Write it as something a test can check,
+        such as "one column per day in the window" or "no horizontal scroll
+        at 393px".
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps and data
+      description: |
+        How to reach the state: filters, range, data shape (for example
+        "only 4 of the 14 days had runs"), or anything the seeded fixture
+        may not cover.
+    validations:
+      required: false
+
+  - type: input
+    id: warren-version
+    attributes:
+      label: warren version
+      description: Shown on the Instance page, or the output of `warren --version`.
+      placeholder: "0.1.0"
+    validations:
+      required: false
