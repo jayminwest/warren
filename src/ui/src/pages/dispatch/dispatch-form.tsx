@@ -210,12 +210,13 @@ export function DispatchForm(props: DispatchFormProps) {
 			<MobileCard title="Agent runtime">
 				<Section title="Agent runtime" description="Choose the agent and model.">
 					{/*
-					 * Mobile (mock): AGENT|MODEL two-up, PROVIDER full-width. Desktop:
-					 * Agent full-width, then the Provider|Model row. The grid placements
-					 * are inert once the container becomes a wrapping flex row at md.
+					 * Phone: Agent, Model, Provider stacked, so the Model placeholder
+					 * never clips (warren-3de0). sm: AGENT|MODEL two-up, PROVIDER
+					 * full-width. md+: Agent full-width, then the Provider|Model row; the
+					 * grid placements are inert once the container becomes a flex row.
 					 */}
-					<div className="grid grid-cols-2 gap-x-[10px] gap-y-[12px] md:flex md:flex-row md:flex-wrap md:gap-[12px]">
-						<div className="col-start-1 row-start-1 flex flex-col gap-[5px] md:w-full">
+					<div className="grid grid-cols-1 gap-x-[10px] gap-y-[12px] sm:grid-cols-2 md:flex md:flex-row md:flex-wrap md:gap-[12px]">
+						<div className="row-start-1 flex flex-col gap-[5px] sm:col-start-1 md:w-full">
 							<Field
 								label="Agent"
 								htmlFor="dispatch-agent"
@@ -243,7 +244,7 @@ export function DispatchForm(props: DispatchFormProps) {
 								</select>
 							</Field>
 						</div>
-						<div className="col-span-2 row-start-2 flex flex-col md:order-2 md:flex-1">
+						<div className="row-start-3 flex flex-col sm:col-span-2 sm:row-start-2 md:order-2 md:flex-1">
 							<Field
 								label="Provider"
 								hint={
@@ -264,7 +265,7 @@ export function DispatchForm(props: DispatchFormProps) {
 								/>
 							</Field>
 						</div>
-						<div className="col-start-2 row-start-1 flex flex-col md:order-3 md:flex-1">
+						<div className="row-start-2 flex flex-col sm:col-start-2 sm:row-start-1 md:order-3 md:flex-1">
 							<Field
 								label="Model"
 								hint={
