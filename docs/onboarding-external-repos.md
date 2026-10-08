@@ -69,6 +69,12 @@ CLI on the warren host.
      bytes are counted in the dispatch-context `prompt_bytes`.
    - **`qualityGate`** is the command warren tells the agent to run
      before committing (composeRunEnv carries it into the sandbox).
+     Give the repo's configured entry point with its timeouts and
+     flags, and its fail-fast flag if it has one (`pytest -x -q`,
+     `bun run check:all --bail`). The agent runs it once on its final
+     inputs (warren-7e82). Put any dependency bootstrap the tests need
+     (for example a nested package install) in `repoContext`, so the
+     agent prepares it before the first test run.
    - **`defaultProvider` / `defaultModel`** pin what the agents run
      on, so you do not have to pass them per dispatch.
    - **`maxCostUsd`** sets a project-wide per-run spend cap.

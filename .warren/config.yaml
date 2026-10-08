@@ -36,7 +36,10 @@ runBranchPrefix: warren
 # built-in claude-code / pi prompts don't fall back to the
 # fuzzy "look for it in CLAUDE.md" heuristic. Must mirror CI — see
 # warren-57cd / pl-da5b step 4 and AGENTS.md "Quality gates".
-qualityGate: bun run check:all
+# `--bail` (warren-7e82) stops at the first failing gate so an agent sees a
+# cheap static failure in seconds, not after coverage. A green run still
+# executes every gate, so the CI mirror is intact.
+qualityGate: bun run check:all --bail
 
 # In-sandbox migration repair guidance (warren-4371). When a ref-dispatch
 # lands on a branch whose drizzle migration journal collides with main's,
