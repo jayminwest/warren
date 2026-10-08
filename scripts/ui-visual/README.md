@@ -152,7 +152,20 @@ the baselines differ from that head. Approvers are the repository variable
 the threat model, and the fail-closed rules are in
 [docs/design/ui-visual-gate.md](../../docs/design/ui-visual-gate.md).
 
-A change to `baseline-approval.ts` itself always needs a human merge.
+A change to `baseline-approval.ts` or `required-checks.ts` itself always needs
+a human merge.
+
+### Auto-merge waits for the UI checks
+
+A PR whose diff touches `src/ui/` or `scripts/ui-visual/` arms auto-merge only
+after the `ui-visual` and `design-review` check runs both succeed on its head
+commit (warren-dbef). The `UI required checks (ui-visual, design-review)` step
+in `auto-merge.yml` runs `required-checks.ts` from the base branch. The first
+run after a push refuses, because the checks are still pending, and disarms
+an earlier arm. When a `UI design review` run completes, the workflow sweeps
+the open PRs and judges again each one whose head now has both checks green.
+The refusal names each check that is missing, pending, or failed. See "The
+merge gate" in [docs/design/ui-visual-gate.md](../../docs/design/ui-visual-gate.md).
 
 ### The guard
 
@@ -193,7 +206,8 @@ posts with the auto-merge GitHub App token. Re-post for any run with
 `gh workflow run ui-visual-comment.yml -f run_id=<ui-visual run id>`.
 
 `sticky-comment.ts` is the reusable part: any other bot comment (the
-design-review findings, warren-a694) passes its own `stickyMarker(name)`.
+design-review findings from `.github/workflows/ui-design-review.yml`,
+warren-a694) passes its own `stickyMarker(name)`.
 
 ### Masks
 
@@ -265,6 +279,9 @@ delete its entry in the PR that fixes it.
   the generator manifest and its guard.
 - `baseline-approval.ts`: the auto-merge gate for baseline changes. It imports only
   `node:` modules, because `auto-merge.yml` runs the base branch's copy alone.
+- `required-checks.ts`: the auto-merge gate that waits for `ui-visual` and
+  `design-review` on UI PRs, plus the sweep that re-judges them. The same
+  `node:`-only rule applies.
 - `__golden__/`: the committed baselines and `manifest.json`. CI writes them,
   never a laptop.
 - `repros/`: one `<seed-id>.pw.ts` reproduction per UI bug;

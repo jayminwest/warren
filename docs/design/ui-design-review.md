@@ -22,7 +22,7 @@ module disagree, the module wins and this record is the bug.
 |---|---|---|
 | Rubric, verdict schema, and validator | `shipped` | `warren-7d12`: this record, `scripts/design-review/verdict.ts` |
 | Evaluator skill | `shipped` | `warren-7d12`: `.claude/skills/ui-design-review/SKILL.md` |
-| Workflow and `design-review` status check | `unscheduled` | `warren-a694` in plan `pl-10db` |
+| Workflow and `design-review` status check | `shipped` | `warren-a694`: `.github/workflows/ui-design-review.yml`, `scripts/design-review/` |
 | Auto-merge requires the check for UI PRs | `unscheduled` | `warren-dbef` in plan `pl-10db` |
 
 ---
@@ -310,20 +310,64 @@ result of this rule. A mismatch makes the document invalid.
 and 2 on an invalid document or a stale artifact. The evaluator runs it
 on its own output before it stops.
 
-## 7. Contract for the design-review workflow
+## 7. The design-review workflow
 
-`warren-a694` builds the workflow. It can rely on these points.
+`.github/workflows/ui-design-review.yml` (`warren-a694`) runs the
+evaluator and owns every write. The entry points live in
+`scripts/design-review/`.
 
-- The workflow passes the skill the artifact directory, the diff, the
-  pages in scope, and an output path.
-- The workflow runs the validator itself and sets the `design-review`
-  check from the exit code: 0 is success, and 1 or 2 is failure. It does
-  not trust a verdict that the validator did not accept.
-- The sticky comment lists the findings in the order that `rankFindings`
-  returns: blockers, then majors, then minors, with `diff` before
-  `pre-existing` at each severity.
-- The evaluator has read access only. It never edits code, pushes, or
-  comments. The workflow owns every write.
+- **Inputs.** The workflow passes the skill the artifact directory, the
+  diff, the pages in scope, and an output path. `scope.ts` maps each
+  changed file under `src/ui/` to the manifest pages it renders. A file
+  outside `src/ui/src/pages/`, or a page file it cannot place, puts every
+  page in scope. Only the in-scope screenshots are staged. The prompt
+  names the inputs and the head sha and carries no PR-authored text.
+- **Evaluator.** `anthropics/claude-code-action`, pinned by commit, in a
+  job whose token is `contents: read`. It may read the workspace, write
+  the one verdict file, and run the validator. It has no web tools. It
+  never edits code, pushes, or comments.
+- **Validation.** The `report` job runs the validator again in a fresh
+  checkout, against the head sha from the API, and sets the check from
+  the result. It does not trust a verdict that the validator did not
+  accept.
+- **Comment.** One sticky comment, keyed by `<!-- design-review -->`
+  (`stickyMarker("design-review")`). It lists the `diff` findings in the
+  order that `rankFindings` returns: blockers, then majors, then minors.
+  The `pre-existing` findings follow in a collapsed section. Model text
+  is escaped and credential-shaped strings are redacted.
+- **Cost.** The repo variables `DESIGN_REVIEW_MODEL` (default
+  `claude-opus-5-5`), `DESIGN_REVIEW_MAX_TURNS` (default 60), and
+  `DESIGN_REVIEW_MAX_BUDGET_USD` (default 5) bound each review. The
+  comment reports the model, cost, and turns.
+
+### The `design-review` check
+
+`warren-dbef` makes this check required for UI PRs. It can rely on these
+points.
+
+- The check run is named exactly `design-review`. The workflow creates
+  it through the Checks API with its own `GITHUB_TOKEN`, so its source
+  app is GitHub Actions. It lands on the PR head sha.
+- Every PR head into `main` gets one, so a required check never hangs.
+  The `gate` job runs on `pull_request_target`.
+- The check moves through these states.
+
+| State | When |
+|---|---|
+| `success`, "Skipped: no src/ui changes" | The PR changes nothing under `src/ui/` that renders |
+| `queued`, "Waiting for ui-visual" | The PR changes rendered UI; ui-visual has not finished |
+| `in_progress`, "Reviewing screenshots" | The evaluator is running |
+| `success`, "PASS: ..." | A valid PASS verdict |
+| `failure`, "FAIL: ..." | A valid FAIL verdict |
+| `failure`, "No valid verdict (fails closed)" | A missing or invalid verdict, a turn or budget cap, or an evaluator error |
+| `failure`, "Not run: ui-visual failed" | The ui-visual run for the head failed |
+
+- A finished check is never reopened. A re-run creates a new check run,
+  and the newest one of the name is the one GitHub reads.
+- A maintainer re-runs a review with
+  `gh workflow run ui-design-review.yml -f run_id=<ui-visual run id>`.
+  claude-code-action refuses to run for a PR whose pusher has no write
+  access, so such a PR fails closed until a maintainer re-runs it.
 
 ## 8. Changing the rubric
 

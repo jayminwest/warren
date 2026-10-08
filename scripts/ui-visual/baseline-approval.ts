@@ -58,8 +58,14 @@ export const BASELINE_PATHS: readonly string[] = [
 	".github/workflows/ui-visual.yml",
 ];
 
-/** The gate's own source. A change here always needs a human merge. */
-export const GATE_PATHS: readonly string[] = ["scripts/ui-visual/baseline-approval.ts"];
+/**
+ * The merge gates' own sources: this file, and the UI required-checks gate
+ * (warren-dbef). A change here always needs a human merge.
+ */
+export const GATE_PATHS: readonly string[] = [
+	"scripts/ui-visual/baseline-approval.ts",
+	"scripts/ui-visual/required-checks.ts",
+];
 
 /** Push activity types that move a branch head. */
 const HEAD_MOVES: ReadonlySet<string> = new Set(["push", "force_push", "branch_creation"]);
@@ -97,7 +103,7 @@ export function classifyChanges(changed: readonly string[] | null): PathVerdict 
 	if (changed.length === 0) return { kind: "refuse", reason: "empty changed-file list" };
 	const gate = matching(changed, GATE_PATHS);
 	if (gate.length > 0) {
-		return { kind: "refuse", reason: "the approval gate itself changed", paths: gate };
+		return { kind: "refuse", reason: "a merge gate script itself changed", paths: gate };
 	}
 	const baseline = matching(changed, BASELINE_PATHS);
 	if (baseline.length === 0) return { kind: "allow", reason: "no baseline paths in the diff" };

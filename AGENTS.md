@@ -665,6 +665,10 @@ PR. The protected paths are `docs/CONSTITUTION.md` itself,
 `src/registry/builtins/`. The "Article IX check" step in
 `.github/workflows/auto-merge.yml` refuses to enable auto-merge on any
 PR touching those paths or the workflow itself.
+For a PR that touches `src/ui/` or `scripts/ui-visual/`, the same workflow
+also waits for the `ui-visual` and `design-review` checks to succeed on
+the head commit, as "The merge gate" in
+[docs/design/ui-visual-gate.md](docs/design/ui-visual-gate.md) describes.
 
 ## Auth modes
 
