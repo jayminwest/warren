@@ -280,7 +280,7 @@ CI would reject. `check:ci-parity` proves the local manifest and the CI
 workflow agree in both directions. Per-repo escape hatches live in
 `scripts/ci-parity-config.json`.
 
-Ten repo-specific guards ride inside the `lint` gate rather than
+Eleven repo-specific guards ride inside the `lint` gate rather than
 taking a manifest slot, because the canonical gate vocabulary is
 frozen. Each also runs standalone under the matching `check:` script
 name.
@@ -309,6 +309,11 @@ name.
   tsconfig and Biome config exclude `extensions/` on purpose, so before
   this guard an extension could sit red on main behind green gates. The
   guard runs a frozen install first when a package has no `node_modules`
+- `scripts/check-tailwind-arbitrary.ts` (warren-7bc4) counts Tailwind
+  arbitrary values such as `text-[10px]` per `src/ui/src` file and fails
+  any file over its count in `scripts/tailwind-arbitrary-budgets.json`.
+  `--update` lowers counts and refuses to raise them. At zero, Biome's
+  `noTailwindArbitraryValue` rule replaces this guard
 
 `gen:cli-ref:check` rides the same gate and holds the generated CLI
 reference in place.
