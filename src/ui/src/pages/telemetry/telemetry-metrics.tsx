@@ -41,18 +41,18 @@ function MetricCell({
 				hasRightBorder ? "md:border-r md:border-r-(--color-border)" : undefined,
 			)}
 		>
-			<span className="font-mono text-[9px] tracking-[0.08em] leading-[11px] text-(--color-text-3) md:text-[10px] md:leading-3">
+			<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px] tracking-[0.08em] md:text-[10px] md:leading-3">
 				{label}
 			</span>
 			<span
 				className={cn(
-					"font-mono text-[18px] font-semibold leading-[22px] md:text-[24px] md:font-medium md:leading-7",
+					"font-mono font-semibold text-[18px] leading-[22px] md:font-medium md:text-[24px] md:leading-7",
 					valueClassName ?? "text-(--color-text)",
 				)}
 			>
 				{value}
 			</span>
-			<span className="hidden font-mono text-[10px] leading-[14px] text-(--color-text-3) md:inline">
+			<span className="hidden font-mono text-(--color-text-3) text-[10px] leading-[14px] md:inline">
 				{note}
 			</span>
 		</div>

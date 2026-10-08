@@ -23,8 +23,8 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 	const width =
 		maxScore > 0 ? `${Math.max(4, Math.round((dir.difficultyScore / maxScore) * 100))}%` : "4px";
 	return (
-		<tr className="border-b border-(--color-border) last:border-b-0">
-			<td className="py-1.5 pr-3 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+		<tr className="border-(--color-border) border-b last:border-b-0">
+			<td className="py-1.5 pr-3 font-mono text-(--color-text-2) text-[11px] leading-[14px]">
 				{dir.directory}
 			</td>
 			<td className="w-full py-1.5 pr-3">
@@ -35,13 +35,13 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 					value={formatScore(dir.difficultyScore)}
 				/>
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-2)">
+			<td className="py-1.5 pr-3 text-right font-mono text-(--color-text-2) text-[11px] leading-[14px]">
 				{dir.failureShare === null ? "—" : `${Math.round(dir.failureShare * 100)}%`}
 			</td>
-			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+			<td className="py-1.5 pr-3 text-right font-mono text-(--color-text-3) text-[11px] leading-[14px]">
 				{String(dir.runsTouching)}
 			</td>
-			<td className="py-1.5 text-right font-mono text-[11px] leading-[14px] text-(--color-text-3)">
+			<td className="py-1.5 text-right font-mono text-(--color-text-3) text-[11px] leading-[14px]">
 				{String(dir.retries)}
 			</td>
 		</tr>
@@ -96,7 +96,7 @@ function StruggleTable({ directories }: { directories: readonly DirectoryStat[] 
 								<th
 									key={h}
 									className={cn(
-										"pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)",
+										"pr-3 pb-2 text-left font-mono text-(--color-text-3) text-[10px] tracking-[0.06em]",
 										i >= 2 && "text-right",
 									)}
 								>
@@ -155,13 +155,13 @@ function StrugglePanel() {
 	return (
 		<TelemetryPanel title="Where agents struggle" meta="RANKED BY EVIDENCE">
 			{behavior.isError ? (
-				<p className="text-sm text-(--color-danger)">
+				<p className="text-(--color-danger) text-sm">
 					Failed to load behavior analytics. {(behavior.error as Error | null)?.message ?? ""}
 				</p>
 			) : behavior.isLoading ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">Loading…</p>
+				<p className="text-(--color-text-3) text-[12px] leading-4">Loading…</p>
 			) : directories.length === 0 ? (
-				<p className="text-[12px] leading-4 text-(--color-text-3)">
+				<p className="text-(--color-text-3) text-[12px] leading-4">
 					No directory evidence in this window.
 				</p>
 			) : (
@@ -186,11 +186,11 @@ export function TelemetryBehaviorTab() {
 				meta={`${String(failed)} FAILED · FROM THE RUN RECORD`}
 			>
 				{runs.isError ? (
-					<p className="text-sm text-(--color-danger)">
+					<p className="text-(--color-danger) text-sm">
 						Failed to load run analytics. {(runs.error as Error | null)?.message ?? ""}
 					</p>
 				) : causes.length === 0 && !runs.isLoading ? (
-					<p className="text-[12px] leading-4 text-(--color-text-3)">
+					<p className="text-(--color-text-3) text-[12px] leading-4">
 						No failed runs in this window.
 					</p>
 				) : (

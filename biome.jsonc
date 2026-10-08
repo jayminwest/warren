@@ -151,6 +151,25 @@
 			"formatter": {
 				"enabled": false
 			}
+		},
+		// Tailwind class order is canonical across the UI so className diffs stay reviewable
+		// (warren-5f4a, plan pl-10db). "fix": "safe" lets `bun run lint:fix` sort for you.
+		{
+			"includes": ["src/ui/**"],
+			"linter": {
+				"rules": {
+					"nursery": {
+						"useSortedClasses": {
+							"level": "error",
+							"fix": "safe",
+							"options": {
+								"attributes": ["className"],
+								"functions": ["cn", "cva", "clsx"]
+							}
+						}
+					}
+				}
+			}
 		}
 	]
 }
