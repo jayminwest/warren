@@ -15,13 +15,13 @@
 export { composeDispatchPrompt, spawnRun } from "./dispatch.ts";
 export type {
 	JournalCollision,
-	MigrationHealFn,
-	MigrationHealInput,
-	MigrationHealOutcome,
+	MigrationPreflightFn,
+	MigrationPreflightInput,
+	MigrationPreflightOutcome,
 } from "./migration-preflight.ts";
 export {
-	healMigrationJournalCollisions,
-	recordMigrationHealEvent,
+	detectMigrationJournalCollisions,
+	recordMigrationCollisionEvent,
 } from "./migration-preflight.ts";
 export type { DispatchOrigin, SpawnRunInput, SpawnRunResult } from "./types.ts";
 export { DISPATCH_ORIGINS } from "./types.ts";

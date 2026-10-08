@@ -120,6 +120,10 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
   section and the user task. The blessed way to onboard a mirror of a
   repo you do not control — see
   [docs/onboarding-external-repos.md](docs/onboarding-external-repos.md).
+- `migrations.regenerateCommand` (warren-4371) names the command that
+  the migration-collision prompt note quotes. The agent runs it inside
+  its sandbox. Warren never runs repository scripts on the host. See
+  [docs/design/warren-config.md](docs/design/warren-config.md).
 - `preview` — per-run preview environments. The canonical home is
   `.warren/preview.yaml`. See
   [docs/design/preview-environments.md](docs/design/preview-environments.md).

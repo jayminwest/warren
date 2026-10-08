@@ -38,6 +38,15 @@ runBranchPrefix: warren
 # warren-57cd / pl-da5b step 4 and AGENTS.md "Quality gates".
 qualityGate: bun run check:all
 
+# In-sandbox migration repair guidance (warren-4371). When a ref-dispatch
+# lands on a branch whose drizzle migration journal collides with main's,
+# warren detects it at dispatch (read-only, on the host) and tells the
+# agent to repair it inside its sandbox, quoting this command. Warren
+# never executes it on the host. package.json's db:generate regenerates
+# both the sqlite and postgres journals.
+migrations:
+  regenerateCommand: bun run db:generate
+
 # Per-run preview environment. CANONICAL home is .warren/preview.yaml
 # (top-level document = the preview block itself). The nested form below
 # is still accepted here for smooth migration; preview.yaml wins on

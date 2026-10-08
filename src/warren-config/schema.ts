@@ -46,6 +46,7 @@ import { parseDurationMs } from "../preview/duration.ts";
 // here so role names and registry names can never drift apart.
 import { AGENT_NAME_PATTERN } from "../registry/agent-name.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
+import { MigrationsConfigSchema } from "./migrations-config.ts";
 import { PrConfigSchema } from "./pr-config.ts";
 import { AdmissionConfigSchema, ResourcesConfigSchema } from "./resources-config.ts";
 import { TrackerConfigSchema } from "./tracker-config.ts";
@@ -416,6 +417,8 @@ export const DefaultsConfigSchema = z
 		tracker: TrackerConfigSchema.optional(),
 		// warren-6c5a / pl-92a3 step 4: opt-in PR auto-merge (pr-config.ts).
 		pr: PrConfigSchema.optional(),
+		// warren-4371: in-sandbox migration repair guidance (migrations-config.ts).
+		migrations: MigrationsConfigSchema.optional(),
 	})
 	.strict();
 
