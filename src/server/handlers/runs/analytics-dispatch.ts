@@ -31,7 +31,7 @@ export interface DispatchAnalyticsBody extends DispatchAnalytics {
  */
 export function listDispatchAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
-		const { echo, filter } = parseAnalyticsWindow(ctx);
+		const { echo, filter } = parseAnalyticsWindow(ctx, deps.now?.().getTime());
 		const rows = await deps.repos.dispatchContext.listForAnalytics(filter);
 		const analytics = buildDispatchAnalytics(rows);
 		const body: DispatchAnalyticsBody = { filter: echo, ...analytics };
