@@ -146,7 +146,10 @@ describe("the gate reads git, not the async files API", () => {
 		const checkout = steps().find((s) => s.uses?.startsWith("actions/checkout"));
 		expect(checkout).toBeDefined();
 		const ref = (checkout?.with as { ref?: string } | undefined)?.ref ?? "";
-		expect(ref).toContain("pull_request.head.sha");
+		// warren-dbef: the job is a matrix over the PRs the `targets` job chose;
+		// each entry's head_sha comes from the event payload or the API.
+		expect(ref).toContain("matrix.pr.head_sha");
+		expect(ref).not.toContain("merge");
 	});
 });
 
@@ -213,13 +216,22 @@ describe("the gate fails closed", () => {
 		const merge = steps().find((s) => s.name?.startsWith("Enable auto-merge"));
 		// `== 'false'` and not `!= 'true'`: a step that dies before writing an
 		// output leaves the value empty, which must not read as a pass.
-		expect(merge?.if).toBe("steps.protected.outputs.hit == 'false'");
+		// warren-4780 adds the UI baseline approval check as a second gate with
+		// the same contract (scripts/ui-visual/baseline-approval.test.ts), and
+		// warren-dbef the UI required checks as a third
+		// (scripts/ui-visual/required-checks.workflow.test.ts).
+		expect(merge?.if).toBe(
+			"steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false' && " +
+				"steps.ui_checks.outputs.hit == 'false'",
+		);
 	});
 });
 
 describe("auto-merge is scoped to the repo owner", () => {
 	test("a third party's PR is never auto-merged", () => {
-		const gate = loadAutoMerge().jobs?.["enable-auto-merge"]?.if ?? "";
+		// warren-dbef: the admission `if:` lives on the `targets` job; the
+		// workflow_run sweep applies the same rule in required-checks.ts.
+		const gate = loadAutoMerge().jobs?.targets?.if ?? "";
 		expect(gate).toContain("github.event.pull_request.user.login == github.repository_owner");
 	});
 });
