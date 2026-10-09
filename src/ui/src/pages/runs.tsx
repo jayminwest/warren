@@ -220,9 +220,10 @@ export function RunsPage() {
 				triggerOptions={triggerOptions}
 			/>
 			{/* Mobile list card (warren-ffaf / pl-4ab6 step 10): its own
-			    fully-rounded bordered surface with 14px side margins, capped
-			    by the --color-thead column strip (mock :92-103). */}
-			<div className="mx-[14px] flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:hidden">
+			    fully-rounded bordered surface on the page gutter, aligned with
+			    the filter strip above it (warren-3de0), capped by the
+			    --color-thead column strip (mock :92-103). */}
+			<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) md:hidden">
 				<div className="flex shrink-0 items-center gap-2 bg-(--color-thead) px-3 py-2 font-mono text-(--color-text-3) text-[9px] leading-[11px] tracking-[0.06em]">
 					<span className="w-[70px] shrink-0">STATE</span>
 					<span className="grow">RUN</span>
@@ -232,7 +233,7 @@ export function RunsPage() {
 			</div>
 			{/* Mobile pagination footer (mock :297-305): outside the card,
 			    count on the left, Load-more on the right. */}
-			<div className="flex shrink-0 items-center px-[14px] pt-3 pb-4 md:hidden">
+			<div className="flex shrink-0 items-center pt-3 pb-4 md:hidden">
 				<span className="font-mono text-(--color-text-3) text-[9px] leading-[11px]">
 					{mobileRows.length} OF {totalRuns}
 					{isFiltered ? " · FILTERED" : null}

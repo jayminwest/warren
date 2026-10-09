@@ -1,15 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Navigate, NavLink, Outlet } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
-import { OperatorOnly } from "@/components/operator-only.tsx";
 import { cn } from "@/lib/utils.ts";
-import { TelemetryBehaviorTab } from "@/pages/telemetry/behavior-tab.tsx";
-import { TelemetryEconomicsTab } from "@/pages/telemetry/economics-tab.tsx";
-import { TelemetryJudgeTab } from "@/pages/telemetry/judge-tab.tsx";
-import { TelemetryLoopTab } from "@/pages/telemetry/loop-tab.tsx";
 import { TelemetryMetricStrip } from "@/pages/telemetry/telemetry-metrics.tsx";
-import { useIsDesktop } from "@/pages/telemetry/use-is-desktop.ts";
 import {
 	TELEMETRY_RANGE_DAYS,
 	TelemetryWindowProvider,
@@ -35,13 +29,12 @@ export { TelemetryLoopTab } from "@/pages/telemetry/loop-tab.tsx";
  * div/SVG marks so the consolidation shrinks the bundle. The Judge tab
  * reads the judge extension's published surface only.
  *
- * Mobile chrome (warren-93cc / pl-4ab6): below md there is no tab strip
- * and no range selector (mock mobile/telemetry.jsx) — the four tabs'
- * content stacks as panels on one scroll, and the selected window
- * surfaces as panel-header meta (TelemetryPanel appends it). Routing
- * decision: tabs are child routes, so deep links below md redirect to
- * /telemetry (the stacked arm shows every panel anyway); desktop
- * routing is unchanged.
+ * Routing (warren-6bca): every width routes the same way. The tabs are
+ * child routes, and a /telemetry/<tab> link opens that tab at any
+ * viewport; nothing here reads the viewport width to redirect. Below md
+ * the tab strip scrolls sideways, there is no range selector (mock
+ * mobile/telemetry.jsx), and the selected window surfaces as panel-header
+ * meta (TelemetryPanel appends it).
  */
 
 const TABS = [
@@ -120,13 +113,16 @@ function RangeSelector() {
 }
 
 /**
- * The tab strip; active tab carries the 2px primary underline. Below md
- * the strip is hidden (stacked panels) — md+ it never wraps: labels
- * scroll horizontally instead of collapsing into two-line stubs.
+ * The tab strip; active tab carries the 2px primary underline. It never
+ * wraps: at any width the labels scroll horizontally instead of
+ * collapsing into two-line stubs.
  */
 function TabNav() {
 	return (
-		<nav className="hidden w-full shrink-0 items-end gap-6 overflow-x-auto whitespace-nowrap border-(--color-border) border-b md:flex">
+		<nav
+			aria-label="Telemetry sections"
+			className="flex w-full shrink-0 items-end gap-6 overflow-x-auto whitespace-nowrap border-(--color-border) border-b"
+		>
 			{TABS.map(({ path, label }) => (
 				<NavLink
 					key={path}
@@ -154,29 +150,13 @@ function TabNav() {
 	);
 }
 
-/**
- * The index child: desktop keeps the legacy "land on DELIVERY"
- * redirect; below md the stacked arm already renders everything, so
- * the index child stays empty (redirecting would bounce off the
- * page-level deep-link flatten).
- */
+/** `/telemetry` opens the first tab (DELIVERY), at every width. */
 export function TelemetryIndexRedirect() {
-	const isDesktop = useIsDesktop();
-	if (!isDesktop) return null;
 	return <Navigate to="/telemetry/loop" replace />;
 }
 
 /** The tab layout: every /telemetry/* child renders under these tabs. */
 export function TelemetryPage() {
-	const isDesktop = useIsDesktop();
-	const location = useLocation();
-
-	// Below md there is no tab strip — every panel is already on the
-	// scroll, so a deep link just flattens to /telemetry.
-	if (!isDesktop && location.pathname !== "/telemetry") {
-		return <Navigate to="/telemetry" replace />;
-	}
-
 	return (
 		<TelemetryWindowProvider>
 			<div className="flex min-h-full flex-col gap-5 px-3.5 py-6 md:px-6">
@@ -196,17 +176,7 @@ export function TelemetryPage() {
 				</header>
 				<TelemetryMetricStrip />
 				<TabNav />
-				{/* Below md: all four tabs' content as stacked panels. The
-			    economics arm keeps the readOperator guard its route carries. */}
-				<div className="flex flex-col gap-5 md:hidden">
-					<TelemetryLoopTab />
-					<TelemetryBehaviorTab />
-					<TelemetryJudgeTab />
-					<OperatorOnly capability="readOperator">
-						<TelemetryEconomicsTab />
-					</OperatorOnly>
-				</div>
-				<div className="hidden min-h-0 flex-1 md:block">
+				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>
 			</div>

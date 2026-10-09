@@ -210,12 +210,13 @@ export function DispatchForm(props: DispatchFormProps) {
 			<MobileCard title="Agent runtime">
 				<Section title="Agent runtime" description="Choose the agent and model.">
 					{/*
-					 * Mobile (mock): AGENT|MODEL two-up, PROVIDER full-width. Desktop:
-					 * Agent full-width, then the Provider|Model row. The grid placements
-					 * are inert once the container becomes a wrapping flex row at md.
+					 * Phone: Agent, Model, Provider stacked, so the Model placeholder
+					 * never clips (warren-3de0). sm: AGENT|MODEL two-up, PROVIDER
+					 * full-width. md+: Agent full-width, then the Provider|Model row; the
+					 * grid placements are inert once the container becomes a flex row.
 					 */}
-					<div className="grid grid-cols-2 gap-x-[10px] gap-y-[12px] md:flex md:flex-row md:flex-wrap md:gap-[12px]">
-						<div className="col-start-1 row-start-1 flex flex-col gap-[5px] md:w-full">
+					<div className="grid grid-cols-1 gap-x-[10px] gap-y-[12px] sm:grid-cols-2 md:flex md:flex-row md:flex-wrap md:gap-[12px]">
+						<div className="row-start-1 flex flex-col gap-[5px] sm:col-start-1 md:w-full">
 							<Field
 								label="Agent"
 								htmlFor="dispatch-agent"
@@ -243,7 +244,7 @@ export function DispatchForm(props: DispatchFormProps) {
 								</select>
 							</Field>
 						</div>
-						<div className="col-span-2 row-start-2 flex flex-col md:order-2 md:flex-1">
+						<div className="row-start-3 flex flex-col sm:col-span-2 sm:row-start-2 md:order-2 md:flex-1">
 							<Field
 								label="Provider"
 								hint={
@@ -251,7 +252,7 @@ export function DispatchForm(props: DispatchFormProps) {
 										? "PROJECT DEFAULT"
 										: props.providerDefaultKind === "agent"
 											? "AGENT DEFAULT"
-											: "OVERRIDE · FREE TEXT"
+											: "OPTIONAL"
 								}
 							>
 								<input
@@ -264,7 +265,7 @@ export function DispatchForm(props: DispatchFormProps) {
 								/>
 							</Field>
 						</div>
-						<div className="col-start-2 row-start-1 flex flex-col md:order-3 md:flex-1">
+						<div className="row-start-2 flex flex-col sm:col-start-2 sm:row-start-1 md:order-3 md:flex-1">
 							<Field
 								label="Model"
 								hint={
@@ -272,7 +273,7 @@ export function DispatchForm(props: DispatchFormProps) {
 										? "PROJECT DEFAULT"
 										: props.modelDefaultKind === "agent"
 											? "AGENT DEFAULT"
-											: "OVERRIDE · FREE TEXT"
+											: "OPTIONAL"
 								}
 							>
 								<input
@@ -296,21 +297,17 @@ export function DispatchForm(props: DispatchFormProps) {
 							onChange={(e) => props.onPrompt(e.target.value)}
 							placeholder="What should the agent do?"
 						/>
-						<p className={hintClass}>
-							{props.prompt.length} CHARACTERS · PROJECT CONTEXT APPENDED AT DISPATCH
-						</p>
+						<p className={hintClass}>{props.prompt.length} CHARACTERS</p>
 					</div>
 				</Section>
 			</MobileCard>
 
 			<MobileCard title="Guardrails">
 				<Section title="Guardrails" description="Optional limits for this run." divider="none">
-					<div className="flex gap-[12px]">
+					<div className="grid gap-[12px] sm:grid-cols-2">
 						<Field
 							label="Cost cap (USD)"
-							hint={
-								props.costCapError ?? "ENFORCED FROM LIVE USAGE EVENTS · WEAKEST: PROJECT DEFAULT"
-							}
+							hint={props.costCapError ?? "THE RUN STOPS AT THIS SPEND"}
 						>
 							<input
 								className={`${controlClass} ${props.costCapError ? "border-(--color-danger)" : ""} font-mono`}
@@ -321,16 +318,6 @@ export function DispatchForm(props: DispatchFormProps) {
 								autoComplete="off"
 								spellCheck={false}
 							/>
-						</Field>
-						<Field label="Timeout" htmlFor="dispatch-timeout" hint="NO PER-RUN TIMEOUT API YET">
-							<select
-								id="dispatch-timeout"
-								className={`${controlClass} opacity-60`}
-								disabled
-								value=""
-							>
-								<option value="">—</option>
-							</select>
 						</Field>
 					</div>
 				</Section>

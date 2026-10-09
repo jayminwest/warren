@@ -1,0 +1,1 @@
+{"type":"convention","classification":"tactical","recorded_at":"2026-10-08T17:49:03.459Z","evidence":{"commit":"33114201813b14bb0ab7f542e566d99506c6041c"},"dir_anchors":[".mulch/expertise"],"content":"bun test picks up *.spec.ts files; name Playwright specs *.pw.ts and select them with testMatch (warren-99e1)","id":"mx-68ebb7"}
