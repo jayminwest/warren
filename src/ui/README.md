@@ -31,6 +31,23 @@ server (`src/server/main/index.ts`) both expect `dist/index.html` to exist when
 serves any file under `dist/` and falls through to `index.html` for
 deep-link SPA routes.
 
+## Rendered checks and design review
+
+The "UI conventions" section of [AGENTS.md](../../AGENTS.md) lists the
+rules for UI work and the check behind each rule.
+Two design records describe the CI gates for a UI pull request.
+
+- [docs/design/ui-visual-gate.md](../../docs/design/ui-visual-gate.md):
+  the golden screenshots, the human baseline approval, and the checks
+  that auto-merge waits for.
+- [docs/design/ui-design-review.md](../../docs/design/ui-design-review.md):
+  the rubric that the `design-review` check grades each UI change against.
+
+Run the rendered checks with `bun run check:ui-visual --build` from the
+repo root.
+[scripts/ui-visual/README.md](../../scripts/ui-visual/README.md) has
+the details.
+
 ## Responsive contract
 
 The UI is **mobile-first**. Unprefixed (base) utility classes target the

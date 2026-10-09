@@ -481,6 +481,92 @@ published (warren-d602).
   `snake_case` to match the upstream schema, even when the TypeScript
   helper that parses them is kebab-case.
 
+## UI conventions
+
+Agents write most of `src/ui/`, so each UI rule names the check that
+holds it. Two design records describe the CI gates in full:
+[docs/design/ui-visual-gate.md](docs/design/ui-visual-gate.md) and
+[docs/design/ui-design-review.md](docs/design/ui-design-review.md).
+
+| Rule | Check that holds it |
+|---|---|
+| Colors, fonts, radii, shadows, and z-index come from `src/ui/src/tokens.css` through token utilities such as `text-(--color-text-3)`. No hard-coded colors. | design review `theme-parity` |
+| No Tailwind arbitrary values such as `text-[10px]`. Use a scale utility, or add a named token to `src/ui/src/tokens.css` in the same PR. | `check:tailwind-arbitrary` in `bun run lint`. A new file must have zero. A file in `scripts/tailwind-arbitrary-budgets.json` never grows. |
+| Type sizes follow the Typography section of `docs/ui-revamp/README.md`. Spacing uses the 4px scale. The page gutter is `px-3.5 md:px-6`. | design review `type-scale` and `spacing-rhythm` |
+| Controls come from the primitives in `src/ui/src/components/ui/`. No raw `<button>`, `<input>`, `<select>`, or `<textarea>`. A `style={}` value holds CSS variables only. If no primitive fits, add one there. | the GritQL plugins in `.biome/plugins/` via `bun run lint`, and design review `primitive-consistency` |
+| Each page works at phone (393px) and desktop (1440px), in the light and the dark theme. `src/ui/README.md` has the responsive contract. | `check:ui-visual` smoke and axe specs, design review `phone-layout` and `theme-parity` |
+| Each data surface has an empty, a loading, and an error state, and each state renders on phone. | design review `state-coverage`. The fixture shows only populated data, so no screenshot proves this. |
+| Captions and messages speak to the operator. No seed ids, component names, API paths, or placeholder text. | design review `operator-copy` |
+| A new screen route gets a `PageSpec` in `scripts/ui-visual/pages.ts`. | `scripts/ui-visual/pages.test.ts` |
+
+Run the rendered checks on your machine before you push a UI change:
+
+```bash
+bunx playwright install chromium   # once per machine
+bun run check:ui-visual --build    # build the SPA, boot the fixture, run the specs
+```
+
+The command runs the smoke, axe, and repro specs.
+It is not part of `check:all`.
+[scripts/ui-visual/README.md](scripts/ui-visual/README.md) names the
+output paths and the filter flags.
+
+CI adds two gates that a local run cannot give you.
+
+- The golden comparison runs only in the pinned CI container.
+  Never commit a baseline that a laptop rendered.
+- New PNGs under `scripts/ui-visual/__golden__/` come from the
+  `update_goldens` dispatch of `.github/workflows/ui-visual.yml`.
+- Auto-merge refuses a PR that changes the goldens until a human
+  approver applies the `ui-baseline-approved` label.
+  A label from a bot never counts.
+- For a PR that touches `src/ui/` or `scripts/ui-visual/`, auto-merge
+  waits for the `ui-visual` and `design-review` checks to succeed on
+  the head commit.
+- The design review grades the CI screenshots against the rubric, with
+  the skill in `.claude/skills/ui-design-review/SKILL.md`.
+  It fails on a blocker, or on more than two majors that the diff adds.
+  A failed check needs a fix and a new push.
+
+A UI bug fix starts with a failing reproduction.
+The next section gives the steps.
+Paste the UI checklist from `.github/pull_request_template.md` into
+the PR body, and tick each item.
+
+## UI bugs: reproduction first
+
+A UI bug fix starts with a failing reproduction (warren-9fd7). Do not
+change non-test code until the reproduction exists and fails. This rule
+applies to every seed or issue that reports a rendering, layout, or copy
+defect in `src/ui/`, and to every agent that works one.
+
+1. Write `scripts/ui-visual/repros/<seed-id>.pw.ts`. It loads the page
+   through `openCase` from `scripts/ui-visual/harness.ts` against the
+   fixture boot. Assert on layout, overflow, or text. Use a targeted
+   `toHaveScreenshot` only when no structural assertion can see the bug,
+   because screenshots match only inside the CI container.
+2. Run `bun run check:ui-visual --build repros/<seed-id>.pw.ts` and
+   confirm that it fails for the reason the issue describes. Commit the
+   spec alone.
+3. Fix the bug. Run the same command and confirm that the spec passes.
+   Commit the fix.
+4. In the PR body, link the red commit and the green commit, and paste
+   the failing assertion from step 2.
+
+If the fixture data cannot show the bug, shape the response inside the
+spec with `page.route`, as `scripts/ui-visual/repros/warren-e9cd.pw.ts`
+does. The repro stays in the tree after the merge. `check:ui-visual`
+runs every file in the directory, so the bug cannot return silently.
+
+Name each file `<seed-id>.pw.ts`, never `<seed-id>.spec.ts`, because
+`bun test` loads spec files. `scripts/ui-visual/repros.test.ts` enforces
+the name.
+
+Human reporters use the UI bug issue template
+(`.github/ISSUE_TEMPLATE/ui-bug.yml`), which asks for the page,
+viewport, theme, and a screenshot. The harness details are in
+[scripts/ui-visual/README.md](scripts/ui-visual/README.md).
+
 ## TypeScript conventions
 
 - Strict mode with `noUncheckedIndexedAccess`. Always handle possible
@@ -757,40 +843,6 @@ public-instance leak guard. It is the only scenario wired into CI, via
 `.github/workflows/acceptance-public.yml` and
 `bun run acceptance:public`. The rest of the suite runs locally and on
 the nightly workflow.
-
-## UI bugs: reproduction first
-
-A UI bug fix starts with a failing reproduction (warren-9fd7). Do not
-change non-test code until the reproduction exists and fails. This rule
-applies to every seed or issue that reports a rendering, layout, or copy
-defect in `src/ui/`, and to every agent that works one.
-
-1. Write `scripts/ui-visual/repros/<seed-id>.pw.ts`. It loads the page
-   through `openCase` from `scripts/ui-visual/harness.ts` against the
-   fixture boot. Assert on layout, overflow, or text. Use a targeted
-   `toHaveScreenshot` only when no structural assertion can see the bug,
-   because screenshots match only inside the CI container.
-2. Run `bun run check:ui-visual --build repros/<seed-id>.pw.ts` and
-   confirm that it fails for the reason the issue describes. Commit the
-   spec alone.
-3. Fix the bug. Run the same command and confirm that the spec passes.
-   Commit the fix.
-4. In the PR body, link the red commit and the green commit, and paste
-   the failing assertion from step 2.
-
-If the fixture data cannot show the bug, shape the response inside the
-spec with `page.route`, as `scripts/ui-visual/repros/warren-e9cd.pw.ts`
-does. The repro stays in the tree after the merge. `check:ui-visual`
-runs every file in the directory, so the bug cannot return silently.
-
-Name each file `<seed-id>.pw.ts`, never `<seed-id>.spec.ts`, because
-`bun test` loads spec files. `scripts/ui-visual/repros.test.ts` enforces
-the name.
-
-Human reporters use the UI bug issue template
-(`.github/ISSUE_TEMPLATE/ui-bug.yml`), which asks for the page,
-viewport, theme, and a screenshot. The harness details are in
-[scripts/ui-visual/README.md](scripts/ui-visual/README.md).
 
 ## Session completion protocol
 
