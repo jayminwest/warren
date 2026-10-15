@@ -12,8 +12,9 @@
  * prompts, or transcripts.
  *
  * `WARREN_PUBLIC_ALLOWLIST` is a comma-separated list whose entries are
- * EITHER a bare GitHub owner (`os-eco`) or one specific repo
- * (`some-owner/some-repo`). Both shapes may appear in the same list. It is
+ * EITHER a bare owner (`os-eco`) or one specific repo
+ * (`some-owner/some-repo`), in the owner/name pair warren lays the clone
+ * out under (`/data/projects/<owner>/<name>`). Both shapes may appear in the same list. It is
  * consulted ONLY under `WARREN_AUTH=public` (token mode is entirely
  * unaffected — `resolvePublicAllowlist` returns `undefined` and every
  * assertion below is a no-op). Two enforcement points:
@@ -55,16 +56,19 @@
  * discharged precisely instead of wholesale.
  *
  * Comparison is case-insensitive (GitHub owners and names are), matched
- * against what `parseGitHubUrl` extracts — so the allowlist is checked
- * against the same strings the on-disk layout uses, not against raw URL
- * text a caller controls. Repo entries are themselves validated by routing
+ * against what `parseProjectUrl` extracts with the boot forge — so the
+ * allowlist is checked against the same strings the on-disk layout uses,
+ * not against raw URL text a caller controls. For a forge with a deeper
+ * coordinate the owner is the one the forge lays out (a GitLab group path
+ * `acme/platform` folds to `acme-platform`). Repo entries are themselves validated by routing
  * them through `parseGitHubUrl`, so a `.git` suffix is tolerated and this
  * module can never disagree with registration about what a legal
  * owner/name pair is.
  */
 
 import { ValidationError, WarrenError } from "../core/errors.ts";
-import { parseGitHubUrl } from "./url.ts";
+import type { Forge } from "../forge/contract.ts";
+import { parseGitHubUrl, parseProjectUrl } from "./url.ts";
 
 export const WARREN_PUBLIC_ALLOWLIST_ENV = "WARREN_PUBLIC_ALLOWLIST" as const;
 
@@ -224,9 +228,13 @@ export function isRepoAllowlisted(
  * Would `gitUrl` be allowed? A url that doesn't parse is NOT allowed —
  * a tampered or legacy db row must not slip through on a parse failure.
  */
-function isGitUrlAllowlisted(allowlist: PublicAllowlist, gitUrl: string): boolean {
+function isGitUrlAllowlisted(
+	allowlist: PublicAllowlist,
+	gitUrl: string,
+	forge: Forge | undefined,
+): boolean {
 	try {
-		const { owner, name } = parseGitHubUrl(gitUrl);
+		const { owner, name } = parseProjectUrl(gitUrl, forge);
 		return isRepoAllowlisted(allowlist, owner, name);
 	} catch {
 		return false;
@@ -244,11 +252,12 @@ function isGitUrlAllowlisted(allowlist: PublicAllowlist, gitUrl: string): boolea
 export function assertGitUrlAllowlisted(
 	allowlist: PublicAllowlist | undefined,
 	gitUrl: string,
+	forge: Forge | undefined,
 ): void {
 	if (allowlist === undefined) return;
 	// Parse outside the try/catch of `isGitUrlAllowlisted`: an unparseable
 	// url here is the caller's own bad input and deserves its own message.
-	const { owner, name } = parseGitHubUrl(gitUrl);
+	const { owner, name } = parseProjectUrl(gitUrl, forge);
 	if (isRepoAllowlisted(allowlist, owner, name)) return;
 	throw new ValidationError(`"${owner}/${name}" is not on this public instance's allowlist`, {
 		recoveryHint: `this instance may only hold: ${formatAllowlist(allowlist)} — add the owner or the repo to ${WARREN_PUBLIC_ALLOWLIST_ENV} and restart, or register it on a token-mode instance`,
@@ -270,9 +279,12 @@ export interface RegisteredProjectOrigin {
 export function assertRegisteredProjectsAllowlisted(
 	allowlist: PublicAllowlist | undefined,
 	projects: readonly RegisteredProjectOrigin[],
+	forge: Forge | undefined,
 ): void {
 	if (allowlist === undefined) return;
-	const offending = projects.filter((project) => !isGitUrlAllowlisted(allowlist, project.gitUrl));
+	const offending = projects.filter(
+		(project) => !isGitUrlAllowlisted(allowlist, project.gitUrl, forge),
+	);
 	if (offending.length === 0) return;
 	const named = offending.map((project) => `${project.id} (${project.gitUrl})`).join(", ");
 	throw new PublicAllowlistError(

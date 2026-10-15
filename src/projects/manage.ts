@@ -111,7 +111,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 	// warren-ce9b/0883: on a public instance only allowlisted repos may
 	// ever be registered — refused here, BEFORE anything is cloned, from
 	// the single enforcement site every surface shares.
-	assertGitUrlAllowlisted(input.publicAllowlist, gitUrl);
+	assertGitUrlAllowlisted(input.publicAllowlist, gitUrl, input.forge);
 	assertNoUserinfo(gitUrl);
 	const parsed = parseProjectUrl(gitUrl, input.forge);
 

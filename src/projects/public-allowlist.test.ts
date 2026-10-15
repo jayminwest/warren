@@ -10,6 +10,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
+import { AdoForge } from "../forge/ado/provider.ts";
+import { GitLabForge } from "../forge/gitlab/provider.ts";
+import { parseGitLabInstance } from "../forge/gitlab/repo-ref.ts";
 import {
 	assertGitUrlAllowlisted,
 	assertRegisteredProjectsAllowlisted,
@@ -148,8 +151,10 @@ describe("repo entries", () => {
 		const byOwner = loadPublicAllowlistFromEnv({ [ENV]: "some-owner" });
 		const byRepo = loadPublicAllowlistFromEnv({ [ENV]: "some-owner/public-repo" });
 		const priv = [{ id: "p1", gitUrl: "https://github.com/some-owner/private-repo.git" }];
-		expect(() => assertRegisteredProjectsAllowlisted(byOwner, priv)).not.toThrow();
-		expect(() => assertRegisteredProjectsAllowlisted(byRepo, priv)).toThrow(PublicAllowlistError);
+		expect(() => assertRegisteredProjectsAllowlisted(byOwner, priv, undefined)).not.toThrow();
+		expect(() => assertRegisteredProjectsAllowlisted(byRepo, priv, undefined)).toThrow(
+			PublicAllowlistError,
+		);
 	});
 });
 
@@ -189,7 +194,7 @@ describe("the legacy env name", () => {
 describe("assertGitUrlAllowlisted", () => {
 	test("token mode (undefined allowlist) is a no-op", () => {
 		expect(() =>
-			assertGitUrlAllowlisted(undefined, "https://github.com/somebody/private"),
+			assertGitUrlAllowlisted(undefined, "https://github.com/somebody/private", undefined),
 		).not.toThrow();
 	});
 
@@ -201,65 +206,81 @@ describe("assertGitUrlAllowlisted", () => {
 			"git@github.com:os-eco/warren.git",
 			"ssh://git@github.com/OS-ECO/warren",
 		]) {
-			expect(() => assertGitUrlAllowlisted(ALLOWED, url)).not.toThrow();
+			expect(() => assertGitUrlAllowlisted(ALLOWED, url, undefined)).not.toThrow();
 		}
 	});
 
 	test("a non-allowlisted org is a ValidationError (HTTP 400) naming the org", () => {
-		expect(() => assertGitUrlAllowlisted(ALLOWED, "https://github.com/somebody/private")).toThrow(
-			ValidationError,
-		);
-		expect(() => assertGitUrlAllowlisted(ALLOWED, "https://github.com/somebody/private")).toThrow(
-			/"somebody\/private" is not on this public instance's allowlist/,
-		);
+		expect(() =>
+			assertGitUrlAllowlisted(ALLOWED, "https://github.com/somebody/private", undefined),
+		).toThrow(ValidationError);
+		expect(() =>
+			assertGitUrlAllowlisted(ALLOWED, "https://github.com/somebody/private", undefined),
+		).toThrow(/"somebody\/private" is not on this public instance's allowlist/);
 	});
 
 	test("an unparseable url still rejects (parseGitHubUrl's own message)", () => {
-		expect(() => assertGitUrlAllowlisted(ALLOWED, "not-a-url")).toThrow(ValidationError);
+		expect(() => assertGitUrlAllowlisted(ALLOWED, "not-a-url", undefined)).toThrow(ValidationError);
 	});
 });
 
 describe("assertRegisteredProjectsAllowlisted", () => {
 	test("token mode (undefined allowlist) is a no-op", () => {
 		expect(() =>
-			assertRegisteredProjectsAllowlisted(undefined, [
-				{ id: "p1", gitUrl: "https://github.com/somebody/private" },
-			]),
+			assertRegisteredProjectsAllowlisted(
+				undefined,
+				[{ id: "p1", gitUrl: "https://github.com/somebody/private" }],
+				undefined,
+			),
 		).not.toThrow();
 	});
 
 	test("an empty instance and an all-allowlisted instance both boot", () => {
-		expect(() => assertRegisteredProjectsAllowlisted(ALLOWED, [])).not.toThrow();
+		expect(() => assertRegisteredProjectsAllowlisted(ALLOWED, [], undefined)).not.toThrow();
 		expect(() =>
-			assertRegisteredProjectsAllowlisted(ALLOWED, [
-				{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
-				{ id: "p2", gitUrl: "git@github.com:some-owner/other-public-repo.git" },
-			]),
+			assertRegisteredProjectsAllowlisted(
+				ALLOWED,
+				[
+					{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
+					{ id: "p2", gitUrl: "git@github.com:some-owner/other-public-repo.git" },
+				],
+				undefined,
+			),
 		).not.toThrow();
 	});
 
 	test("one offender refuses the boot, naming its id and url", () => {
 		expect(() =>
-			assertRegisteredProjectsAllowlisted(ALLOWED, [
-				{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
-				{ id: "p2", gitUrl: "https://github.com/somebody/private.git" },
-			]),
+			assertRegisteredProjectsAllowlisted(
+				ALLOWED,
+				[
+					{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
+					{ id: "p2", gitUrl: "https://github.com/somebody/private.git" },
+				],
+				undefined,
+			),
 		).toThrow(PublicAllowlistError);
 		expect(() =>
-			assertRegisteredProjectsAllowlisted(ALLOWED, [
-				{ id: "p2", gitUrl: "https://github.com/somebody/private.git" },
-			]),
+			assertRegisteredProjectsAllowlisted(
+				ALLOWED,
+				[{ id: "p2", gitUrl: "https://github.com/somebody/private.git" }],
+				undefined,
+			),
 		).toThrow(/p2 \(https:\/\/github.com\/somebody\/private.git\)/);
 	});
 
 	test("every offender is named in one message, not just the first", () => {
 		let message = "";
 		try {
-			assertRegisteredProjectsAllowlisted(ALLOWED, [
-				{ id: "p1", gitUrl: "https://github.com/somebody/private.git" },
-				{ id: "p2", gitUrl: "https://github.com/os-eco/warren.git" },
-				{ id: "p3", gitUrl: "https://github.com/elsewhere/other.git" },
-			]);
+			assertRegisteredProjectsAllowlisted(
+				ALLOWED,
+				[
+					{ id: "p1", gitUrl: "https://github.com/somebody/private.git" },
+					{ id: "p2", gitUrl: "https://github.com/os-eco/warren.git" },
+					{ id: "p3", gitUrl: "https://github.com/elsewhere/other.git" },
+				],
+				undefined,
+			);
 		} catch (err) {
 			message = err instanceof Error ? err.message : String(err);
 		}
@@ -272,7 +293,72 @@ describe("assertRegisteredProjectsAllowlisted", () => {
 	// A tampered or legacy row must not slip through on a parse failure.
 	test("an unparseable stored gitUrl counts as NOT allowlisted", () => {
 		expect(() =>
-			assertRegisteredProjectsAllowlisted(ALLOWED, [{ id: "p9", gitUrl: "file:///etc/passwd" }]),
+			assertRegisteredProjectsAllowlisted(
+				ALLOWED,
+				[{ id: "p9", gitUrl: "file:///etc/passwd" }],
+				undefined,
+			),
+		).toThrow(PublicAllowlistError);
+	});
+});
+
+describe("forge-owned URLs (GH#1336)", () => {
+	const instance = parseGitLabInstance("https://gitlab.com");
+	if (instance === null) throw new Error("the gitlab.com instance must parse");
+	const gitlab = new GitLabForge({ instance, token: "t" });
+	const ado = new AdoForge({ token: "t" });
+	const LIST = loadPublicAllowlistFromEnv({
+		[ENV]: "acme-platform/widget,org-Proj/repo",
+	});
+
+	test("admits an allowlisted GitLab project by its folded on-disk owner", () => {
+		expect(() =>
+			assertGitUrlAllowlisted(LIST, "https://gitlab.com/acme/platform/widget.git", gitlab),
+		).not.toThrow();
+	});
+
+	test("refuses a GitLab project off the list with the allowlist error, not the GitHub parse error", () => {
+		const url = "https://gitlab.com/acme/platform/private.git";
+		expect(() => assertGitUrlAllowlisted(LIST, url, gitlab)).toThrow(
+			/"acme-platform\/private" is not on this public instance's allowlist/,
+		);
+	});
+
+	test("the boot check accepts allowlisted GitLab and Azure DevOps rows", () => {
+		expect(() =>
+			assertRegisteredProjectsAllowlisted(
+				LIST,
+				[{ id: "p1", gitUrl: "git@gitlab.com:acme/platform/widget.git" }],
+				gitlab,
+			),
+		).not.toThrow();
+		expect(() =>
+			assertRegisteredProjectsAllowlisted(
+				LIST,
+				[{ id: "p2", gitUrl: "https://dev.azure.com/org/Proj/_git/repo" }],
+				ado,
+			),
+		).not.toThrow();
+	});
+
+	test("the boot check still names a forge-owned row that is off the list", () => {
+		expect(() =>
+			assertRegisteredProjectsAllowlisted(
+				LIST,
+				[
+					{ id: "p1", gitUrl: "https://gitlab.com/acme/platform/widget.git" },
+					{ id: "p2", gitUrl: "https://gitlab.com/acme/platform/private.git" },
+				],
+				gitlab,
+			),
+		).toThrow(/p2 \(https:\/\/gitlab.com\/acme\/platform\/private.git\)/);
+	});
+
+	test("a URL no forge owns is still refused", () => {
+		const foreign = "https://gitlab.example.com/acme/platform/widget.git";
+		expect(() => assertGitUrlAllowlisted(LIST, foreign, gitlab)).toThrow(/unrecognized GitHub URL/);
+		expect(() =>
+			assertRegisteredProjectsAllowlisted(LIST, [{ id: "p3", gitUrl: foreign }], gitlab),
 		).toThrow(PublicAllowlistError);
 	});
 });

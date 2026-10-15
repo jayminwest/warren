@@ -133,8 +133,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 	const repos = createRepos(db);
 
-	// warren-ce9b: registered projects must satisfy the allowlist or boot refuses.
-	assertRegisteredProjectsAllowlisted(publicAllowlist, await listProjects(repos.projects));
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
 	// warren-f796: the LocalBootBackend owns the local-topology seams; warren-9a26
@@ -165,6 +163,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// warren-6c4c: resolve the forge ONCE; warren-b504: opt-in store wraps it in a HotForge.
 	const appCredBoot = { env, dataDir: serverConfig.dataDir, logger };
 	const { forge, activation: gitHubAppActivation } = bootGitHubAppActivation(appCredBoot);
+	// warren-ce9b: registered projects must satisfy the allowlist or boot refuses.
+	assertRegisteredProjectsAllowlisted(publicAllowlist, await listProjects(repos.projects), forge);
 	const gitHubAppRegistration = bootGitHubAppRegistrationGate(env, logger);
 	const warrenConfigs = createWarrenConfigCache();
 	const runBranchPrefixDefault = loadRunBranchPrefixFromEnv(env);
