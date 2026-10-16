@@ -171,7 +171,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: design-review-input
           path: .design-review
@@ -262,7 +262,7 @@ jobs:
       - name: Download the verdict
         if: needs.prepare.outputs.mode == 'review'
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: design-review-verdict
           path: ${{ runner.temp }}/design-review-verdict
