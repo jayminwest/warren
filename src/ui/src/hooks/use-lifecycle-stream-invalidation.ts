@@ -1,6 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { notifyManager, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { ApiError, streamLifecycleEvents, UnauthorizedError } from "@/api/client.ts";
+import type { WhoamiResponse } from "@/api/types.ts";
+import { canHoldLifecycleStream, WHOAMI_QUERY_KEY } from "@/hooks/use-capabilities.helpers.ts";
 import { runEventStreamLoop } from "@/hooks/use-event-stream.helpers.ts";
 
 /**
@@ -21,6 +23,14 @@ import { runEventStreamLoop } from "@/hooks/use-event-stream.helpers.ts";
  * operator-gated route) stops permanently so the fallback poll is the
  * only traffic that client generates.
  *
+ * The stream opens only while the cached `/whoami` answer grants
+ * `readOperator` (warren-8ee5). The bridge mounts above the router, so
+ * it outlives a sign-in. Before this gate it opened on `/login` with no
+ * token, stopped on the 401, and never opened again after the operator
+ * signed in. The bridge reads the query cache and does not fetch
+ * `/whoami` itself, so it follows the answer that `AuthGate` and
+ * `LoginPage` load, also after their `qc.clear()`.
+ *
  * One connection per tab, enforced by a module-level refcount so the
  * bridge component can be mounted in more than one place (or under
  * StrictMode's double-effect) without doubling the stream.
@@ -33,8 +43,20 @@ let mountedBridges = 0;
 
 export function useLifecycleStreamInvalidation(): void {
 	const queryClient = useQueryClient();
+	// The cache subscription that `useIsFetching` uses. `batchCalls` defers
+	// the notification, so a cache event from another component's render
+	// does not update this one in the middle of that render.
+	const subscribe = useCallback(
+		(onChange: () => void) =>
+			queryClient.getQueryCache().subscribe(notifyManager.batchCalls(onChange)),
+		[queryClient],
+	);
+	const readSnapshot = (): boolean =>
+		canHoldLifecycleStream(queryClient.getQueryData<WhoamiResponse>(WHOAMI_QUERY_KEY));
+	const allowed = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
 
 	useEffect(() => {
+		if (!allowed) return;
 		mountedBridges += 1;
 		if (mountedBridges > 1) {
 			return () => {
@@ -77,5 +99,5 @@ export function useLifecycleStreamInvalidation(): void {
 			ctrl.abort();
 			if (debounce !== undefined) window.clearTimeout(debounce);
 		};
-	}, [queryClient]);
+	}, [queryClient, allowed]);
 }
