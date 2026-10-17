@@ -84,6 +84,16 @@ export function retryWhoami(failureCount: number, error: Error): boolean {
 	return failureCount < 2;
 }
 
+/**
+ * May this browser hold the lifecycle stream? `GET /events/stream` is
+ * `readOperator`, so only a `/whoami` answer that grants it may open the
+ * stream. No answer yet (a tokenless browser under `WARREN_AUTH=token`)
+ * and a public spectator both get no stream: the server refuses them.
+ */
+export function canHoldLifecycleStream(whoami: WhoamiResponse | undefined): boolean {
+	return whoami?.capabilities.includes("readOperator") ?? false;
+}
+
 /** Is this query key the `GET /whoami` answer? */
 export function isWhoamiQueryKey(queryKey: unknown): boolean {
 	return (

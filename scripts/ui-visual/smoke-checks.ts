@@ -110,9 +110,10 @@ export interface KnownFailure {
 /**
  * Anonymous probes from the login page draw 401s under `WARREN_AUTH=token`,
  * and Chromium logs every 4xx resource load as a console error (warren-8ee5).
+ * The lifecycle stream no longer opens before sign-in
+ * (`repros/warren-8ee5.pw.ts`), so only `/whoami` and `/instance` remain.
  */
-const LOGIN_PROBE_401 =
-	/status of 401 \(Unauthorized\) \(https?:\/\/[^/]+\/(whoami|instance|events\/stream)\b/;
+const LOGIN_PROBE_401 = /status of 401 \(Unauthorized\) \(https?:\/\/[^/]+\/(whoami|instance)\b/;
 
 /** Tracked smoke failures. Every entry names the seed that removes it. */
 export const KNOWN_FAILURES: readonly KnownFailure[] = [
@@ -121,8 +122,7 @@ export const KNOWN_FAILURES: readonly KnownFailure[] = [
 		check: "console",
 		match: LOGIN_PROBE_401,
 		seed: "warren-8ee5",
-		reason:
-			"login fires /whoami, /instance, and the lifecycle stream anonymously; each 401s under token auth",
+		reason: "login fires /whoami and /instance anonymously; each 401s under token auth",
 	},
 ];
 
