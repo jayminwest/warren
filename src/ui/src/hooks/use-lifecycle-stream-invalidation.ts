@@ -1,4 +1,4 @@
-import { notifyManager, useQueryClient } from "@tanstack/react-query";
+import { hashKey, notifyManager, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { ApiError, streamLifecycleEvents, UnauthorizedError } from "@/api/client.ts";
 import type { WhoamiResponse } from "@/api/types.ts";
@@ -39,16 +39,24 @@ import { runEventStreamLoop } from "@/hooks/use-event-stream.helpers.ts";
 /** Debounce between a notification and the invalidation burst. */
 export const LIFECYCLE_INVALIDATE_DEBOUNCE_MS = 750;
 
+const WHOAMI_QUERY_HASH = hashKey(WHOAMI_QUERY_KEY);
+
 let mountedBridges = 0;
 
 export function useLifecycleStreamInvalidation(): void {
 	const queryClient = useQueryClient();
-	// The cache subscription that `useIsFetching` uses. `batchCalls` defers
-	// the notification, so a cache event from another component's render
-	// does not update this one in the middle of that render.
+	// `batchCalls` defers the notification, so a cache event from another
+	// component's render does not update this one in the middle of that
+	// render. Only `/whoami` events are forwarded: deferring one callback
+	// per event of every query held a page's first data render back by
+	// ~200ms (the `ui-visual` telemetry-economics goldens caught it).
 	const subscribe = useCallback(
-		(onChange: () => void) =>
-			queryClient.getQueryCache().subscribe(notifyManager.batchCalls(onChange)),
+		(onChange: () => void) => {
+			const notify = notifyManager.batchCalls(onChange);
+			return queryClient.getQueryCache().subscribe((event) => {
+				if (event.query.queryHash === WHOAMI_QUERY_HASH) notify();
+			});
+		},
 		[queryClient],
 	);
 	const readSnapshot = (): boolean =>
