@@ -249,7 +249,7 @@ jobs:
       - name: Mint app installation token
         id: app-token
         if: ${{ vars.AUTO_MERGE_APP_ID != '' }}
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}

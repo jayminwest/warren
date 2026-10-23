@@ -290,7 +290,7 @@ jobs:
           steps.protected.outputs.hit == 'false' && steps.baseline.outputs.hit == 'false' &&
           steps.ui_checks.outputs.hit == 'false'
         id: app-token
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
