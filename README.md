@@ -1,3 +1,5 @@
+> **No longer maintained (Nov 2026).** MIT licensed: fork freely.
+
 <p align="center">
   <a href="https://warren.run">
     <img src="branding/logo.png" alt="Warren — coding agents into infrastructure" width="640">
