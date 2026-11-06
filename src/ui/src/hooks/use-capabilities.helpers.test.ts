@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { UnauthorizedError } from "../api/client.ts";
 import type { WhoamiResponse } from "../api/types.ts";
 import {
+	canHoldLifecycleStream,
 	isWhoamiQueryKey,
 	resolveCapabilities,
 	retryWhoami,
@@ -131,5 +132,19 @@ describe("isWhoamiQueryKey", () => {
 		expect(isWhoamiQueryKey(["meta"])).toBe(false);
 		expect(isWhoamiQueryKey("meta,whoami")).toBe(false);
 		expect(isWhoamiQueryKey(undefined)).toBe(false);
+	});
+});
+
+describe("canHoldLifecycleStream", () => {
+	test("an operator answer opens the stream", () => {
+		expect(canHoldLifecycleStream(OPERATOR)).toBe(true);
+	});
+
+	test("no answer yet keeps the stream closed (the tokenless login page)", () => {
+		expect(canHoldLifecycleStream(undefined)).toBe(false);
+	});
+
+	test("a public spectator keeps the stream closed (the route is readOperator)", () => {
+		expect(canHoldLifecycleStream(ANONYMOUS)).toBe(false);
 	});
 });
