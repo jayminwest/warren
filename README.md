@@ -1,4 +1,6 @@
 > **No longer maintained (Nov 2026).** MIT licensed: fork freely.
+>
+> Development continues in Luan Taraschi's fork: [luantaraschi/warren](https://github.com/luantaraschi/warren).
 
 <p align="center">
   <a href="https://warren.run">
